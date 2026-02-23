@@ -91,13 +91,13 @@ PowerShell / CMD / Bash (com ambiente ativado):
 Onde: Pasta raiz do projeto (proj_8). Ambiente virtual: ATIVO.
 
 Criar o VectorDB (primeira vez):
-  python rag_avk.py
+  python -m agenticlog.rag
 
 Rodar a interface Streamlit:
   streamlit run app.py
 
 Executar os testes:
-  python tests/testa_agentic_rag.py -v
+  python tests/test_agentic_rag.py -v
 
 --------------------------------------------------------------------------------
 8. EXEMPLOS DE PERGUNTAS

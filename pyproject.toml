@@ -1,13 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "proj_8"
+name = "agenticlog"
 version = "0.1.0"
-description = "Pipeline de Automação de Testes Para Agentes de IA"
+description = "Agentic RAG para logística e supply chain"
 readme = "LEIAME.md"
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=1.26.4",
     "langgraph>=0.2.74",
 ]
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [dependency-groups]
 dev = []

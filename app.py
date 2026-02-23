@@ -4,7 +4,7 @@
 import streamlit as st
 
 # Importa funções específicas do módulo Agentic RAG
-from agentic_rag_avk import AgentState, agent_workflow
+from agenticlog import AgentState, agent_workflow
 
 # Define o título, ícone e layout inicial da página Streamlit
 st.set_page_config(page_title="Aivorak", page_icon=":AVK", layout="centered")

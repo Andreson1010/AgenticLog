@@ -69,12 +69,16 @@ uv venv --python 3.12
 
 ```bash
 uv pip install -r requirements.txt
+uv pip install -e .
 ```
+
+O `-e .` instala o pacote agenticlog em modo editável (necessário para a estrutura src/).
 
 Ou, se já tiver Python 3.12 no sistema:
 ```bash
 uv venv
 uv pip install -r requirements.txt
+uv pip install -e .
 ```
 
 ### 3. Ativar o ambiente
@@ -105,7 +109,7 @@ Após ativar, o prompt mostrará `(.venv)` indicando que o ambiente está ativo.
 **Criar o VectorDB** (primeira vez, antes de rodar a app):
 
 ```bash
-python rag_avk.py
+python -m agenticlog.rag
 ```
 
 **Rodar a interface Streamlit:**
@@ -117,15 +121,15 @@ streamlit run app.py
 **Executar os testes:**
 
 ```bash
-python tests/testa_agentic_rag.py -v
+python tests/test_agentic_rag.py -v
 ```
 
 **Alternativa sem ativar o ambiente** (uv run usa o .venv automaticamente):
 
 ```bash
-uv run python rag_avk.py
+uv run python -m agenticlog.rag
 uv run streamlit run app.py
-uv run python tests/testa_agentic_rag.py -v
+uv run python tests/test_agentic_rag.py -v
 ```
 
 ## Exemplos de perguntas:
