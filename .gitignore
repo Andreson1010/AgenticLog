@@ -1,0 +1,40 @@
+# Ambiente virtual
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+dist/
+build/
+
+# Variáveis de ambiente (contém chaves e segredos)
+.env
+.env.local
+.env.*.local
+
+# Banco vetorial (dados gerados)
+vectordb/
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Logs e cache
+*.log
+.cache/
+
+#Arquivos de docuemntos de Aprendizagem
+docs/

@@ -1,0 +1,141 @@
+================================================================================
+Projeto 8 - Pipeline de Automação de Testes Para Agentes de IA
+Configuração com pyenv
+================================================================================
+
+REQUISITOS:
+- Python >= 3.11 (recomendado: 3.12, pois onnxruntime não suporta Python 3.14)
+- pyenv instalado
+
+--------------------------------------------------------------------------------
+1. INSTALAR O PYENV
+--------------------------------------------------------------------------------
+
+Onde: Qualquer diretório. Ambiente virtual: não necessário.
+
+Windows (PowerShell ou CMD):
+  pyenv-win: https://github.com/pyenv-win/pyenv-win
+  Chocolatey: choco install pyenv-win
+  Scoop: scoop install pyenv
+
+Linux (Bash):
+  curl https://pyenv.run | bash
+  Adicione ao ~/.bashrc ou ~/.zshrc:
+    export PATH="$HOME/.pyenv/bin:$PATH"
+    eval "$(pyenv init -)"
+
+macOS (Bash/Terminal):
+  brew install pyenv
+  Adicione ao ~/.zshrc ou ~/.bash_profile:
+    eval "$(pyenv init -)"
+
+--------------------------------------------------------------------------------
+2. INSTALAR O PYTHON 3.12
+--------------------------------------------------------------------------------
+
+Onde: Qualquer diretório. Ambiente virtual: não necessário.
+
+PowerShell / CMD / Bash:
+  pyenv install 3.12
+
+(Listar versões: pyenv install -l)
+
+--------------------------------------------------------------------------------
+3. DEFINIR A VERSÃO DO PYTHON NO PROJETO
+--------------------------------------------------------------------------------
+
+Onde: Pasta raiz do projeto (proj_8). Ambiente virtual: não necessário.
+
+PowerShell / CMD / Bash:
+  pyenv local 3.12
+
+Isso cria .python-version. O pyenv usará Python 3.12 neste diretório.
+
+--------------------------------------------------------------------------------
+4. CRIAR O AMBIENTE VIRTUAL (venv)
+--------------------------------------------------------------------------------
+
+Onde: Pasta raiz do projeto (proj_8). Ambiente virtual: ainda não ativo.
+
+PowerShell / CMD / Bash:
+  python -m venv .venv
+
+--------------------------------------------------------------------------------
+5. ATIVAR O AMBIENTE
+--------------------------------------------------------------------------------
+
+Onde: Pasta raiz do projeto (onde está .venv).
+
+Windows (PowerShell):
+  .venv\Scripts\Activate.ps1
+
+Windows (CMD):
+  .venv\Scripts\activate.bat
+
+Linux/macOS (Bash):
+  source .venv/bin/activate
+
+--------------------------------------------------------------------------------
+6. INSTALAR AS DEPENDÊNCIAS
+--------------------------------------------------------------------------------
+
+Onde: Pasta raiz do projeto (proj_8). Ambiente virtual: ATIVO.
+
+PowerShell / CMD / Bash (com ambiente ativado):
+  pip install -r requirements.txt
+
+--------------------------------------------------------------------------------
+7. EXECUTAR A APLICAÇÃO
+--------------------------------------------------------------------------------
+
+Onde: Pasta raiz do projeto (proj_8). Ambiente virtual: ATIVO.
+
+Criar o VectorDB (primeira vez):
+  python rag_avk.py
+
+Rodar a interface Streamlit:
+  streamlit run app_avk.py
+
+Executar os testes:
+  python testa_agentic_rag.py -v
+
+--------------------------------------------------------------------------------
+8. EXEMPLOS DE PERGUNTAS
+--------------------------------------------------------------------------------
+
+- Resuma o conceito de supply chain.
+- Quais as fases da cadeia de suprimentos?
+- Pesquise sobre as novidades recentes em logistica e supply chain.
+
+--------------------------------------------------------------------------------
+9. DESATIVAR O AMBIENTE
+--------------------------------------------------------------------------------
+
+  deactivate
+
+--------------------------------------------------------------------------------
+10. REMOVER O AMBIENTE (OPCIONAL)
+--------------------------------------------------------------------------------
+
+  deactivate
+  rm -rf .venv          (Linux/macOS)
+  rmdir /s .venv        (Windows CMD)
+  Remove-Item -Recurse .venv   (Windows PowerShell)
+
+--------------------------------------------------------------------------------
+11. DICAS PYENV
+--------------------------------------------------------------------------------
+
+Ver versão atual do Python:
+  pyenv version
+
+Ver versão usada no diretório atual:
+  pyenv local
+
+Definir versão global (para todo o sistema):
+  pyenv global 3.12
+
+Listar versões instaladas:
+  pyenv versions
+
+================================================================================

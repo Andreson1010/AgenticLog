@@ -1,0 +1,56 @@
+---
+description: Padrão para documentar instalação de bibliotecas e ferramentas
+globs: LEIAME.md, docs/**/*.txt, docs/**/*.md
+alwaysApply: false
+---
+
+# Documentação de Instalação
+
+Ao documentar instalação de bibliotecas, frameworks ou ferramentas, **sempre especifique**:
+
+## 1. Shell / Terminal
+
+Indique qual interpretador usar:
+- **PowerShell** (Windows)
+- **CMD** (Windows)
+- **Bash** (Linux/macOS)
+
+Exemplo:
+- Windows (PowerShell): `pip install numpy`
+- Windows (CMD): `pip install numpy`
+- Linux/macOS (Bash): `pip install numpy`
+
+## 2. Ambiente virtual
+
+Indique se o comando deve ser executado:
+- **Com ambiente virtual ativado** (ex.: `.venv` ou `conda activate`)
+- **Sem ambiente virtual** (instalação global ou via uv/conda que gerencia o env)
+
+Exemplo:
+```markdown
+Com o ambiente ativado (na pasta do projeto):
+  pip install -r requirements.txt
+
+Sem ativar (uv gerencia o env automaticamente):
+  uv pip install -r requirements.txt
+```
+
+## 3. Diretório / Local
+
+Indique onde executar o comando:
+- Pasta raiz do projeto
+- Dentro do ambiente virtual
+- Qualquer diretório (quando aplicável)
+
+Exemplo:
+```markdown
+Na pasta raiz do projeto (proj_8):
+  uv venv --python 3.12
+```
+
+## Template resumido
+
+Para cada comando de instalação, inclua:
+- [ ] Shell (PowerShell / CMD / Bash)
+- [ ] Ambiente ativo ou não
+- [ ] Diretório de execução

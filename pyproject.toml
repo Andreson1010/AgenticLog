@@ -1,0 +1,13 @@
+[project]
+name = "proj_8"
+version = "0.1.0"
+description = "Pipeline de Automação de Testes Para Agentes de IA"
+readme = "LEIAME.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26.4",
+    "langgraph>=0.2.74",
+]
+
+[dependency-groups]
+dev = []

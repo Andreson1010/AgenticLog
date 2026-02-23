@@ -1,0 +1,111 @@
+================================================================================
+Projeto 8 - Pipeline de Automação de Testes Para Agentes de IA
+Configuração com Conda (Miniconda/Anaconda)
+================================================================================
+
+REQUISITOS:
+- Python >= 3.11 (recomendado: 3.12, pois onnxruntime não suporta Python 3.14)
+- Conda instalado (Miniconda ou Anaconda)
+
+--------------------------------------------------------------------------------
+1. INSTALAR O CONDA
+--------------------------------------------------------------------------------
+
+Onde: Qualquer diretório. Ambiente virtual: não necessário.
+
+Windows (PowerShell ou CMD):
+  Baixe Miniconda: https://docs.conda.io/en/latest/miniconda.html
+  Execute o instalador e siga as instruções.
+
+Linux (Bash):
+  curl -O https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+  bash Miniconda3-latest-Linux-x86_64.sh
+
+macOS (Bash/Terminal):
+  brew install miniconda
+  Ou baixe em: https://docs.conda.io/en/latest/miniconda.html
+
+--------------------------------------------------------------------------------
+2. CRIAR O AMBIENTE COM PYTHON 3.12
+--------------------------------------------------------------------------------
+
+Onde: Pasta raiz do projeto (proj_8). Ambiente virtual: ainda não ativo.
+
+PowerShell / CMD / Bash:
+  conda create -n proj_8 python=3.12 -y
+
+--------------------------------------------------------------------------------
+3. ATIVAR O AMBIENTE
+--------------------------------------------------------------------------------
+
+Onde: Qualquer diretório (o conda gerencia o env globalmente).
+
+Windows (PowerShell):
+  conda activate proj_8
+
+Windows (CMD):
+  conda activate proj_8
+
+Linux/macOS (Bash):
+  conda activate proj_8
+
+--------------------------------------------------------------------------------
+4. INSTALAR AS DEPENDÊNCIAS
+--------------------------------------------------------------------------------
+
+Onde: Pasta raiz do projeto (proj_8). Ambiente virtual: ATIVO (conda activate proj_8).
+
+PowerShell / CMD / Bash (com ambiente ativado):
+  pip install -r requirements.txt
+
+--------------------------------------------------------------------------------
+5. EXECUTAR A APLICAÇÃO
+--------------------------------------------------------------------------------
+
+Onde: Pasta raiz do projeto (proj_8). Ambiente virtual: ATIVO.
+
+Criar o VectorDB (primeira vez):
+  python rag_avk.py
+
+Rodar a interface Streamlit:
+  streamlit run app_avk.py
+
+Executar os testes:
+  python testa_agentic_rag.py -v
+
+--------------------------------------------------------------------------------
+6. EXEMPLOS DE PERGUNTAS
+--------------------------------------------------------------------------------
+
+- Resuma o conceito de supply chain.
+- Quais as fases da cadeia de suprimentos?
+- Pesquise sobre as novidades recentes em logistica e supply chain.
+
+--------------------------------------------------------------------------------
+7. DESATIVAR O AMBIENTE
+--------------------------------------------------------------------------------
+
+  conda deactivate
+
+--------------------------------------------------------------------------------
+8. REMOVER O AMBIENTE (OPCIONAL)
+--------------------------------------------------------------------------------
+
+  conda deactivate
+  conda env remove -n proj_8 -y
+
+--------------------------------------------------------------------------------
+9. RECRIAR O AMBIENTE A PARTIR DE UM environment.yml (OPCIONAL)
+--------------------------------------------------------------------------------
+
+Se quiser exportar o ambiente para compartilhar:
+
+  conda activate proj_8
+  conda env export > environment.yml
+
+Para recriar em outra máquina:
+
+  conda env create -f environment.yml
+  conda activate proj_8
+
+================================================================================
