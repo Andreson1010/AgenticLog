@@ -21,10 +21,10 @@ from langchain_community.document_loaders import DirectoryLoader, JSONLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter  
 
 # Definição do diretório onde os dados de origem estão armazenados
-diretorio_dados = "documentos"
+diretorio_dados = "data/documents"
 
 # Definição do diretório onde o banco de dados vetorial será armazenado
-diretorio_vectordb = "vectordb"
+diretorio_vectordb = "data/vectordb"
 
 # Variável global para armazenar a instância do banco de dados vetorial
 vectordb = None

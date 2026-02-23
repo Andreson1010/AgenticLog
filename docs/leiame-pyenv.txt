@@ -94,10 +94,10 @@ Criar o VectorDB (primeira vez):
   python rag_avk.py
 
 Rodar a interface Streamlit:
-  streamlit run app_avk.py
+  streamlit run app.py
 
 Executar os testes:
-  python testa_agentic_rag.py -v
+  python tests/testa_agentic_rag.py -v
 
 --------------------------------------------------------------------------------
 8. EXEMPLOS DE PERGUNTAS

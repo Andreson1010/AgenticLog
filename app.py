@@ -93,7 +93,3 @@ if st.button("Enviar"):
         
         # Caso não haja documentos, exibe mensagem informando ao usuário
         st.write("Nenhum documento relacionado encontrado.")
-
-
-
-

@@ -99,7 +99,7 @@ embedding_model = HuggingFaceEmbeddings(model_name = "BAAI/bge-base-en")
 # PARÂMETROS:
 #   - persist_directory: Diretório onde o VectorDB foi salvo (deve existir)
 #   - embedding_function: Modelo usado para gerar embeddings (deve ser o mesmo da criação)
-vector_db = Chroma(persist_directory = "vectordb", embedding_function = embedding_model)
+vector_db = Chroma(persist_directory = "data/vectordb", embedding_function = embedding_model)
 
 # Cria o retriever para recuperar os dados do RAG
 # OBJETIVO: Interface para buscar documentos similares no VectorDB
@@ -224,10 +224,10 @@ class AgentState(BaseModel):
 # CORRELAÇÃO: Testado em testa_agentic_rag.py (testes 1-3 validam cada caminho)
 def avk_passo_decisao_agente(state: AgentState) -> AgentState:
     query = state.query.lower()
-    if any(palavra in query for palavra in ["explain", "summarize", "define", "concept", "general", "what is"]):
-        state.next_step = "to generate"
-    elif any(palavra in query for palavra in ["search the web", "news", "updated", "recent", "latest information"]):
-        state.next_step = "Use web"
+    if any(palavra in query for palavra in ["explain", "summarize", "define", "concept", "general", "what is", "explique", "resuma", "defina", "conceito", "geral", "o que é"]):
+        state.next_step = "gerar"
+    elif any(palavra in query for palavra in ["search the web", "news", "updated", "recent", "latest information", "busque na web", "notícias", "atualizado", "recente", "últimas informações"]):
+        state.next_step = "usar_web"
     else:
         state.next_step = "retrieve"
     return state

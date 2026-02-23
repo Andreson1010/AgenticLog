@@ -5,7 +5,7 @@
 | Ferramenta | Uso no projeto |
 |------------|----------------|
 | **LMStudio** | API local do modelo de linguagem Hermes (hermes-3-llama-3.2-3b). Deve estar rodando em `http://127.0.0.1:1234` antes de executar a aplicação. |
-| **ChromaDB** | Banco de dados vetorial para armazenar e buscar embeddings dos documentos (RAG). Dados persistidos em `vectordb/`. |
+| **ChromaDB** | Banco de dados vetorial para armazenar e buscar embeddings dos documentos (RAG). Dados persistidos em `data/vectordb/`. |
 | **HuggingFace** | Modelo BAAI/bge-base-en para gerar embeddings de texto na busca semântica. |
 | **DuckDuckGo** | Busca web para o agente obter informações atualizadas quando necessário. |
 | **LangGraph** | Framework para orquestrar o workflow do agente (grafos de estado). |
@@ -111,21 +111,21 @@ python rag_avk.py
 **Rodar a interface Streamlit:**
 
 ```bash
-streamlit run app_avk.py
+streamlit run app.py
 ```
 
 **Executar os testes:**
 
 ```bash
-python testa_agentic_rag.py -v
+python tests/testa_agentic_rag.py -v
 ```
 
 **Alternativa sem ativar o ambiente** (uv run usa o .venv automaticamente):
 
 ```bash
 uv run python rag_avk.py
-uv run streamlit run app_avk.py
-uv run python testa_agentic_rag.py -v
+uv run streamlit run app.py
+uv run python tests/testa_agentic_rag.py -v
 ```
 
 ## Exemplos de perguntas:

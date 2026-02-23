@@ -10,7 +10,7 @@ antes da integração completa.
 RELAÇÃO COM O PROJETO:
 - testa_agentic_rag.py: Testes unitários (este arquivo)
 - agentic_rag_avk.py: Módulo principal testado (implementa o Agentic RAG)
-- app_avk.py: Interface Streamlit que usa agentic_rag_avk.py
+- app.py: Interface Streamlit que usa agentic_rag_avk.py
 - rag_avk.py: Cria o VectorDB usado por agentic_rag_avk.py
 
 ESTRUTURA DOS TESTES:
@@ -26,6 +26,12 @@ TÉCNICAS UTILIZADAS:
 """
 
 # Imports
+import sys
+from pathlib import Path
+
+# Adiciona a raiz do projeto ao path para imports
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import unittest
 from unittest.mock import patch, MagicMock  # Mocking para isolar dependências externas
 from langchain.schema import Document  # Tipo de documento usado pelo VectorDB
@@ -237,7 +243,7 @@ class TestAgenticRAG(unittest.TestCase):
         - Testa o nó "rank_responses" do workflow (linha 156)
         - Valida que ranked_response é a resposta com maior similarity_score
         - Verifica que confidence_score é o score da melhor resposta
-        - CORRELAÇÃO COM app_avk.py: ranked_response e confidence_score são exibidos na interface
+        - CORRELAÇÃO COM app.py: ranked_response e confidence_score são exibidos na interface
         - IMPORTÂNCIA: Último passo do workflow RAG - determina resposta final ao usuário
         
         ESTRUTURA DE DADOS:
@@ -267,9 +273,9 @@ if __name__ == '__main__':
     VERBOSIDADE: 2 = mostra detalhes de cada teste (ok, ERROR, FAIL)
     
     COMO EXECUTAR:
-    - Diretamente: python testa_agentic_rag.py
-    - Com uv: uv run python testa_agentic_rag.py
-    - Com unittest: python -m unittest testa_agentic_rag.py -v
+    - Da raiz do projeto: python tests/testa_agentic_rag.py
+    - Com uv: uv run python tests/testa_agentic_rag.py
+    - Com unittest: python -m unittest tests.testa_agentic_rag -v
     
     SAÍDA ESPERADA:
     - 8 testes executados
@@ -278,5 +284,3 @@ if __name__ == '__main__':
     """
     print("\nIniciando os testes. Aguarde...\n")
     unittest.main(verbosity = 2)
-
-

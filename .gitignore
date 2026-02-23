@@ -21,6 +21,7 @@ build/
 
 # Banco vetorial (dados gerados)
 vectordb/
+data/vectordb/
 
 # IDE / Editor
 .idea/
