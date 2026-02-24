@@ -23,3 +23,8 @@ LLM_MAX_TOKENS = 2048
 # RAG
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
+
+# Segurança - limites para carregamento de documentos
+MAX_JSON_FILES = 1000
+MAX_JSON_FILE_SIZE_MB = 10
+FORBIDDEN_JSON_KEYS = ("lc",)  # Mitiga injeção de serialização LangChain
