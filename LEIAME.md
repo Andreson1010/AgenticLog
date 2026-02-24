@@ -146,3 +146,22 @@ deactivate
 
 (O ambiente fica na pasta `.venv` — para removê-lo, basta deletar essa pasta.)
 
+
+## Estruturas de Pastas
+
+AgenticLog/
+├── src/agenticlog/
+│   ├── __init__.py
+│   ├── rag.py
+│   ├── agent.py
+│   └── config.py
+├── app.py
+├── data/documents/
+├── data/vectordb/
+├── tests/test_agentic_rag.py
+├── docs/
+├── pyproject.toml
+├── requirements.txt
+├── LEIAME.md
+└── .gitignore
+
