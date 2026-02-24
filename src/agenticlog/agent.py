@@ -132,8 +132,11 @@ def passo_decisao_agente(state: AgentState) -> AgentState:
 
 
 def usar_ferramenta_web(state: AgentState) -> AgentState:
-    result = avk_agent_executor.invoke(state.query)
-    state.ranked_response = result.get("output", "No information obtained by web search.")
+    try:
+        result = avk_agent_executor.invoke(state.query)
+        state.ranked_response = result.get("output", "No information obtained by web search.")
+    except Exception as e:
+        state.ranked_response = f"Erro na busca web: {e}. Tente novamente mais tarde."
     state.confidence_score = 0.0
     return state
 

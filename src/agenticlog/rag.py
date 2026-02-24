@@ -50,8 +50,13 @@ def _valida_path_documentos() -> None:
 
 def _valida_json_sem_chaves_proibidas(file_path: Path) -> None:
     """Rejeita JSON com chaves que podem causar injeção de serialização LangChain."""
-    with open(file_path, encoding="utf-8", errors="replace") as f:
-        data = json.load(f)
+    try:
+        with open(file_path, encoding="utf-8", errors="replace") as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        raise RAGSecurityError(f"JSON inválido em {file_path}: {e}") from e
+    except OSError as e:
+        raise RAGSecurityError(f"Erro ao ler {file_path}: {e}") from e
     if isinstance(data, dict):
         for key in FORBIDDEN_JSON_KEYS:
             if key in data:
@@ -68,7 +73,7 @@ def _valida_json_sem_chaves_proibidas(file_path: Path) -> None:
                         )
 
 
-def _valida_arquivos_json() -> list[Path]:
+def _valida_arquivos_json() -> None:
     """Valida contagem, tamanho e conteúdo dos arquivos JSON antes do carregamento."""
     max_bytes = MAX_JSON_FILE_SIZE_MB * 1024 * 1024
     json_files = list(DIR_DOCUMENTS.glob("*.json"))
@@ -79,13 +84,15 @@ def _valida_arquivos_json() -> list[Path]:
         )
 
     for path in json_files:
-        if path.stat().st_size > max_bytes:
+        try:
+            size = path.stat().st_size
+        except OSError as e:
+            raise RAGSecurityError(f"Erro ao acessar {path.name}: {e}") from e
+        if size > max_bytes:
             raise RAGSecurityError(
-                f"Arquivo excede {MAX_JSON_FILE_SIZE_MB}MB: {path.name} ({path.stat().st_size / (1024*1024):.1f}MB)"
+                f"Arquivo excede {MAX_JSON_FILE_SIZE_MB}MB: {path.name} ({size / (1024*1024):.1f}MB)"
             )
         _valida_json_sem_chaves_proibidas(path)
-
-    return json_files
 
 
 def cria_vectordb():
@@ -138,4 +145,7 @@ if __name__ == "__main__":
         cria_vectordb()
     except RAGSecurityError as e:
         print(f"\nErro de segurança: {e}")
+        raise SystemExit(1) from e
+    except Exception as e:
+        print(f"\nErro ao criar banco vetorial: {e}")
         raise SystemExit(1) from e
