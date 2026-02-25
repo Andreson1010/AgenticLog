@@ -44,12 +44,6 @@ llm = ChatOpenAI(
     max_tokens=LLM_MAX_TOKENS,
 )
 
-try:
-    response = llm.invoke("Just respond with the word: CONNECTED")
-    print(f"Status do {LLM_MODEL}: {response.content}")
-except Exception as e:
-    print(f"Connection error: {e}")
-
 # Embeddings e VectorDB
 embedding_model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
 vector_db = Chroma(
