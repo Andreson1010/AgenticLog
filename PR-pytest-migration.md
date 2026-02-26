@@ -28,6 +28,7 @@ Migra o runner de testes de `unittest` para **pytest** e adiciona **cobertura de
 | `pyproject.toml` | Adicionados `[tool.pytest.ini_options]` e `[tool.coverage.run/report]` |
 | `.github/workflows/test.yml` | Usa `requirements-dev.txt` e `pytest` com coverage |
 | `tests/conftest.py` | **Novo** – configuração pytest (path para `src`) |
+| `.gitignore` | Adicionados `.coverage`, `htmlcov/` para artefatos de coverage |
 
 ---
 
