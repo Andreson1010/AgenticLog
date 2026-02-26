@@ -44,3 +44,6 @@ htmlcov/
 
 # Arquivos de documentos de Aprendizagem
 docs/
+
+# Rascunhos de PR (apenas local, não versionar)
+PR-*.md
