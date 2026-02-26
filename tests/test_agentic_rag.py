@@ -62,6 +62,16 @@ class TestAgenticRAG(unittest.TestCase):
         mock_retriever.invoke.assert_called_once_with("fases da cadeia de suprimentos")
         self.assertEqual(len(new_state.retrieved_info), 1)
 
+    @patch("agenticlog.agent.retriever")
+    def teste_5b_retrieve_info_empty(self, mock_retriever):
+        """Recuperação vazia: retriever retorna lista vazia."""
+        mock_retriever.invoke.return_value = []
+        state = AgentState(query="consulta sem resultados")
+        new_state = retrieve_info(state)
+        mock_retriever.invoke.assert_called_once_with("consulta sem resultados")
+        self.assertEqual(len(new_state.retrieved_info), 0)
+        self.assertEqual(new_state.retrieved_info, [])
+
     @patch("agenticlog.agent.StrOutputParser")
     @patch("agenticlog.agent.llm")
     @patch("agenticlog.agent.prompt_rag_retrieve")
@@ -86,6 +96,30 @@ class TestAgenticRAG(unittest.TestCase):
         self.assertIn("answer", new_state.possible_responses[0])
         self.assertEqual(new_state.possible_responses[0]["answer"], "Resposta gerada")
 
+    @patch("agenticlog.agent.StrOutputParser")
+    @patch("agenticlog.agent.llm")
+    @patch("agenticlog.agent.prompt_rag_retrieve")
+    def teste_6b_gera_multiplas_respostas_empty_context(
+        self, mock_prompt, mock_llm, mock_str_parser_class
+    ):
+        """Recuperação vazia: context vazio é passado ao LLM (retrieve_info = [])."""
+        mock_chain = MagicMock()
+        mock_chain.invoke.return_value = "Sorry, I did not find that information in the documents."
+        mock_prompt_llm_chain = MagicMock()
+        mock_prompt_llm_chain.__or__ = lambda self, other: mock_chain
+        mock_prompt.__or__ = lambda self, other: mock_prompt_llm_chain
+        mock_parser_instance = MagicMock()
+        mock_parser_instance.invoke.return_value = "Sorry, I did not find that information in the documents."
+        mock_str_parser_class.return_value = mock_parser_instance
+
+        state = AgentState(query="consulta inexistente", next_step="retrieve")
+        state.retrieved_info = []
+        new_state = gera_multiplas_respostas(state)
+        self.assertEqual(len(new_state.possible_responses), 5)
+        mock_chain.invoke.assert_called()
+        invoke_arg = mock_chain.invoke.call_args[0][0]
+        self.assertEqual(invoke_arg.get("context", ""), "")
+
     @patch("agenticlog.agent.embedding_model")
     def teste_7_avalia_similaridade(self, mock_embedding_model):
         mock_embedding_model.embed_documents.return_value = [[0.1] * 768]
@@ -96,6 +130,17 @@ class TestAgenticRAG(unittest.TestCase):
         )
         new_state = avalia_similaridade(state)
         self.assertEqual(len(new_state.similarity_scores), 1)
+
+    @patch("agenticlog.agent.embedding_model")
+    def teste_7b_avalia_similaridade_empty_retrieved(self, mock_embedding_model):
+        """Recuperação vazia: retrieved_info vazio resulta em similarity_scores zerados."""
+        state = AgentState(
+            query="consulta sem documentos",
+            retrieved_info=[],
+            possible_responses=[{"answer": "r1"}, {"answer": "r2"}],
+        )
+        new_state = avalia_similaridade(state)
+        self.assertEqual(new_state.similarity_scores, [0.0, 0.0])
 
     def teste_8_rank_respostas(self):
         state = AgentState(
