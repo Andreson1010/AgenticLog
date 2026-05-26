@@ -7,7 +7,22 @@ import streamlit as st
 from agenticlog import AgentState, agent_workflow
 
 # Define o título, ícone e layout inicial da página Streamlit
-st.set_page_config(page_title="Aivorak", page_icon=":AVK", layout="centered")
+st.set_page_config(page_title="Aivorak", page_icon="🚚", layout="centered")
+
+# Chaves de session_state inicializadas uma vez por sessão Streamlit.
+# Persistem entre reruns enquanto a aba do navegador permanecer aberta.
+# ranked_response: resposta ranqueada retornada pelo agente
+# confidence_score: score de confiança da resposta (0.0–1.0)
+# retrieved_info: documentos recuperados do vectordb
+# next_step: rota usada pelo agente ("retrieve", "gerar", "usar_web")
+if "ranked_response" not in st.session_state:
+    st.session_state.ranked_response = None
+if "confidence_score" not in st.session_state:
+    st.session_state.confidence_score = None
+if "retrieved_info" not in st.session_state:
+    st.session_state.retrieved_info = []
+if "next_step" not in st.session_state:
+    st.session_state.next_step = None
 
 # Adiciona o título "Instruções" na barra lateral
 st.sidebar.title("Instruções")
@@ -29,11 +44,18 @@ if st.sidebar.button("Suporte"):
 # Exibe título principal
 st.title("AVK - Agência de IA")
 
-# Exibe título secundário
-st.title("IA Generativa e Agentic RAG Para a Área de Logística")
+# Exibe subtítulo secundário (substituindo o segundo st.title por st.subheader)
+st.subheader("IA Generativa e Agentic RAG Para a Área de Logística")
 
 # Solicita ao usuário que digite uma pergunta através de um campo de texto
 query = st.text_input("Digite sua pergunta:")
+
+# Mapeia os valores de next_step retornados pelo agente para rótulos legíveis em português exibidos na UI
+_ROTAS = {
+    "retrieve": "Rota: Busca no Banco de Dados",
+    "gerar": "Rota: Geração Direta",
+    "usar_web": "Rota: Busca na Web",
+}
 
 # Verifica se o usuário clicou no botão "Enviar"
 if st.button("Enviar"):
@@ -41,17 +63,38 @@ if st.button("Enviar"):
     # Exibe um spinner indicando que a consulta está sendo processada
     with st.spinner("Processando consulta... Aguarde."):
 
-        # Executa a consulta usando a função agent_workflow do módulo importado
-        output = agent_workflow.invoke(AgentState(query = query))
+        try:
+            # Executa a consulta usando a função agent_workflow do módulo importado
+            output = agent_workflow.invoke(AgentState(query=query))
+
+            # agent_workflow.invoke() retorna um dict cujas chaves espelham os campos de AgentState;
+            # lemos cada chave com .get() para garantir valor padrão seguro caso alguma esteja ausente
+            st.session_state.ranked_response = output.get("ranked_response", "Nenhuma resposta.")
+            st.session_state.confidence_score = output.get("confidence_score", 0.0)
+            st.session_state.retrieved_info = output.get("retrieved_info", [])
+            st.session_state.next_step = output.get("next_step", None)
+
+        except Exception as e:
+            # Exibe mensagem de erro amigável ao usuário
+            st.error("Erro ao processar consulta. Verifique se o LMStudio está em execução.")
+
+            # Exibe detalhes técnicos da exceção em um expander para diagnóstico
+            with st.expander("Detalhes do erro"):
+                st.exception(e)
+
+# Exibe os resultados armazenados no session_state (persistem entre reruns)
+if st.session_state.ranked_response is not None:
+
+    # Exibe a rota utilizada pelo agente como badge informativo
+    rota = st.session_state.next_step
+    if rota in _ROTAS:
+        st.info(_ROTAS[rota])
 
     # Exibe subtítulo "Resposta:"
     st.subheader("Resposta:")
 
-    # Obtém a resposta ranqueada ou mensagem padrão caso indisponível
-    resposta = output.get("ranked_response", "Nenhuma resposta.")
-
-    # Obtém o score de confiança da resposta gerada
-    confidence = output.get("confidence_score", 0.0)
+    # Obtém a resposta ranqueada do session_state
+    resposta = st.session_state.ranked_response
 
     # Verifica se a resposta está em formato dicionário contendo chave "answer"
     if isinstance(resposta, dict) and "answer" in resposta:
@@ -65,11 +108,22 @@ if st.button("Enviar"):
     # Exibe subtítulo indicando o nível de confiança da resposta
     st.subheader("Confiança da Resposta com Base no RAG:")
 
-    # Exibe o nível de confiança em formato Markdown com 2 casas decimais
-    st.markdown(f"`{confidence:.2f}`")
+    # Obtém o score de confiança do session_state; usa 0.0 se None (ex.: após erro)
+    confidence = st.session_state.confidence_score or 0.0
+
+    # Exibe barra de progresso visual com o valor de confiança (0.0 a 1.0)
+    st.progress(float(confidence))
+
+    # Exibe badge colorido de acordo com o nível de confiança
+    if confidence >= 0.7:
+        st.success(f"Confiança alta: {confidence:.2f}")
+    elif confidence >= 0.4:
+        st.warning(f"Confiança média: {confidence:.2f}")
+    else:
+        st.error(f"Confiança baixa: {confidence:.2f}")
 
     # Obtém os documentos relacionados que foram recuperados pela consulta
-    documentos_relacionados = output.get("retrieved_info", [])
+    documentos_relacionados = st.session_state.retrieved_info
 
     # Verifica se existem documentos relacionados recuperados
     if documentos_relacionados:
@@ -80,16 +134,22 @@ if st.button("Enviar"):
         # Itera sobre cada documento recuperado
         for i, doc in enumerate(documentos_relacionados):
 
-            # Exibe o ID de cada documento
-            st.markdown(f"**ID:** `{doc.id}`")
+            # Obtém a fonte do documento para usar no título do expander
+            source = doc.metadata.get("source", "Desconhecida")
 
-            # Exibe a fonte do documento ou 'Desconhecida' caso indisponível
-            st.markdown(f"**Fonte:** `{doc.metadata.get('source', 'Desconhecida')}`")
+            # Exibe cada documento em um expander colapsável para melhor legibilidade
+            with st.expander(f"Documento {i + 1} — {source}"):
 
-            # Exibe o conteúdo do documento numa caixa de texto com altura definida
-            # key único evita StreamlitDuplicateElementId quando há múltiplos documentos
-            st.text_area("Conteúdo", doc.page_content, height=80, key=f"doc_content_{i}_{doc.id}")
+                # Exibe o ID do documento
+                st.markdown(f"**ID:** `{doc.id}`")
+
+                # Exibe a fonte do documento
+                st.markdown(f"**Fonte:** `{source}`")
+
+                # Exibe o conteúdo do documento numa caixa de texto com altura definida
+                # key único evita StreamlitDuplicateElementId quando há múltiplos documentos
+                st.text_area("Conteúdo", doc.page_content, height=80, key=f"doc_content_{i}_{doc.id}")
     else:
-        
+
         # Caso não haja documentos, exibe mensagem informando ao usuário
         st.write("Nenhum documento relacionado encontrado.")
