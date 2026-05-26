@@ -108,8 +108,8 @@ if st.session_state.ranked_response is not None:
     # Exibe subtítulo indicando o nível de confiança da resposta
     st.subheader("Confiança da Resposta com Base no RAG:")
 
-    # Obtém o score de confiança do session_state
-    confidence = st.session_state.confidence_score
+    # Obtém o score de confiança do session_state; usa 0.0 se None (ex.: após erro)
+    confidence = st.session_state.confidence_score or 0.0
 
     # Exibe barra de progresso visual com o valor de confiança (0.0 a 1.0)
     st.progress(float(confidence))
