@@ -1,6 +1,12 @@
 # AgenticLog - Pipeline RAG
 """
-Cria banco de dados vetorial a partir de documentos JSON.
+Pipeline de construção do banco vetorial (ChromaDB).
+
+Responsabilidades:
+- Validar segurança dos documentos JSON antes do carregamento (path traversal, chaves proibidas, tamanho).
+- Transformar os documentos em chunks e gerar embeddings com HuggingFace.
+- Persistir o banco vetorial em data/vectordb/ para uso pelo agente.
+
 Execute: python -m agenticlog.rag
 """
 
@@ -29,11 +35,19 @@ vectordb = None
 
 
 class RAGSecurityError(Exception):
-    """Exceção para violações de segurança no pipeline RAG."""
+    """Exceção lançada quando uma violação de segurança é detectada no pipeline RAG.
+
+    Exemplos de violações: path traversal, chaves JSON proibidas, arquivo muito grande.
+    """
 
 
 def _valida_path_documentos() -> None:
-    """Garante que DIR_DOCUMENTS está dentro do PROJECT_ROOT (mitiga path traversal)."""
+    """Verifica que DIR_DOCUMENTS está contido dentro de PROJECT_ROOT.
+
+    Mitiga path traversal: impede que um valor manipulado de DIR_DOCUMENTS aponte para
+    diretórios fora do projeto (ex.: /etc/ ou C:\\Windows\\), evitando leitura indevida
+    de arquivos do sistema operacional.
+    """
     dir_resolved = DIR_DOCUMENTS.resolve()
     root_resolved = PROJECT_ROOT.resolve()
     try:
@@ -49,7 +63,12 @@ def _valida_path_documentos() -> None:
 
 
 def _valida_json_sem_chaves_proibidas(file_path: Path) -> None:
-    """Rejeita JSON com chaves que podem causar injeção de serialização LangChain."""
+    """Rejeita arquivos JSON que contenham chaves listadas em FORBIDDEN_JSON_KEYS.
+
+    Mitiga injeção de serialização: a chave "lc" é usada internamente pelo LangChain
+    para desserializar objetos arbitrários via Serializable. Um documento malicioso com
+    essa chave poderia forçar a execução de código inesperado ao ser carregado pelo loader.
+    """
     try:
         with open(file_path, encoding="utf-8", errors="replace") as f:
             data = json.load(f)
@@ -74,7 +93,13 @@ def _valida_json_sem_chaves_proibidas(file_path: Path) -> None:
 
 
 def _valida_arquivos_json() -> None:
-    """Valida contagem, tamanho e conteúdo dos arquivos JSON antes do carregamento."""
+    """Valida todos os arquivos JSON em DIR_DOCUMENTS antes do carregamento no ChromaDB.
+
+    Verificações realizadas:
+    - Contagem: rejeita se o número de arquivos exceder MAX_JSON_FILES (proteção contra DoS).
+    - Tamanho: rejeita arquivos maiores que MAX_JSON_FILE_SIZE_MB (evita consumo excessivo de memória).
+    - Conteúdo: delega a _valida_json_sem_chaves_proibidas para checar chaves proibidas e JSON válido.
+    """
     max_bytes = MAX_JSON_FILE_SIZE_MB * 1024 * 1024
     json_files = list(DIR_DOCUMENTS.glob("*.json"))
 
@@ -96,14 +121,25 @@ def _valida_arquivos_json() -> None:
 
 
 def cria_vectordb():
-    """Cria o banco vetorial (ChromaDB) a partir dos documentos em data/documents/."""
-    global vectordb
+    """Cria e persiste o banco vetorial ChromaDB a partir dos documentos em data/documents/.
+
+    Efeito colateral: atribui a variável global `vectordb` com a instância Chroma criada,
+    tornando-a disponível para outros módulos que importem este arquivo.
+
+    Fluxo:
+    1. Valida segurança dos paths e arquivos JSON.
+    2. Carrega documentos com JSONLoader usando jq_schema para achatar chave-valor.
+    3. Divide em chunks com RecursiveCharacterTextSplitter.
+    4. Gera embeddings com HuggingFace e persiste no ChromaDB.
+    """
+    global vectordb  # inicializado como None no nível do módulo; preenchido aqui
 
     _valida_path_documentos()
     _valida_arquivos_json()
 
     print("\nGerando as Embeddings. Aguarde...")
 
+    # jq_schema: achata o JSON em "chave: valor\nchave: valor" para facilitar chunking e busca semântica
     jq_schema = 'to_entries | map(.key + ": " + .value) | join("\\n")'
     loader = DirectoryLoader(
         str(DIR_DOCUMENTS),
@@ -130,7 +166,7 @@ def cria_vectordb():
         encode_kwargs={"normalize_embeddings": True},
     )
 
-    global vectordb
+    global vectordb  # inicializado como None no nível do módulo; preenchido aqui
     vectordb = Chroma.from_documents(
         chunks,
         embedding_model,

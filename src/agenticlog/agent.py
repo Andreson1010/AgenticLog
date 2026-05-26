@@ -1,6 +1,11 @@
 # AgenticLog - Lógica Agentic RAG
 """
-Sistema Agentic RAG: RAG vetorial, geração conceitual e busca web.
+Sistema Agentic RAG com LangGraph: RAG vetorial, geração conceitual e busca web.
+
+O grafo de estados roteia cada consulta para um de três caminhos:
+- retrieve  → busca no ChromaDB, gera múltiplas respostas, rankeia por similaridade de cosseno.
+- gerar     → gera resposta conceitual diretamente com o LLM (sem retrieval).
+- usar_web  → delega a um agente DuckDuckGo para consultas que exigem informações recentes.
 """
 
 import os
@@ -35,7 +40,7 @@ from agenticlog.config import (
     LLM_MAX_TOKENS,
 )
 
-# LLM
+# LLM — inicializado na importação do módulo
 llm = ChatOpenAI(
     model_name=LLM_MODEL,
     openai_api_base=LLM_API_BASE,
@@ -44,19 +49,20 @@ llm = ChatOpenAI(
     max_tokens=LLM_MAX_TOKENS,
 )
 
-# Embeddings e VectorDB
+# Embeddings e VectorDB — inicializados na importação do módulo
 embedding_model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
 vector_db = Chroma(
     persist_directory=str(DIR_VECTORDB),
     embedding_function=embedding_model,
 )
-retriever = vector_db.as_retriever()
+retriever = vector_db.as_retriever()  # inicializado na importação do módulo
 
-# Prompts
+# Prompts — inicializados na importação do módulo
 prompt_rag_retrieve = PromptTemplate.from_template(
     """You are a truthful and precise assistant in logistics and supply chain.
     Your task is to answer the user's question based STRICTLY on the provided context below.
 
+    # REGRAS DE RESPOSTA: restrições obrigatórias que impedem o LLM de alucinar ou usar conhecimento externo
     REGRAS DE RESPOSTA:
     1. USE ONLY the information inside the context block.
     2. DO NOT use your internal knowledge or previous training.
@@ -80,7 +86,7 @@ prompt_gerar = PromptTemplate.from_template(
     Answer:"""
 )
 
-# Agente web
+# Agente web — inicializado na importação do módulo
 search = DuckDuckGoSearchAPIWrapper(region="br-pt", max_results=5)
 web_search_tool = Tool(name="WebSearch", func=search.run, description="Busca web.")
 avk_agent_executor = initialize_agent(
@@ -93,20 +99,35 @@ avk_agent_executor = initialize_agent(
 
 
 class AgentState(BaseModel):
-    query: str
-    next_step: str = ""
-    retrieved_info: list = []
-    possible_responses: list = []
-    similarity_scores: list = []
-    ranked_response: str = ""
-    confidence_score: float = 0.0
+    """Carregador de estado imutável por convenção entre os nós do grafo LangGraph.
+
+    Cada nó recebe uma cópia do estado e retorna um novo estado atualizado;
+    nenhum nó deve modificar campos de outros nós diretamente.
+    """
+
+    query: str                          # pergunta original do usuário
+    next_step: str = ""                 # rota decidida: "retrieve", "gerar" ou "usar_web"
+    retrieved_info: list = []           # documentos retornados pelo retriever vetorial
+    possible_responses: list = []       # 5 respostas geradas pelo LLM para ranqueamento
+    similarity_scores: list = []        # scores de cosseno de cada resposta vs. contexto recuperado
+    ranked_response: str = ""           # melhor resposta após ranqueamento por similaridade
+    confidence_score: float = 0.0       # score de confiança da resposta ranqueada (0.0–1.0)
 
 
 def passo_decisao_agente(state: AgentState) -> AgentState:
+    """Nó de decisão do grafo: define state.next_step com base em palavras-chave da consulta.
+
+    Entrada: state.query (pergunta do usuário).
+    Saída:   state.next_step — "gerar", "usar_web" ou "retrieve" (padrão).
+
+    # Listas de palavras-chave: controlam o roteamento — termos conceituais → "gerar",
+    # termos de busca web → "usar_web", qualquer outro caso → "retrieve".
+    """
     query = state.query.lower()
     if any(
         p in query
         for p in [
+            # palavras-chave para geração conceitual (sem retrieval)
             "explain", "summarize", "define", "concept", "general", "what is",
             "explique", "resuma", "defina", "conceito", "geral", "o que é",
         ]
@@ -115,6 +136,7 @@ def passo_decisao_agente(state: AgentState) -> AgentState:
     elif any(
         p in query
         for p in [
+            # palavras-chave para busca web (informações recentes ou externas)
             "search the web", "news", "updated", "recent", "latest information",
             "busque na web", "notícias", "atualizado", "recente", "últimas informações",
         ]
@@ -126,6 +148,12 @@ def passo_decisao_agente(state: AgentState) -> AgentState:
 
 
 def usar_ferramenta_web(state: AgentState) -> AgentState:
+    """Nó de busca web: executa o agente DuckDuckGo e armazena a resposta final.
+
+    Entrada: state.query.
+    Saída:   state.ranked_response (resultado da busca), state.confidence_score = 0.0
+             (sem base vetorial para calcular similaridade).
+    """
     try:
         result = avk_agent_executor.invoke(state.query)
         state.ranked_response = result.get("output", "No information obtained by web search.")
@@ -136,12 +164,23 @@ def usar_ferramenta_web(state: AgentState) -> AgentState:
 
 
 def retrieve_info(state: AgentState) -> AgentState:
+    """Nó de recuperação: busca documentos relevantes no ChromaDB via retriever vetorial.
+
+    Entrada: state.query.
+    Saída:   state.retrieved_info — lista de Document retornados pelo retriever.
+    """
     retrieved_docs = retriever.invoke(state.query)
     state.retrieved_info = retrieved_docs
     return state
 
 
 def gera_multiplas_respostas(state: AgentState) -> AgentState:
+    """Nó de geração: produz 5 respostas candidatas usando o LLM para posterior ranqueamento.
+
+    Entrada: state.next_step (determina o prompt usado), state.retrieved_info (se "retrieve"),
+             state.query.
+    Saída:   state.possible_responses — lista de 5 dicts {"answer": str}.
+    """
     def format_docs(docs):
         if not docs:
             return ""
@@ -172,6 +211,15 @@ def gera_multiplas_respostas(state: AgentState) -> AgentState:
 
 
 def avalia_similaridade(state: AgentState) -> AgentState:
+    """Nó de avaliação: calcula score de similaridade de cosseno entre cada resposta e o contexto recuperado.
+
+    Entrada: state.retrieved_info, state.possible_responses.
+    Saída:   state.similarity_scores — lista de floats, um por resposta candidata.
+
+    Usa similaridade de cosseno porque respostas semanticamente próximas ao contexto recuperado
+    têm maior fidelidade factual: quanto mais o espaço vetorial da resposta coincide com o do
+    contexto, menos o LLM alucionou informações externas.
+    """
     retrieved_texts = [doc.page_content for doc in state.retrieved_info]
     responses = state.possible_responses
     retrieved_embeddings = (
@@ -203,6 +251,11 @@ def avalia_similaridade(state: AgentState) -> AgentState:
 
 
 def rank_respostas(state: AgentState) -> AgentState:
+    """Nó de ranqueamento: seleciona a resposta com maior score de similaridade como resposta final.
+
+    Entrada: state.possible_responses, state.similarity_scores.
+    Saída:   state.ranked_response — melhor resposta (str ou dict); state.confidence_score — score vencedor.
+    """
     response_with_scores = list(zip(state.possible_responses, state.similarity_scores))
     if response_with_scores:
         ranked = sorted(response_with_scores, key=lambda x: x[1], reverse=True)

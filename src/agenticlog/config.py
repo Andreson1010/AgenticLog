@@ -4,27 +4,27 @@
 from pathlib import Path
 
 # Raiz do projeto (pasta que contém src/, data/, etc.)
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent  # âncora para todos os paths relativos
 
 # Diretórios de dados
-DIR_DOCUMENTS = PROJECT_ROOT / "data" / "documents"
-DIR_VECTORDB = PROJECT_ROOT / "data" / "vectordb"
+DIR_DOCUMENTS = PROJECT_ROOT / "data" / "documents"  # JSONs de origem dos documentos
+DIR_VECTORDB = PROJECT_ROOT / "data" / "vectordb"    # banco ChromaDB persistido em disco
 
 # Modelo de embeddings (deve ser o mesmo em rag e agent)
-EMBEDDING_MODEL = "BAAI/bge-base-en"
+EMBEDDING_MODEL = "BAAI/bge-base-en"  # modelo HuggingFace usado para gerar e consultar embeddings
 
 # LLM (LMStudio)
-LLM_MODEL = "hermes-3-llama-3.2-3b"
-LLM_API_BASE = "http://127.0.0.1:1234/v1"
-LLM_API_KEY = "hermes"
-LLM_TEMPERATURE = 0
-LLM_MAX_TOKENS = 2048
+LLM_MODEL = "hermes-3-llama-3.2-3b"          # identificador do modelo carregado no LMStudio
+LLM_API_BASE = "http://127.0.0.1:1234/v1"    # endpoint local do LMStudio (compatível com OpenAI API)
+LLM_API_KEY = "hermes"                        # chave fictícia exigida pelo cliente OpenAI
+LLM_TEMPERATURE = 0                           # temperatura 0 para respostas determinísticas
+LLM_MAX_TOKENS = 2048                         # limite de tokens gerados por resposta
 
 # RAG
-CHUNK_SIZE = 500
-CHUNK_OVERLAP = 50
+CHUNK_SIZE = 500    # tamanho máximo de cada chunk de texto em caracteres
+CHUNK_OVERLAP = 50  # sobreposição entre chunks para preservar contexto nas bordas
 
 # Segurança - limites para carregamento de documentos
-MAX_JSON_FILES = 1000
-MAX_JSON_FILE_SIZE_MB = 10
-FORBIDDEN_JSON_KEYS = ("lc",)  # Mitiga injeção de serialização LangChain
+MAX_JSON_FILES = 1000          # impede carregamento irrestrito de arquivos maliciosos
+MAX_JSON_FILE_SIZE_MB = 10     # bloqueia arquivos excessivamente grandes (proteção contra DoS)
+FORBIDDEN_JSON_KEYS = ("lc",)  # mitiga injeção via chave "lc" usada pela classe Serializable do LangChain
