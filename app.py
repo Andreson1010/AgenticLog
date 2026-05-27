@@ -75,12 +75,21 @@ if st.button("Enviar"):
             st.session_state.next_step = output.get("next_step", None)
 
         except Exception as e:
-            # Exibe mensagem de erro amigável ao usuário
-            st.error("Erro ao processar consulta. Verifique se o LMStudio está em execução.")
-
-            # Exibe detalhes técnicos da exceção em um expander para diagnóstico
-            with st.expander("Detalhes do erro"):
-                st.exception(e)
+            _msg = str(e).lower()
+            if "connection refused" in _msg or ("connect" in _msg and "1234" in _msg):
+                st.error(
+                    "LMStudio não está rodando. Inicie o LMStudio e carregue o modelo "
+                    "hermes-3-llama-3.2-3b antes de usar o sistema."
+                )
+            elif "does not exist" in _msg or "no such file" in _msg:
+                st.error(
+                    "Base vetorial não encontrada. Execute o seguinte comando para criá-la:"
+                    "\n\n    python -m agenticlog.rag"
+                )
+            else:
+                st.error("Erro ao processar consulta. Verifique se o LMStudio está em execução.")
+                with st.expander("Detalhes do erro"):
+                    st.exception(e)
 
 # Exibe os resultados armazenados no session_state (persistem entre reruns)
 if st.session_state.ranked_response is not None:

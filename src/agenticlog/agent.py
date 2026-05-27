@@ -40,22 +40,63 @@ from agenticlog.config import (
     LLM_MAX_TOKENS,
 )
 
-# LLM — inicializado na importação do módulo
-llm = ChatOpenAI(
-    model_name=LLM_MODEL,
-    openai_api_base=LLM_API_BASE,
-    openai_api_key=LLM_API_KEY,
-    temperature=LLM_TEMPERATURE,
-    max_tokens=LLM_MAX_TOKENS,
-)
+# Singletons lazy — inicializados somente na primeira chamada, não na importação
+_llm = None
+_vector_db = None
+_embedding_model = None
 
-# Embeddings e VectorDB — inicializados na importação do módulo
-embedding_model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
-vector_db = Chroma(
-    persist_directory=str(DIR_VECTORDB),
-    embedding_function=embedding_model,
-)
-retriever = vector_db.as_retriever()  # inicializado na importação do módulo
+
+def _get_llm() -> ChatOpenAI:
+    """Retorna o singleton do LLM, criando-o na primeira chamada.
+
+    Saída: instância de ChatOpenAI configurada com as constantes do config.
+    """
+    global _llm
+    if _llm is None:
+        _llm = ChatOpenAI(
+            model_name=LLM_MODEL,
+            openai_api_base=LLM_API_BASE,
+            openai_api_key=LLM_API_KEY,
+            temperature=LLM_TEMPERATURE,
+            max_tokens=LLM_MAX_TOKENS,
+        )
+    return _llm
+
+
+def _get_embedding_model() -> HuggingFaceEmbeddings:
+    """Retorna o singleton do modelo de embeddings, criando-o na primeira chamada.
+
+    Saída: instância de HuggingFaceEmbeddings.
+    """
+    global _embedding_model
+    if _embedding_model is None:
+        _embedding_model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+    return _embedding_model
+
+
+def _get_vector_db() -> Chroma:
+    """Retorna o singleton do ChromaDB, criando-o na primeira chamada.
+
+    Saída: instância de Chroma conectada ao diretório persistido.
+    """
+    global _vector_db
+    if _vector_db is None:
+        _vector_db = Chroma(
+            persist_directory=str(DIR_VECTORDB),
+            embedding_function=_get_embedding_model(),
+        )
+    return _vector_db
+
+
+def _get_retriever():
+    """Retorna um retriever de similaridade a partir do vector_db lazy.
+
+    Saída: retriever configurado com search_type='similarity' e k=3.
+    """
+    return _get_vector_db().as_retriever(
+        search_type="similarity", search_kwargs={"k": 3}
+    )
+
 
 # Prompts — inicializados na importação do módulo
 prompt_rag_retrieve = PromptTemplate.from_template(
@@ -86,16 +127,28 @@ prompt_gerar = PromptTemplate.from_template(
     Answer:"""
 )
 
-# Agente web — inicializado na importação do módulo
+# Ferramentas de busca web — DuckDuckGo não requer LMStudio, inicializado na importação
 search = DuckDuckGoSearchAPIWrapper(region="br-pt", max_results=5)
 web_search_tool = Tool(name="WebSearch", func=search.run, description="Busca web.")
-avk_agent_executor = initialize_agent(
-    tools=[web_search_tool],
-    llm=llm,
-    agent=AgentType.CHAT_ZERO_SHOT_REACT_DESCRIPTION,
-    verbose=True,
-    handle_parsing_errors=True,
-)
+
+_avk_agent_executor = None
+
+
+def _get_avk_agent_executor():
+    """Retorna o singleton do agente web DuckDuckGo, criando-o na primeira chamada.
+
+    Saída: AgentExecutor configurado com o LLM lazy e a ferramenta de busca web.
+    """
+    global _avk_agent_executor
+    if _avk_agent_executor is None:
+        _avk_agent_executor = initialize_agent(
+            tools=[web_search_tool],
+            llm=_get_llm(),
+            agent=AgentType.CHAT_ZERO_SHOT_REACT_DESCRIPTION,
+            verbose=True,
+            handle_parsing_errors=True,
+        )
+    return _avk_agent_executor
 
 
 class AgentState(BaseModel):
@@ -155,7 +208,7 @@ def usar_ferramenta_web(state: AgentState) -> AgentState:
              (sem base vetorial para calcular similaridade).
     """
     try:
-        result = avk_agent_executor.invoke(state.query)
+        result = _get_avk_agent_executor().invoke(state.query)
         state.ranked_response = result.get("output", "No information obtained by web search.")
     except Exception as e:
         state.ranked_response = f"Erro na busca web: {e}. Tente novamente mais tarde."
@@ -169,7 +222,7 @@ def retrieve_info(state: AgentState) -> AgentState:
     Entrada: state.query.
     Saída:   state.retrieved_info — lista de Document retornados pelo retriever.
     """
-    retrieved_docs = retriever.invoke(state.query)
+    retrieved_docs = _get_retriever().invoke(state.query)
     state.retrieved_info = retrieved_docs
     return state
 
@@ -194,7 +247,7 @@ def gera_multiplas_respostas(state: AgentState) -> AgentState:
         current_prompt = prompt_gerar
         state.retrieved_info = []
 
-    qa_chain_dynamic = current_prompt | llm | StrOutputParser()
+    qa_chain_dynamic = current_prompt | _get_llm() | StrOutputParser()
 
     responses = []
     for _ in range(5):
@@ -223,14 +276,14 @@ def avalia_similaridade(state: AgentState) -> AgentState:
     retrieved_texts = [doc.page_content for doc in state.retrieved_info]
     responses = state.possible_responses
     retrieved_embeddings = (
-        embedding_model.embed_documents(retrieved_texts) if retrieved_texts else []
+        _get_embedding_model().embed_documents(retrieved_texts) if retrieved_texts else []
     )
     response_texts = [
         r["answer"] if isinstance(r, dict) and "answer" in r else str(r)
         for r in responses
     ]
     response_embeddings = (
-        embedding_model.embed_documents(response_texts) if response_texts else []
+        _get_embedding_model().embed_documents(response_texts) if response_texts else []
     )
 
     if not retrieved_embeddings or not response_embeddings:
