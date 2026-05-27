@@ -10,7 +10,10 @@ _root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_root / "src"))
 
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call
+import httpx
+import anthropic
+
 from langchain_core.documents import Document
 
 from agenticlog.agent import (
@@ -20,11 +23,13 @@ from agenticlog.agent import (
     gera_multiplas_respostas,
     avalia_similaridade,
     rank_respostas,
+    _invoke_chain,
     AgentState,
     _get_llm,
     _get_vector_db,
 )
 import agenticlog.agent as agent_module
+from agenticlog.config import LLM_TIMEOUT_SECONDS
 
 
 class TestAgenticRAG(unittest.TestCase):
@@ -46,14 +51,16 @@ class TestAgenticRAG(unittest.TestCase):
         self.assertEqual(new_state.next_step, "gerar")
 
     @patch("agenticlog.agent._get_avk_agent_executor")
-    def teste_4_usar_ferramenta_web(self, mock_get_executor):
+    @patch("agenticlog.agent.search")
+    def teste_4_usar_ferramenta_web(self, mock_search, mock_get_executor):
+        mock_search.run.return_value = "resultados da busca"
         mock_executor = MagicMock()
         mock_executor.invoke.return_value = {"output": "Resposta da web."}
         mock_get_executor.return_value = mock_executor
         state = AgentState(query="notícias recentes sobre supply chain")
         new_state = usar_ferramenta_web(state)
         mock_executor.invoke.assert_called_once_with(
-            "notícias recentes sobre supply chain"
+            {"input": "notícias recentes sobre supply chain"}
         )
         self.assertEqual(new_state.ranked_response, "Resposta da web.")
 
@@ -81,11 +88,12 @@ class TestAgenticRAG(unittest.TestCase):
         self.assertEqual(len(new_state.retrieved_info), 0)
         self.assertEqual(new_state.retrieved_info, [])
 
+    @patch("time.sleep")
     @patch("agenticlog.agent.StrOutputParser")
     @patch("agenticlog.agent._get_llm")
     @patch("agenticlog.agent.prompt_rag_retrieve")
     def teste_6_gera_multiplas_respostas(
-        self, mock_prompt, mock_get_llm, mock_str_parser_class
+        self, mock_prompt, mock_get_llm, mock_str_parser_class, mock_sleep
     ):
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
@@ -107,11 +115,12 @@ class TestAgenticRAG(unittest.TestCase):
         self.assertIn("answer", new_state.possible_responses[0])
         self.assertEqual(new_state.possible_responses[0]["answer"], "Resposta gerada")
 
+    @patch("time.sleep")
     @patch("agenticlog.agent.StrOutputParser")
     @patch("agenticlog.agent._get_llm")
     @patch("agenticlog.agent.prompt_rag_retrieve")
     def teste_6b_gera_multiplas_respostas_empty_context(
-        self, mock_prompt, mock_get_llm, mock_str_parser_class
+        self, mock_prompt, mock_get_llm, mock_str_parser_class, mock_sleep
     ):
         """Recuperação vazia: context vazio é passado ao LLM (retrieve_info = [])."""
         mock_llm = MagicMock()
@@ -177,7 +186,8 @@ class TestAgenticRAG(unittest.TestCase):
 
     @patch("agenticlog.agent.ChatOpenAI")
     def teste_10_get_llm_singleton(self, mock_chat_openai):
-        """LAZY-04: _get_llm() retorna a mesma instância em chamadas repetidas (singleton)."""
+        """LAZY-04: _get_llm() retorna a mesma instância em chamadas repetidas (singleton)
+        e é criado com request_timeout=LLM_TIMEOUT_SECONDS."""
         agent_module._llm = None
         mock_instance = MagicMock()
         mock_chat_openai.return_value = mock_instance
@@ -187,6 +197,8 @@ class TestAgenticRAG(unittest.TestCase):
 
         self.assertIs(primeira, segunda)
         mock_chat_openai.assert_called_once()
+        _, kwargs = mock_chat_openai.call_args
+        self.assertEqual(kwargs.get("request_timeout"), LLM_TIMEOUT_SECONDS)
 
         # limpar singleton para não vazar entre testes
         agent_module._llm = None
@@ -208,6 +220,108 @@ class TestAgenticRAG(unittest.TestCase):
 
         # limpar singleton para não vazar entre testes
         agent_module._vector_db = None
+
+
+class TestRetryLogic(unittest.TestCase):
+    """Testes de retry com backoff exponencial para chamadas ao LLM (T1-T7)."""
+
+    @patch("time.sleep")
+    def teste_1_retry_sucesso_primeira_tentativa(self, mock_sleep):
+        """T1: _invoke_chain retorna resultado na primeira tentativa (happy path)."""
+        mock_chain = MagicMock()
+        mock_chain.invoke.return_value = "resposta ok"
+
+        resultado = _invoke_chain(mock_chain, {"input": "pergunta"})
+
+        self.assertEqual(resultado, "resposta ok")
+        mock_chain.invoke.assert_called_once_with({"input": "pergunta"})
+        mock_sleep.assert_not_called()
+
+    @patch("time.sleep")
+    def teste_2_retry_uma_falha_sucesso_na_segunda(self, mock_sleep):
+        """T2: _invoke_chain falha uma vez com ConnectError e sucede na segunda tentativa."""
+        mock_chain = MagicMock()
+        mock_chain.invoke.side_effect = [
+            httpx.ConnectError("connection refused"),
+            "resposta na segunda",
+        ]
+
+        resultado = _invoke_chain(mock_chain, {"input": "pergunta"})
+
+        self.assertEqual(resultado, "resposta na segunda")
+        self.assertEqual(mock_chain.invoke.call_count, 2)
+
+    @patch("time.sleep")
+    def teste_3_retry_tres_falhas_propaga_excecao_original(self, mock_sleep):
+        """T3: 3 falhas consecutivas propagam ConnectError original (não RetryError)."""
+        mock_chain = MagicMock()
+        mock_chain.invoke.side_effect = httpx.ConnectError("connection refused")
+
+        with self.assertRaises(httpx.ConnectError):
+            _invoke_chain(mock_chain, {"input": "pergunta"})
+
+        self.assertEqual(mock_chain.invoke.call_count, 3)
+
+    @patch("time.sleep")
+    def teste_4_authentication_error_nao_faz_retry(self, mock_sleep):
+        """T4: AuthenticationError não é retryable — falha imediatamente sem retry."""
+        from openai import AuthenticationError
+
+        mock_chain = MagicMock()
+        mock_response = MagicMock()
+        mock_response.request = MagicMock()
+        mock_chain.invoke.side_effect = AuthenticationError(
+            "invalid api key", response=mock_response, body={}
+        )
+
+        with self.assertRaises(AuthenticationError):
+            _invoke_chain(mock_chain, {"input": "pergunta"})
+
+        mock_chain.invoke.assert_called_once()
+
+    @patch("time.sleep")
+    def teste_5_remote_protocol_error_e_retryable(self, mock_sleep):
+        """T5: RemoteProtocolError é retryable — segunda tentativa tem sucesso."""
+        mock_chain = MagicMock()
+        mock_chain.invoke.side_effect = [
+            httpx.RemoteProtocolError("peer closed connection without sending complete message body"),
+            "resposta ok",
+        ]
+
+        resultado = _invoke_chain(mock_chain, {"input": "pergunta"})
+
+        self.assertEqual(resultado, "resposta ok")
+        self.assertEqual(mock_chain.invoke.call_count, 2)
+
+    @patch("agenticlog.agent._get_avk_agent_executor")
+    @patch("agenticlog.agent.search")
+    def teste_6_duckduckgo_falha_retorna_fallback_sem_propagar(
+        self, mock_search, mock_get_executor
+    ):
+        """T6: Falha no DuckDuckGo retorna string de fallback e NÃO propaga a exceção."""
+        mock_search.run.side_effect = Exception("DuckDuckGo indisponível")
+
+        state = AgentState(query="últimas informações sobre supply chain")
+        new_state = usar_ferramenta_web(state)
+
+        self.assertEqual(new_state.ranked_response, "Busca indisponível no momento.")
+        self.assertEqual(new_state.confidence_score, 0.0)
+        mock_get_executor.assert_not_called()
+
+    @patch("time.sleep")
+    def teste_7_timeout_exception_e_retryable(self, mock_sleep):
+        """T7: TimeoutException é retryable — respeita LLM_TIMEOUT_SECONDS por chamada."""
+        mock_chain = MagicMock()
+        mock_chain.invoke.side_effect = [
+            httpx.TimeoutException("request timed out"),
+            "resposta após timeout",
+        ]
+
+        resultado = _invoke_chain(mock_chain, {"input": "pergunta"})
+
+        self.assertEqual(resultado, "resposta após timeout")
+        self.assertEqual(mock_chain.invoke.call_count, 2)
+        self.assertEqual(LLM_TIMEOUT_SECONDS, 10.0)
 
 
 if __name__ == "__main__":

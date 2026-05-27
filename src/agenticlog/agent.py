@@ -9,7 +9,17 @@ O grafo de estados roteia cada consulta para um de três caminhos:
 """
 
 import os
+import logging
 import numpy as np  # type: ignore
+import httpx
+import anthropic
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+    before_sleep_log,
+)
 from langgraph.graph import StateGraph  # type: ignore[reportMissingImports]
 from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
@@ -38,6 +48,27 @@ from agenticlog.config import (
     LLM_API_KEY,
     LLM_TEMPERATURE,
     LLM_MAX_TOKENS,
+    LLM_TIMEOUT_SECONDS,
+    LLM_MAX_RETRY_ATTEMPTS,
+    LLM_RETRY_WAIT_INITIAL_SECONDS,
+    LLM_RETRY_WAIT_MAX_SECONDS,
+)
+
+logger = logging.getLogger(__name__)
+
+_llm_retry = retry(
+    stop=stop_after_attempt(LLM_MAX_RETRY_ATTEMPTS),
+    wait=wait_exponential(min=LLM_RETRY_WAIT_INITIAL_SECONDS, max=LLM_RETRY_WAIT_MAX_SECONDS),
+    retry=retry_if_exception_type(
+        (
+            httpx.ConnectError,
+            httpx.TimeoutException,
+            httpx.RemoteProtocolError,
+            anthropic.APIConnectionError,
+        )
+    ),
+    reraise=True,
+    before_sleep=before_sleep_log(logger, logging.WARNING),
 )
 
 # Singletons lazy — inicializados somente na primeira chamada, não na importação
@@ -59,6 +90,7 @@ def _get_llm() -> ChatOpenAI:
             openai_api_key=LLM_API_KEY,
             temperature=LLM_TEMPERATURE,
             max_tokens=LLM_MAX_TOKENS,
+            request_timeout=LLM_TIMEOUT_SECONDS,
         )
     return _llm
 
@@ -200,18 +232,38 @@ def passo_decisao_agente(state: AgentState) -> AgentState:
     return state
 
 
+@_llm_retry
+def _invoke_executor(executor, inputs: dict) -> dict:
+    """Invoca o agente executor com retry exponential backoff em erros de conexão/timeout.
+
+    Entrada: executor — AgentExecutor; inputs — dict com chave "input".
+    Saída:   dict com chave "output" contendo a resposta do agente.
+    """
+    return executor.invoke(inputs)
+
+
 def usar_ferramenta_web(state: AgentState) -> AgentState:
     """Nó de busca web: executa o agente DuckDuckGo e armazena a resposta final.
 
     Entrada: state.query.
     Saída:   state.ranked_response (resultado da busca), state.confidence_score = 0.0
              (sem base vetorial para calcular similaridade).
+
+    Bloco 1 — DuckDuckGo: falha silenciosa com fallback (comportamento existente mantido).
+    Bloco 2 — LLM: exposto ao _llm_retry via _invoke_executor.
     """
+    # bloco 1 — DuckDuckGo (silent fallback — existing behavior maintained)
     try:
-        result = _get_avk_agent_executor().invoke(state.query)
-        state.ranked_response = result.get("output", "No information obtained by web search.")
+        resultados = search.run(state.query)  # noqa: F841 — validates connectivity before LLM call
     except Exception as e:
-        state.ranked_response = f"Erro na busca web: {e}. Tente novamente mais tarde."
+        logger.warning("DuckDuckGo search failed: %s", e)
+        state.ranked_response = "Busca indisponível no momento."
+        state.confidence_score = 0.0
+        return state
+
+    # bloco 2 — LLM call (exposed to _llm_retry via helper)
+    resultado = _invoke_executor(_get_avk_agent_executor(), {"input": state.query})
+    state.ranked_response = resultado.get("output", "No information obtained by web search.")
     state.confidence_score = 0.0
     return state
 
@@ -225,6 +277,16 @@ def retrieve_info(state: AgentState) -> AgentState:
     retrieved_docs = _get_retriever().invoke(state.query)
     state.retrieved_info = retrieved_docs
     return state
+
+
+@_llm_retry
+def _invoke_chain(chain, inputs: dict) -> str:
+    """Invoca uma chain LangChain com retry exponential backoff em erros de conexão/timeout.
+
+    Entrada: chain — pipeline prompt | llm | parser; inputs — dict de variáveis do prompt.
+    Saída:   resposta gerada pelo LLM como string.
+    """
+    return chain.invoke(inputs)
 
 
 def gera_multiplas_respostas(state: AgentState) -> AgentState:
@@ -252,11 +314,9 @@ def gera_multiplas_respostas(state: AgentState) -> AgentState:
     responses = []
     for _ in range(5):
         if state.next_step == "retrieve":
-            response = qa_chain_dynamic.invoke(
-                {"context": context_text, "input": state.query}
-            )
+            response = _invoke_chain(qa_chain_dynamic, {"context": context_text, "input": state.query})
         else:
-            response = qa_chain_dynamic.invoke({"input": state.query})
+            response = _invoke_chain(qa_chain_dynamic, {"input": state.query})
         responses.append(response)
 
     state.possible_responses = [{"answer": r} for r in responses]
