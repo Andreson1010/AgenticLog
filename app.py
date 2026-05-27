@@ -76,7 +76,7 @@ if st.button("Enviar"):
 
         except Exception as e:
             _msg = str(e).lower()
-            if "connection refused" in _msg or "connect" in _msg and "1234" in _msg:
+            if "connection refused" in _msg or ("connect" in _msg and "1234" in _msg):
                 st.error(
                     "LMStudio não está rodando. Inicie o LMStudio e carregue o modelo "
                     "hermes-3-llama-3.2-3b antes de usar o sistema."

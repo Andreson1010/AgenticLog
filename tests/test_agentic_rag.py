@@ -169,12 +169,11 @@ class TestAgenticRAG(unittest.TestCase):
 
     @patch("agenticlog.agent.ChatOpenAI")
     def teste_9_import_sem_lmstudio(self, mock_chat_openai):
-        """LAZY-01: importar o módulo não deve instanciar ChatOpenAI (LMStudio offline)."""
-        # O módulo já foi importado no topo deste arquivo; redefinimos o singleton
-        # para garantir que não foi criado durante a importação.
-        agent_module._llm = None
-        # A classe mockada não deve ter sido chamada durante a importação
+        """LAZY-01: recarregar o módulo não deve instanciar ChatOpenAI (init é lazy)."""
+        import importlib
+        importlib.reload(agent_module)
         mock_chat_openai.assert_not_called()
+        self.assertIsNone(agent_module._llm)
 
     @patch("agenticlog.agent.ChatOpenAI")
     def teste_10_get_llm_singleton(self, mock_chat_openai):
