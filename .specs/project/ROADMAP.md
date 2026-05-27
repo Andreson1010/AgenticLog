@@ -13,7 +13,7 @@
 ## Backlog
 
 ### Reliability
-- [ ] Lazy LLM initialization (fix SPOF at module import)
+- [x] Lazy LLM initialization (fix SPOF at module import)
 - [ ] Retry logic on LLM calls (httpx.ConnectError handler)
 - [ ] Health check before first workflow invocation
 

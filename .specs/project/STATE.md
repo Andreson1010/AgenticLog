@@ -13,7 +13,7 @@ None currently.
 
 ## Todos
 
-- [ ] Fix SPOF: lazy LLM init (HIGH concern from CONCERNS.md)
+- [x] Fix SPOF: lazy LLM init — merged PR #8 (2026-05-27)
 - [ ] Load LLM credentials from .env instead of config.py hardcodes
 - [ ] Add GitHub Actions CI with coverage gate
 
