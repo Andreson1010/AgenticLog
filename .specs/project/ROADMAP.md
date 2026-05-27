@@ -14,7 +14,7 @@
 
 ### Reliability
 - [x] Lazy LLM initialization (fix SPOF at module import)
-- [ ] Retry logic on LLM calls (httpx.ConnectError handler)
+- [x] Retry logic on LLM calls (httpx.ConnectError handler)
 - [ ] Health check before first workflow invocation
 
 ### Observability
@@ -41,3 +41,4 @@
 | Feature | Spec | Status |
 |---|---|---|
 | Portuguese docstrings | .specs/features/portuguese-docstrings/spec.md | Done |
+| Retry LLM calls | .specs/features/retry-llm-backoff/spec.md | Done |
