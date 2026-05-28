@@ -11,6 +11,7 @@ Execute: python -m agenticlog.rag
 """
 
 import json
+import logging
 from pathlib import Path
 
 from langchain_chroma import Chroma
@@ -29,7 +30,10 @@ from agenticlog.config import (
     MAX_JSON_FILES,
     MAX_JSON_FILE_SIZE_MB,
     FORBIDDEN_JSON_KEYS,
+    LOG_LEVEL,
 )
+
+logger = logging.getLogger(__name__)
 
 vectordb = None
 
@@ -137,7 +141,7 @@ def cria_vectordb():
     _valida_path_documentos()
     _valida_arquivos_json()
 
-    print("\nGerando as Embeddings. Aguarde...")
+    logger.info("Gerando as Embeddings. Aguarde...")
 
     # jq_schema: achata o JSON em "chave: valor\nchave: valor" para facilitar chunking e busca semântica
     jq_schema = 'to_entries | map(.key + ": " + .value) | join("\\n")'
@@ -150,7 +154,7 @@ def cria_vectordb():
     documents = loader.load()
 
     if not documents:
-        print("Nenhum documento encontrado.")
+        logger.warning("Nenhum documento encontrado.")
         return
 
     text_splitter = RecursiveCharacterTextSplitter(
@@ -166,22 +170,27 @@ def cria_vectordb():
         encode_kwargs={"normalize_embeddings": True},
     )
 
-    global vectordb  # inicializado como None no nível do módulo; preenchido aqui
     vectordb = Chroma.from_documents(
         chunks,
         embedding_model,
         persist_directory=str(DIR_VECTORDB),
     )
 
-    print("\nBanco de Dados Vetorial do RAG Criado com Sucesso.\n")
+    logger.info("Banco de Dados Vetorial Criado com sucesso!")
 
 
-if __name__ == "__main__":
+def _executar_main() -> None:
+    """Ponto de entrada CLI — configura logging e invoca cria_vectordb."""
+    logging.basicConfig(level=LOG_LEVEL)
     try:
         cria_vectordb()
     except RAGSecurityError as e:
-        print(f"\nErro de segurança: {e}")
+        logger.error("Erro de segurança: %s", e)
         raise SystemExit(1) from e
     except Exception as e:
-        print(f"\nErro ao criar banco vetorial: {e}")
+        logger.error("Erro ao criar banco vetorial: %s", e)
         raise SystemExit(1) from e
+
+
+if __name__ == "__main__":
+    _executar_main()

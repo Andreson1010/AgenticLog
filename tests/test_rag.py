@@ -5,6 +5,7 @@ Cobre validações de segurança, path traversal e criação do banco vetorial.
 """
 
 import json
+import logging
 import sys
 import tempfile
 from pathlib import Path
@@ -14,6 +15,7 @@ _root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_root / "src"))
 
 import unittest
+import pytest
 
 from agenticlog.rag import (
     RAGSecurityError,
@@ -21,7 +23,10 @@ from agenticlog.rag import (
     _valida_json_sem_chaves_proibidas,
     _valida_arquivos_json,
     cria_vectordb,
+    _executar_main,
 )
+import agenticlog.rag as rag
+import agenticlog.config as config
 
 
 class TestRAGSecurityError(unittest.TestCase):
@@ -237,6 +242,150 @@ class TestCriaVectordb(unittest.TestCase):
         call_args = mock_chroma.from_documents.call_args
         self.assertEqual(len(call_args[0][0]), 1)
         self.assertEqual(call_args[0][0][0].page_content, "Chunk 1")
+
+
+class TestLogging(unittest.TestCase):
+    """Testes para o módulo de logging em rag.py (LG-01 a LG-11)."""
+
+    @patch("agenticlog.rag.Chroma")
+    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.DirectoryLoader")
+    @patch("agenticlog.rag._valida_arquivos_json")
+    @patch("agenticlog.rag._valida_path_documentos")
+    def teste_1_log_info_gerando_embeddings(
+        self, mock_valida_path, mock_valida_json, mock_loader,
+        mock_splitter, mock_emb, mock_chroma
+    ):
+        """assertLogs INFO captura registro contendo 'Gerando' ao executar cria_vectordb (AC-04)."""
+        from langchain_core.documents import Document
+
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load.return_value = [Document(page_content="doc")]
+        mock_loader.return_value = mock_loader_instance
+
+        mock_splitter_instance = MagicMock()
+        mock_splitter_instance.split_documents.return_value = [Document(page_content="chunk")]
+        mock_splitter.return_value = mock_splitter_instance
+
+        with self.assertLogs("agenticlog.rag", level=logging.INFO) as cm:
+            cria_vectordb()
+
+        self.assertTrue(
+            any("Gerando" in msg for msg in cm.output),
+            f"Esperava 'Gerando' nos logs, encontrado: {cm.output}",
+        )
+
+    @patch("agenticlog.rag.Chroma")
+    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.DirectoryLoader")
+    @patch("agenticlog.rag._valida_arquivos_json")
+    @patch("agenticlog.rag._valida_path_documentos")
+    def teste_2_log_info_criado_com_sucesso(
+        self, mock_valida_path, mock_valida_json, mock_loader,
+        mock_splitter, mock_emb, mock_chroma
+    ):
+        """assertLogs INFO captura registro contendo 'Criado' ao finalizar cria_vectordb (AC-04)."""
+        from langchain_core.documents import Document
+
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load.return_value = [Document(page_content="doc")]
+        mock_loader.return_value = mock_loader_instance
+
+        mock_splitter_instance = MagicMock()
+        mock_splitter_instance.split_documents.return_value = [Document(page_content="chunk")]
+        mock_splitter.return_value = mock_splitter_instance
+
+        with self.assertLogs("agenticlog.rag", level=logging.INFO) as cm:
+            cria_vectordb()
+
+        self.assertTrue(
+            any("Criado" in msg for msg in cm.output),
+            f"Esperava 'Criado' nos logs, encontrado: {cm.output}",
+        )
+
+    @patch("agenticlog.rag.DirectoryLoader")
+    @patch("agenticlog.rag._valida_arquivos_json")
+    @patch("agenticlog.rag._valida_path_documentos")
+    def teste_3_log_warning_nenhum_documento(
+        self, mock_valida_path, mock_valida_json, mock_loader
+    ):
+        """assertLogs WARNING captura registro com 'Nenhum documento' quando loader retorna [] (AC-07)."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load.return_value = []
+        mock_loader.return_value = mock_loader_instance
+
+        with self.assertLogs("agenticlog.rag", level=logging.WARNING) as cm:
+            cria_vectordb()
+
+        self.assertTrue(
+            any("Nenhum documento" in msg for msg in cm.output),
+            f"Esperava 'Nenhum documento' nos logs, encontrado: {cm.output}",
+        )
+
+    @patch("agenticlog.rag.Chroma")
+    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.DirectoryLoader")
+    @patch("agenticlog.rag._valida_arquivos_json")
+    @patch("agenticlog.rag._valida_path_documentos")
+    def teste_4_sem_stdout_quando_importado_como_biblioteca(
+        self, mock_valida_path, mock_valida_json, mock_loader,
+        mock_splitter, mock_emb, mock_chroma
+    ):
+        """Nenhuma saída em stdout quando cria_vectordb() chamada como biblioteca (AC-01)."""
+        import io
+        from langchain_core.documents import Document
+
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load.return_value = [Document(page_content="doc")]
+        mock_loader.return_value = mock_loader_instance
+
+        mock_splitter_instance = MagicMock()
+        mock_splitter_instance.split_documents.return_value = [Document(page_content="chunk")]
+        mock_splitter.return_value = mock_splitter_instance
+
+        captured_stdout = io.StringIO()
+        with patch("sys.stdout", captured_stdout):
+            cria_vectordb()
+
+        output = captured_stdout.getvalue()
+        self.assertEqual(output, "", f"Esperava stdout vazio, encontrado: {repr(output)}")
+
+    def teste_5_log_level_em_config(self):
+        """config.LOG_LEVEL é 'INFO' (AC-03)."""
+        self.assertEqual(config.LOG_LEVEL, "INFO")
+
+    def teste_6_logger_modulo_usa_dunder_name(self):
+        """logger em rag.py tem name == 'agenticlog.rag' (AC-08)."""
+        self.assertEqual(rag.logger.name, "agenticlog.rag")
+
+    def teste_7_erro_seguranca_usa_logger_error(self):
+        """RAGSecurityError em _executar_main aciona logger.error com 'Erro de segurança' (AC-05)."""
+        with patch.object(rag, "cria_vectordb", side_effect=RAGSecurityError("falha de segurança simulada")):
+            with self.assertLogs("agenticlog.rag", level="ERROR") as cm:
+                with self.assertRaises(SystemExit) as ctx:
+                    _executar_main()
+
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertTrue(
+            any("Erro de segurança" in msg for msg in cm.output),
+            f"Esperava 'Erro de segurança' nos logs, encontrado: {cm.output}",
+        )
+
+    def teste_8_excecao_generica_usa_logger_error(self):
+        """Exception generica em _executar_main aciona logger.error com 'Erro ao criar banco vetorial' (AC-06)."""
+        with patch.object(rag, "cria_vectordb", side_effect=RuntimeError("erro generico simulado")):
+            with self.assertLogs("agenticlog.rag", level="ERROR") as cm:
+                with self.assertRaises(SystemExit) as ctx:
+                    _executar_main()
+
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertTrue(
+            any("Erro ao criar banco vetorial" in msg for msg in cm.output),
+            f"Esperava 'Erro ao criar banco vetorial' nos logs, encontrado: {cm.output}",
+        )
 
 
 if __name__ == "__main__":
