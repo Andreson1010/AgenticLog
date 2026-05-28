@@ -30,6 +30,7 @@ from agenticlog.config import (
     MAX_JSON_FILES,
     MAX_JSON_FILE_SIZE_MB,
     FORBIDDEN_JSON_KEYS,
+    LOG_LEVEL,
 )
 
 logger = logging.getLogger(__name__)
@@ -169,7 +170,6 @@ def cria_vectordb():
         encode_kwargs={"normalize_embeddings": True},
     )
 
-    global vectordb  # inicializado como None no nível do módulo; preenchido aqui
     vectordb = Chroma.from_documents(
         chunks,
         embedding_model,
@@ -179,9 +179,8 @@ def cria_vectordb():
     logger.info("Banco de Dados Vetorial Criado com sucesso!")
 
 
-if __name__ == "__main__":
-    from agenticlog.config import LOG_LEVEL
-
+def _executar_main() -> None:
+    """Ponto de entrada CLI — configura logging e invoca cria_vectordb."""
     logging.basicConfig(level=LOG_LEVEL)
     try:
         cria_vectordb()
@@ -191,3 +190,7 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error("Erro ao criar banco vetorial: %s", e)
         raise SystemExit(1) from e
+
+
+if __name__ == "__main__":
+    _executar_main()

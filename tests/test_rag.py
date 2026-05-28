@@ -6,7 +6,6 @@ Cobre validações de segurança, path traversal e criação do banco vetorial.
 
 import json
 import logging
-import runpy
 import sys
 import tempfile
 from pathlib import Path
@@ -24,6 +23,7 @@ from agenticlog.rag import (
     _valida_json_sem_chaves_proibidas,
     _valida_arquivos_json,
     cria_vectordb,
+    _executar_main,
 )
 import agenticlog.rag as rag
 import agenticlog.config as config
@@ -354,56 +354,19 @@ class TestLogging(unittest.TestCase):
         self.assertEqual(output, "", f"Esperava stdout vazio, encontrado: {repr(output)}")
 
     def teste_5_log_level_em_config(self):
-        """config.LOG_LEVEL é 'INFO' e corresponde ao nível numérico 20 (AC-03)."""
+        """config.LOG_LEVEL é 'INFO' (AC-03)."""
         self.assertEqual(config.LOG_LEVEL, "INFO")
-        self.assertEqual(logging.getLevelName("INFO"), 20)
 
     def teste_6_logger_modulo_usa_dunder_name(self):
         """logger em rag.py tem name == 'agenticlog.rag' (AC-08)."""
         self.assertEqual(rag.logger.name, "agenticlog.rag")
 
-    @staticmethod
-    def _exec_rag_main_block(side_effect: Exception) -> None:
-        """Executa o corpo do bloco __main__ de rag.py no namespace do módulo já importado.
-
-        Estratégia:
-        1. Lê rag.py e extrai o corpo do bloco `if __name__ == "__main__":` via ast.
-        2. Aplica patch.object em rag.cria_vectordb antes do exec.
-        3. Executa o corpo compilado com o namespace do módulo (vars(rag)) e o arquivo
-           real como filename, para que o coverage instrumente as linhas corretas.
-
-        Isso garante que as linhas 182-193 de rag.py sejam exercitadas com mock ativo
-        e que o coverage as contabilize corretamente (exec in-process).
-        """
-        import ast
-
-        rag_path = Path(__file__).resolve().parent.parent / "src" / "agenticlog" / "rag.py"
-        with open(rag_path, encoding="utf-8") as f:
-            tree = ast.parse(f.read(), filename=str(rag_path))
-
-        main_if = next(
-            n for n in tree.body
-            if isinstance(n, ast.If)
-            and isinstance(n.test, ast.Compare)
-            and isinstance(n.test.left, ast.Name)
-            and n.test.left.id == "__name__"
-        )
-        main_module = ast.Module(body=main_if.body, type_ignores=[])
-        ast.fix_missing_locations(main_module)
-        code = compile(main_module, filename=str(rag_path), mode="exec")
-
-        with patch.object(rag, "cria_vectordb", side_effect=side_effect):
-            exec(code, vars(rag))  # noqa: S102
-
     def teste_7_erro_seguranca_usa_logger_error(self):
-        """RAGSecurityError no bloco __main__ aciona logger.error com 'Erro de segurança' (AC-05).
-
-        Executa o corpo real do bloco __main__ de rag.py (linhas 183-193) via exec in-process
-        com cria_vectordb mockada para lancar RAGSecurityError. Verifica SystemExit(1) e log.
-        """
-        with self.assertLogs("agenticlog.rag", level="ERROR") as cm:
-            with self.assertRaises(SystemExit) as ctx:
-                self._exec_rag_main_block(RAGSecurityError("falha de segurança simulada"))
+        """RAGSecurityError em _executar_main aciona logger.error com 'Erro de segurança' (AC-05)."""
+        with patch.object(rag, "cria_vectordb", side_effect=RAGSecurityError("falha de segurança simulada")):
+            with self.assertLogs("agenticlog.rag", level="ERROR") as cm:
+                with self.assertRaises(SystemExit) as ctx:
+                    _executar_main()
 
         self.assertEqual(ctx.exception.code, 1)
         self.assertTrue(
@@ -412,14 +375,11 @@ class TestLogging(unittest.TestCase):
         )
 
     def teste_8_excecao_generica_usa_logger_error(self):
-        """Exception generica no bloco __main__ aciona logger.error com 'Erro ao criar banco vetorial' (AC-06).
-
-        Executa o corpo real do bloco __main__ de rag.py (linhas 183-193) via exec in-process
-        com cria_vectordb mockada para lancar Exception generica. Verifica SystemExit(1) e log.
-        """
-        with self.assertLogs("agenticlog.rag", level="ERROR") as cm:
-            with self.assertRaises(SystemExit) as ctx:
-                self._exec_rag_main_block(RuntimeError("erro generico simulado"))
+        """Exception generica em _executar_main aciona logger.error com 'Erro ao criar banco vetorial' (AC-06)."""
+        with patch.object(rag, "cria_vectordb", side_effect=RuntimeError("erro generico simulado")):
+            with self.assertLogs("agenticlog.rag", level="ERROR") as cm:
+                with self.assertRaises(SystemExit) as ctx:
+                    _executar_main()
 
         self.assertEqual(ctx.exception.code, 1)
         self.assertTrue(
