@@ -23,6 +23,7 @@ LLM_TIMEOUT_SECONDS: float = 10.0            # timeout por chamada ao LLM em seg
 LLM_MAX_RETRY_ATTEMPTS: int = 3              # número máximo de tentativas com retry
 LLM_RETRY_WAIT_INITIAL_SECONDS: float = 1.0  # espera inicial do backoff exponencial em segundos
 LLM_RETRY_WAIT_MAX_SECONDS: float = 4.0      # espera máxima do backoff exponencial em segundos
+LLM_HEALTH_CHECK_TIMEOUT_SECONDS: float = 5.0  # timeout do GET /v1/models antes do workflow
 
 # RAG
 CHUNK_SIZE = 500    # tamanho máximo de cada chunk de texto em caracteres

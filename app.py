@@ -6,7 +6,12 @@ import httpx
 import anthropic
 
 # Importa funções específicas do módulo Agentic RAG
-from agenticlog import AgentState, agent_workflow
+from agenticlog import (
+    AgentState,
+    LMStudioUnavailableError,
+    agent_workflow,
+    check_lmstudio_health,
+)
 
 # Define o título, ícone e layout inicial da página Streamlit
 st.set_page_config(page_title="Aivorak", page_icon="🚚", layout="centered")
@@ -66,7 +71,7 @@ if st.button("Enviar"):
     with st.spinner("Processando consulta... Aguarde."):
 
         try:
-            # Executa a consulta usando a função agent_workflow do módulo importado
+            check_lmstudio_health()
             output = agent_workflow.invoke(AgentState(query=query))
 
             # agent_workflow.invoke() retorna um dict cujas chaves espelham os campos de AgentState;
@@ -78,7 +83,16 @@ if st.button("Enviar"):
 
         except Exception as e:
             _msg = str(e).lower()
-            if isinstance(e, (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError, anthropic.APIConnectionError)):
+            if isinstance(
+                e,
+                (
+                    LMStudioUnavailableError,
+                    httpx.ConnectError,
+                    httpx.TimeoutException,
+                    httpx.RemoteProtocolError,
+                    anthropic.APIConnectionError,
+                ),
+            ):
                 st.error(
                     "LMStudio não está rodando. Inicie o LMStudio e carregue o modelo "
                     "hermes-3-llama-3.2-3b antes de usar o sistema."

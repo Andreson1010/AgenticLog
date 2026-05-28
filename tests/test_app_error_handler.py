@@ -17,6 +17,8 @@ import unittest.mock
 import httpx
 import anthropic
 
+from agenticlog.health import LMStudioUnavailableError
+
 
 def _classify_error(e: Exception) -> str:
     """Replica a lógica de classificação de erros do bloco except em app.py.
@@ -26,7 +28,16 @@ def _classify_error(e: Exception) -> str:
         "generic_error"        — qualquer outro erro não classificado.
     """
     _msg = str(e).lower()
-    if isinstance(e, (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError, anthropic.APIConnectionError)):
+    if isinstance(
+        e,
+        (
+            LMStudioUnavailableError,
+            httpx.ConnectError,
+            httpx.TimeoutException,
+            httpx.RemoteProtocolError,
+            anthropic.APIConnectionError,
+        ),
+    ):
         return "lmstudio_not_running"
     elif "connection refused" in _msg or ("connect" in _msg and "1234" in _msg):
         return "lmstudio_not_running"
@@ -66,6 +77,12 @@ class TestAppErrorHandler(unittest.TestCase):
         err = ValueError("algum erro de validação inesperado")
         resultado = _classify_error(err)
         self.assertEqual(resultado, "generic_error")
+
+    def teste_12_lmstudio_unavailable_error_classificado_como_lmstudio(self):
+        """Health check: LMStudioUnavailableError vai para mensagem LMStudio, não genérico."""
+        err = LMStudioUnavailableError("LMStudio não está acessível.")
+        resultado = _classify_error(err)
+        self.assertEqual(resultado, "lmstudio_not_running")
 
 
 if __name__ == "__main__":
