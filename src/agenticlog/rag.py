@@ -11,6 +11,7 @@ Execute: python -m agenticlog.rag
 """
 
 import json
+import logging
 from pathlib import Path
 
 from langchain_chroma import Chroma
@@ -30,6 +31,8 @@ from agenticlog.config import (
     MAX_JSON_FILE_SIZE_MB,
     FORBIDDEN_JSON_KEYS,
 )
+
+logger = logging.getLogger(__name__)
 
 vectordb = None
 
@@ -137,7 +140,7 @@ def cria_vectordb():
     _valida_path_documentos()
     _valida_arquivos_json()
 
-    print("\nGerando as Embeddings. Aguarde...")
+    logger.info("Gerando as Embeddings. Aguarde...")
 
     # jq_schema: achata o JSON em "chave: valor\nchave: valor" para facilitar chunking e busca semântica
     jq_schema = 'to_entries | map(.key + ": " + .value) | join("\\n")'
@@ -150,7 +153,7 @@ def cria_vectordb():
     documents = loader.load()
 
     if not documents:
-        print("Nenhum documento encontrado.")
+        logger.warning("Nenhum documento encontrado.")
         return
 
     text_splitter = RecursiveCharacterTextSplitter(
@@ -173,15 +176,18 @@ def cria_vectordb():
         persist_directory=str(DIR_VECTORDB),
     )
 
-    print("\nBanco de Dados Vetorial do RAG Criado com Sucesso.\n")
+    logger.info("Banco de Dados Vetorial Criado com sucesso!")
 
 
 if __name__ == "__main__":
+    from agenticlog.config import LOG_LEVEL
+
+    logging.basicConfig(level=LOG_LEVEL)
     try:
         cria_vectordb()
     except RAGSecurityError as e:
-        print(f"\nErro de segurança: {e}")
+        logger.error("Erro de segurança: %s", e)
         raise SystemExit(1) from e
     except Exception as e:
-        print(f"\nErro ao criar banco vetorial: {e}")
+        logger.error("Erro ao criar banco vetorial: %s", e)
         raise SystemExit(1) from e

@@ -33,3 +33,6 @@ CHUNK_OVERLAP = 50  # sobreposição entre chunks para preservar contexto nas bo
 MAX_JSON_FILES = 1000          # impede carregamento irrestrito de arquivos maliciosos
 MAX_JSON_FILE_SIZE_MB = 10     # bloqueia arquivos excessivamente grandes (proteção contra DoS)
 FORBIDDEN_JSON_KEYS = ("lc",)  # mitiga injeção via chave "lc" usada pela classe Serializable do LangChain
+
+# Logging
+LOG_LEVEL: str = "INFO"  # nível de log para handlers configurados pelo chamador
