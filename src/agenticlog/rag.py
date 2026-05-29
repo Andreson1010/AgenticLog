@@ -31,6 +31,8 @@ from agenticlog.config import (
     MAX_JSON_FILE_SIZE_MB,
     FORBIDDEN_JSON_KEYS,
     LOG_LEVEL,
+    LOG_FORMAT,
+    _JsonFormatter,
 )
 
 logger = logging.getLogger(__name__)
@@ -181,7 +183,20 @@ def cria_vectordb():
 
 def _executar_main() -> None:
     """Ponto de entrada CLI — configura logging e invoca cria_vectordb."""
-    logging.basicConfig(level=LOG_LEVEL)
+    pkg_logger = logging.getLogger("agenticlog")
+    pkg_logger.setLevel(LOG_LEVEL)
+    # clear existing handlers to avoid duplicates on repeated calls
+    pkg_logger.handlers.clear()
+
+    if LOG_FORMAT == "json":
+        handler = logging.StreamHandler()
+        handler.setFormatter(_JsonFormatter())
+        pkg_logger.addHandler(handler)
+    else:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
+        pkg_logger.addHandler(handler)
+
     try:
         cria_vectordb()
     except RAGSecurityError as e:

@@ -4,6 +4,8 @@ Testes para o pipeline RAG em agenticlog.rag.
 Cobre validações de segurança, path traversal e criação do banco vetorial.
 """
 
+import importlib
+import io
 import json
 import logging
 import sys
@@ -50,7 +52,7 @@ class TestValidaPathDocumentos(unittest.TestCase):
         resolved_dir.relative_to.side_effect = ValueError("fora")
         mock_dir.resolve.return_value = resolved_dir
 
-        with self.assertRaises(RAGSecurityError) as ctx:
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
             _valida_path_documentos()
         self.assertIn("fora do projeto", str(ctx.exception))
 
@@ -63,7 +65,7 @@ class TestValidaPathDocumentos(unittest.TestCase):
         resolved_dir.exists.return_value = False
         mock_dir.resolve.return_value = resolved_dir
 
-        with self.assertRaises(RAGSecurityError) as ctx:
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
             _valida_path_documentos()
         self.assertIn("não existe", str(ctx.exception))
 
@@ -77,7 +79,7 @@ class TestValidaPathDocumentos(unittest.TestCase):
         resolved_dir.is_dir.return_value = False
         mock_dir.resolve.return_value = resolved_dir
 
-        with self.assertRaises(RAGSecurityError) as ctx:
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
             _valida_path_documentos()
         self.assertIn("não é um diretório", str(ctx.exception))
 
@@ -105,7 +107,7 @@ class TestValidaJsonSemChavesProibidas(unittest.TestCase):
             f.write("{ invalido }")
             path = Path(f.name)
         try:
-            with self.assertRaises(RAGSecurityError) as ctx:
+            with self.assertRaises(rag.RAGSecurityError) as ctx:
                 _valida_json_sem_chaves_proibidas(path)
             self.assertIn("JSON inválido", str(ctx.exception))
         finally:
@@ -119,7 +121,7 @@ class TestValidaJsonSemChavesProibidas(unittest.TestCase):
             json.dump({"lc": "valor", "outro": "campo"}, f)
             path = Path(f.name)
         try:
-            with self.assertRaises(RAGSecurityError) as ctx:
+            with self.assertRaises(rag.RAGSecurityError) as ctx:
                 _valida_json_sem_chaves_proibidas(path)
             self.assertIn("chave proibida", str(ctx.exception))
             self.assertIn("lc", str(ctx.exception))
@@ -134,7 +136,7 @@ class TestValidaJsonSemChavesProibidas(unittest.TestCase):
             json.dump([{"campo": "ok"}, {"lc": "invalido"}], f)
             path = Path(f.name)
         try:
-            with self.assertRaises(RAGSecurityError) as ctx:
+            with self.assertRaises(rag.RAGSecurityError) as ctx:
                 _valida_json_sem_chaves_proibidas(path)
             self.assertIn("chave proibida", str(ctx.exception))
             self.assertIn("item 1", str(ctx.exception))
@@ -167,7 +169,7 @@ class TestValidaArquivosJson(unittest.TestCase):
             Path("b.json"),
             Path("c.json"),
         ]
-        with self.assertRaises(RAGSecurityError) as ctx:
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
             _valida_arquivos_json()
         self.assertIn("Excesso de arquivos", str(ctx.exception))
         self.assertIn("3", str(ctx.exception))
@@ -182,7 +184,7 @@ class TestValidaArquivosJson(unittest.TestCase):
         mock_path.stat.return_value.st_size = 2 * 1024 * 1024  # 2MB
         mock_dir.glob.return_value = [mock_path]
 
-        with self.assertRaises(RAGSecurityError) as ctx:
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
             _valida_arquivos_json()
         self.assertIn("excede", str(ctx.exception).lower())
         mock_valida.assert_not_called()
@@ -353,9 +355,24 @@ class TestLogging(unittest.TestCase):
         output = captured_stdout.getvalue()
         self.assertEqual(output, "", f"Esperava stdout vazio, encontrado: {repr(output)}")
 
-    def teste_5_log_level_em_config(self):
-        """config.LOG_LEVEL é 'INFO' (AC-03)."""
-        self.assertEqual(config.LOG_LEVEL, "INFO")
+    def teste_5_log_level_em_config(self, monkeypatch=None):
+        """config.LOG_LEVEL é 'INFO' quando LOG_LEVEL não está definido no ambiente (AC-03).
+
+        Nota: este teste assume que LOG_LEVEL não está definido no ambiente de teste.
+        Se a variável estiver definida, use monkeypatch.delenv('LOG_LEVEL', raising=False) antes.
+        """
+        import os
+        original = os.environ.pop("LOG_LEVEL", None)
+        try:
+            importlib.reload(config)
+            self.assertEqual(config.LOG_LEVEL, "INFO")
+        finally:
+            if original is not None:
+                os.environ["LOG_LEVEL"] = original
+            importlib.reload(config)
+            # Restore rag so RAGSecurityError class identity stays consistent
+            # for all tests that execute after this one in the same process.
+            importlib.reload(rag)
 
     def teste_6_logger_modulo_usa_dunder_name(self):
         """logger em rag.py tem name == 'agenticlog.rag' (AC-08)."""
@@ -363,7 +380,7 @@ class TestLogging(unittest.TestCase):
 
     def teste_7_erro_seguranca_usa_logger_error(self):
         """RAGSecurityError em _executar_main aciona logger.error com 'Erro de segurança' (AC-05)."""
-        with patch.object(rag, "cria_vectordb", side_effect=RAGSecurityError("falha de segurança simulada")):
+        with patch.object(rag, "cria_vectordb", side_effect=rag.RAGSecurityError("falha de segurança simulada")):
             with self.assertLogs("agenticlog.rag", level="ERROR") as cm:
                 with self.assertRaises(SystemExit) as ctx:
                     _executar_main()
@@ -386,6 +403,116 @@ class TestLogging(unittest.TestCase):
             any("Erro ao criar banco vetorial" in msg for msg in cm.output),
             f"Esperava 'Erro ao criar banco vetorial' nos logs, encontrado: {cm.output}",
         )
+
+
+class TestStructuredLogConfig:
+    """Testes para configuração de log via variáveis de ambiente (SLC-01 a SLC-08)."""
+
+    @pytest.fixture(autouse=True)
+    def _restore_modules(self):
+        """Restore config module state after every test in this class.
+
+        Some tests call importlib.reload(config) to exercise env-var validation.
+        Only config is reloaded here — reloading rag would create a new
+        RAGSecurityError class object, breaking isinstance checks in tests
+        that imported RAGSecurityError at module load time.
+        """
+        yield
+        # Teardown: reload config only so LOG_LEVEL / LOG_FORMAT constants are
+        # reset.  monkeypatch has already restored env vars at this point
+        # (pytest tears down fixtures in LIFO order; monkeypatch scope matches).
+        importlib.reload(config)
+
+    def teste_9_log_level_default(self, monkeypatch):
+        """config.LOG_LEVEL é 'INFO' quando LOG_LEVEL não está definido no ambiente (SLC-01)."""
+        monkeypatch.delenv("LOG_LEVEL", raising=False)
+        monkeypatch.delenv("LOG_FORMAT", raising=False)
+        importlib.reload(config)
+        assert config.LOG_LEVEL == "INFO"
+
+    def teste_10_log_level_from_env(self, monkeypatch):
+        """config.LOG_LEVEL é 'DEBUG' quando LOG_LEVEL=DEBUG está definido (SLC-02)."""
+        monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+        monkeypatch.delenv("LOG_FORMAT", raising=False)
+        importlib.reload(config)
+        assert config.LOG_LEVEL == "DEBUG"
+
+    def teste_11_log_format_default(self, monkeypatch):
+        """config.LOG_FORMAT é 'text' quando LOG_FORMAT não está definido no ambiente (SLC-03)."""
+        monkeypatch.delenv("LOG_FORMAT", raising=False)
+        monkeypatch.delenv("LOG_LEVEL", raising=False)
+        importlib.reload(config)
+        assert config.LOG_FORMAT == "text"
+
+    def teste_12_log_format_from_env(self, monkeypatch):
+        """config.LOG_FORMAT é 'json' quando LOG_FORMAT=json está definido (SLC-04)."""
+        monkeypatch.setenv("LOG_FORMAT", "json")
+        monkeypatch.delenv("LOG_LEVEL", raising=False)
+        importlib.reload(config)
+        assert config.LOG_FORMAT == "json"
+
+    def teste_13_log_format_json_output(self, monkeypatch):
+        """Cada linha de log emitida por _executar_main é JSON válido com os campos obrigatórios (SLC-05)."""
+        monkeypatch.delenv("LOG_LEVEL", raising=False)
+        monkeypatch.setenv("LOG_FORMAT", "json")
+        importlib.reload(config)
+
+        # Recarrega rag para que LOG_FORMAT e LOG_LEVEL apontem para os valores atualizados
+        importlib.reload(rag)
+
+        captured = io.StringIO()
+        captured_handler = logging.StreamHandler(captured)
+        from agenticlog.config import _JsonFormatter
+        captured_handler.setFormatter(_JsonFormatter())
+
+        # Dispara o log diretamente através do logger do módulo
+        rag.logger.addHandler(captured_handler)
+        rag.logger.setLevel(logging.DEBUG)
+        try:
+            rag.logger.info("teste json output")
+        finally:
+            rag.logger.removeHandler(captured_handler)
+
+        output = captured.getvalue().strip()
+        assert output, "Nenhuma saída de log capturada"
+        for line in output.splitlines():
+            parsed = json.loads(line)
+            assert "timestamp" in parsed
+            assert "level" in parsed
+            assert "logger" in parsed
+            assert "message" in parsed
+
+    def teste_14_log_format_text_preserved(self, monkeypatch):
+        """LOG_FORMAT=text não usa _JsonFormatter — o handler padrão é texto simples (SLC-06)."""
+        monkeypatch.delenv("LOG_FORMAT", raising=False)
+        monkeypatch.delenv("LOG_LEVEL", raising=False)
+        importlib.reload(config)
+        importlib.reload(rag)
+
+        # Em modo text, _executar_main configura o logger 'agenticlog' sem formatter JSON.
+        # Verifica que _JsonFormatter NÃO está registrado no logger do pacote após a chamada.
+        with patch.object(rag, "cria_vectordb", return_value=None):
+            rag._executar_main()
+
+        from agenticlog.config import _JsonFormatter
+        pkg_logger = logging.getLogger("agenticlog")
+        json_handlers = [h for h in pkg_logger.handlers if isinstance(getattr(h, "formatter", None), _JsonFormatter)]
+        assert json_handlers == [], f"Não esperava _JsonFormatter em modo text, encontrado: {json_handlers}"
+        assert config.LOG_FORMAT == "text"
+
+    def teste_15_invalid_log_level_raises(self, monkeypatch):
+        """ValueError é levantado ao importar config quando LOG_LEVEL é inválido (SLC-07)."""
+        monkeypatch.setenv("LOG_LEVEL", "VERBOSE")
+        monkeypatch.delenv("LOG_FORMAT", raising=False)
+        with pytest.raises(ValueError, match="Invalid LOG_LEVEL"):
+            importlib.reload(config)
+
+    def teste_16_invalid_log_format_raises(self, monkeypatch):
+        """ValueError é levantado ao importar config quando LOG_FORMAT é inválido (SLC-08)."""
+        monkeypatch.delenv("LOG_LEVEL", raising=False)
+        monkeypatch.setenv("LOG_FORMAT", "xml")
+        with pytest.raises(ValueError, match="Invalid LOG_FORMAT"):
+            importlib.reload(config)
 
 
 if __name__ == "__main__":
