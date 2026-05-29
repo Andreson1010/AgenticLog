@@ -1,14 +1,9 @@
 """Tests for env-var loading in agenticlog.config (load-env-credentials feature)."""
 
-import importlib
 import os
 import sys
 from unittest import TestCase
 from unittest.mock import patch
-
-# Keys that config.py reads via os.environ[...] — must be present for a
-# successful import, and must be absent to trigger KeyError tests.
-_CRED_KEYS = ("OPENAI_API_KEY", "OPENAI_API_BASE")
 
 _NOOP_LOAD_DOTENV = "dotenv.load_dotenv"
 
@@ -68,21 +63,21 @@ class TestConfigEnv(TestCase):
         self.assertEqual(cfg.LLM_API_KEY, "hermes")
         self.assertEqual(cfg.LLM_API_BASE, "http://127.0.0.1:1234/v1")
 
-    def teste_4_missing_api_key_raises(self):
-        """Missing OPENAI_API_KEY raises KeyError at import time."""
-        with self.assertRaises(KeyError):
-            self._reload(
-                {"OPENAI_API_BASE": "http://127.0.0.1:1234/v1"},
-                remove_keys=("OPENAI_API_KEY",),
-            )
+    def teste_4_missing_api_key_uses_default(self):
+        """Missing OPENAI_API_KEY falls back to 'hermes' (LMStudio ignores the key)."""
+        cfg = self._reload(
+            {"OPENAI_API_BASE": "http://127.0.0.1:1234/v1"},
+            remove_keys=("OPENAI_API_KEY",),
+        )
+        self.assertEqual(cfg.LLM_API_KEY, "hermes")
 
-    def teste_5_missing_api_base_raises(self):
-        """Missing OPENAI_API_BASE raises KeyError at import time."""
-        with self.assertRaises(KeyError):
-            self._reload(
-                {"OPENAI_API_KEY": "hermes"},
-                remove_keys=("OPENAI_API_BASE",),
-            )
+    def teste_5_missing_api_base_uses_default(self):
+        """Missing OPENAI_API_BASE falls back to local LMStudio endpoint."""
+        cfg = self._reload(
+            {"OPENAI_API_KEY": "hermes"},
+            remove_keys=("OPENAI_API_BASE",),
+        )
+        self.assertEqual(cfg.LLM_API_BASE, "http://127.0.0.1:1234/v1")
 
     def teste_6_shell_takes_precedence_over_dotenv(self):
         """Shell variable set before load_dotenv is not overwritten (override=False)."""

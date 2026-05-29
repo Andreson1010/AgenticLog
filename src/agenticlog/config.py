@@ -9,10 +9,10 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
-
 # Raiz do projeto (pasta que contém src/, data/, etc.)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent  # âncora para todos os paths relativos
+
+load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
 
 # Diretórios de dados
 DIR_DOCUMENTS = PROJECT_ROOT / "data" / "documents"  # JSONs de origem dos documentos
@@ -23,8 +23,8 @@ EMBEDDING_MODEL = "BAAI/bge-base-en"  # modelo HuggingFace usado para gerar e co
 
 # LLM (LMStudio)
 LLM_MODEL = "hermes-3-llama-3.2-3b"                      # identificador do modelo carregado no LMStudio
-LLM_API_KEY: str = os.environ["OPENAI_API_KEY"]          # chave carregada do .env ou variável de ambiente
-LLM_API_BASE: str = os.environ["OPENAI_API_BASE"]        # endpoint carregado do .env ou variável de ambiente
+LLM_API_KEY: str = os.environ.get("OPENAI_API_KEY", "hermes")                    # chave fictícia exigida pelo cliente OpenAI; LMStudio ignora
+LLM_API_BASE: str = os.environ.get("OPENAI_API_BASE", "http://127.0.0.1:1234/v1")  # endpoint local do LMStudio
 LLM_TEMPERATURE = 0                           # temperatura 0 para respostas determinísticas
 LLM_MAX_TOKENS = 2048                         # limite de tokens gerados por resposta
 LLM_TIMEOUT_SECONDS: float = 10.0            # timeout por chamada ao LLM em segundos

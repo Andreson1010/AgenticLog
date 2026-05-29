@@ -128,37 +128,34 @@ class TestLoadEnvCredentials(TestCase):
         self.assertEqual(cfg.LLM_API_KEY, "shell-override-key")
 
     # ------------------------------------------------------------------
-    # AC-04: Missing OPENAI_API_KEY raises KeyError at import
+    # AC-04: Missing OPENAI_API_KEY falls back to default "hermes"
     # ------------------------------------------------------------------
 
-    def test_ac04_missing_api_key_raises_key_error(self):
+    def test_ac04_missing_api_key_uses_default(self):
         """
         AC-04: WHEN OPENAI_API_KEY is absent from both shell and .env
-        THEN importing config raises KeyError identifying the missing variable.
+        THEN LLM_API_KEY defaults to "hermes" (LMStudio ignores the key value).
         """
-        with self.assertRaises(KeyError) as ctx:
-            self._import_config(
-                {"OPENAI_API_BASE": "http://127.0.0.1:1234/v1"},
-                remove_keys=("OPENAI_API_KEY",),
-            )
-        # The KeyError message must identify the missing key.
-        self.assertIn("OPENAI_API_KEY", str(ctx.exception))
+        cfg = self._import_config(
+            {"OPENAI_API_BASE": "http://127.0.0.1:1234/v1"},
+            remove_keys=("OPENAI_API_KEY",),
+        )
+        self.assertEqual(cfg.LLM_API_KEY, "hermes")
 
     # ------------------------------------------------------------------
-    # AC-05: Missing OPENAI_API_BASE raises KeyError at import
+    # AC-05: Missing OPENAI_API_BASE falls back to local LMStudio endpoint
     # ------------------------------------------------------------------
 
-    def test_ac05_missing_api_base_raises_key_error(self):
+    def test_ac05_missing_api_base_uses_default(self):
         """
         AC-05: WHEN OPENAI_API_BASE is absent from both shell and .env
-        THEN importing config raises KeyError identifying the missing variable.
+        THEN LLM_API_BASE defaults to "http://127.0.0.1:1234/v1".
         """
-        with self.assertRaises(KeyError) as ctx:
-            self._import_config(
-                {"OPENAI_API_KEY": "hermes"},
-                remove_keys=("OPENAI_API_BASE",),
-            )
-        self.assertIn("OPENAI_API_BASE", str(ctx.exception))
+        cfg = self._import_config(
+            {"OPENAI_API_KEY": "hermes"},
+            remove_keys=("OPENAI_API_BASE",),
+        )
+        self.assertEqual(cfg.LLM_API_BASE, "http://127.0.0.1:1234/v1")
 
     # ------------------------------------------------------------------
     # AC-06: load_dotenv() is called before os.environ reads for credentials
