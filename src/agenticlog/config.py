@@ -33,6 +33,16 @@ LLM_HEALTH_CHECK_TIMEOUT_SECONDS: float = 5.0  # timeout do GET /v1/models antes
 CHUNK_SIZE = 500    # tamanho máximo de cada chunk de texto em caracteres
 CHUNK_OVERLAP = 50  # sobreposição entre chunks para preservar contexto nas bordas
 
+# Roteamento — palavras-chave que determinam o caminho no grafo LangGraph
+ROUTING_KEYWORDS_GERAR: tuple[str, ...] = (
+    "explain", "summarize", "define", "concept", "general", "what is",
+    "explique", "resuma", "defina", "conceito", "geral", "o que é",
+)
+ROUTING_KEYWORDS_WEB: tuple[str, ...] = (
+    "search the web", "news", "updated", "recent", "latest information",
+    "busque na web", "notícias", "atualizado", "recente", "últimas informações",
+)
+
 # Segurança - limites para carregamento de documentos
 MAX_JSON_FILES = 1000          # impede carregamento irrestrito de arquivos maliciosos
 MAX_JSON_FILE_SIZE_MB = 10     # bloqueia arquivos excessivamente grandes (proteção contra DoS)

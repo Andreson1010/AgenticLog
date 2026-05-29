@@ -52,6 +52,8 @@ from agenticlog.config import (
     LLM_MAX_RETRY_ATTEMPTS,
     LLM_RETRY_WAIT_INITIAL_SECONDS,
     LLM_RETRY_WAIT_MAX_SECONDS,
+    ROUTING_KEYWORDS_GERAR,
+    ROUTING_KEYWORDS_WEB,
 )
 
 logger = logging.getLogger(__name__)
@@ -209,23 +211,9 @@ def passo_decisao_agente(state: AgentState) -> AgentState:
     # termos de busca web → "usar_web", qualquer outro caso → "retrieve".
     """
     query = state.query.lower()
-    if any(
-        p in query
-        for p in [
-            # palavras-chave para geração conceitual (sem retrieval)
-            "explain", "summarize", "define", "concept", "general", "what is",
-            "explique", "resuma", "defina", "conceito", "geral", "o que é",
-        ]
-    ):
+    if any(p in query for p in ROUTING_KEYWORDS_GERAR):
         state.next_step = "gerar"
-    elif any(
-        p in query
-        for p in [
-            # palavras-chave para busca web (informações recentes ou externas)
-            "search the web", "news", "updated", "recent", "latest information",
-            "busque na web", "notícias", "atualizado", "recente", "últimas informações",
-        ]
-    ):
+    elif any(p in query for p in ROUTING_KEYWORDS_WEB):
         state.next_step = "usar_web"
     else:
         state.next_step = "retrieve"
