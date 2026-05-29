@@ -12,6 +12,7 @@ Execute: python -m agenticlog.rag
 
 import json
 import logging
+import datetime
 from pathlib import Path
 
 from langchain_chroma import Chroma
@@ -31,6 +32,7 @@ from agenticlog.config import (
     MAX_JSON_FILE_SIZE_MB,
     FORBIDDEN_JSON_KEYS,
     LOG_LEVEL,
+    LOG_FORMAT,
 )
 
 logger = logging.getLogger(__name__)
@@ -179,9 +181,28 @@ def cria_vectordb():
     logger.info("Banco de Dados Vetorial Criado com sucesso!")
 
 
+class _JsonFormatter(logging.Formatter):
+    """Serializa cada LogRecord como uma linha JSON com campos padronizados."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        return json.dumps({
+            "timestamp": datetime.datetime.fromtimestamp(
+                record.created, tz=datetime.timezone.utc
+            ).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        })
+
+
 def _executar_main() -> None:
     """Ponto de entrada CLI — configura logging e invoca cria_vectordb."""
-    logging.basicConfig(level=LOG_LEVEL)
+    if LOG_FORMAT == "json":
+        handler = logging.StreamHandler()
+        handler.setFormatter(_JsonFormatter())
+        logging.basicConfig(level=LOG_LEVEL, handlers=[handler], force=True)
+    else:
+        logging.basicConfig(level=LOG_LEVEL, force=True)
     try:
         cria_vectordb()
     except RAGSecurityError as e:

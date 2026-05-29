@@ -1,6 +1,7 @@
 # AgenticLog - Configurações centralizadas
 """Constantes, paths e parâmetros de modelos."""
 
+import os
 from pathlib import Path
 
 # Raiz do projeto (pasta que contém src/, data/, etc.)
@@ -35,4 +36,17 @@ MAX_JSON_FILE_SIZE_MB = 10     # bloqueia arquivos excessivamente grandes (prote
 FORBIDDEN_JSON_KEYS = ("lc",)  # mitiga injeção via chave "lc" usada pela classe Serializable do LangChain
 
 # Logging
-LOG_LEVEL: str = "INFO"  # nível de log para handlers configurados pelo chamador
+_VALID_LOG_LEVELS: frozenset[str] = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
+_VALID_LOG_FORMATS: frozenset[str] = frozenset({"text", "json"})
+
+LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO").strip().upper()
+if LOG_LEVEL not in _VALID_LOG_LEVELS:
+    raise ValueError(
+        f"Invalid LOG_LEVEL={LOG_LEVEL!r}. Must be one of {sorted(_VALID_LOG_LEVELS)}."
+    )
+
+LOG_FORMAT: str = os.environ.get("LOG_FORMAT", "text").strip().lower()
+if LOG_FORMAT not in _VALID_LOG_FORMATS:
+    raise ValueError(
+        f"Invalid LOG_FORMAT={LOG_FORMAT!r}. Must be one of {sorted(_VALID_LOG_FORMATS)}."
+    )
