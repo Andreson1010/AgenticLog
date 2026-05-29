@@ -121,47 +121,30 @@ def test_ac04_log_format_reads_from_env(monkeypatch):
 #         with fields: timestamp, level, logger, message
 # ---------------------------------------------------------------------------
 
-def test_ac05_json_format_produces_valid_json_lines(monkeypatch):
+def test_ac05_json_format_produces_valid_json_lines(monkeypatch, capsys):
     """
     AC-05: WHEN LOG_FORMAT=json and rag._executar_main() runs
     THEN each log line SHALL be valid JSON containing timestamp, level,
     logger, and message fields.
 
-    Implementation note: _executar_main calls logging.basicConfig(force=True)
-    which replaces all handlers at call time.  We intercept basicConfig with a
-    side_effect that installs our StringIO capture handler instead, then let
-    cria_vectordb run (with its heavy I/O deps mocked) so real log records fire.
+    Uses capsys to capture stderr: _executar_main calls pkg_logger.handlers.clear()
+    before installing its own StreamHandler, so any pre-installed capture handler
+    is removed. capsys intercepts the real stderr writes instead.
     """
-    from unittest.mock import patch as _patch, MagicMock
+    from unittest.mock import patch as _patch
 
     _reload_rag(monkeypatch, log_level=None, log_format="json")
 
-    # Re-import after reload so we use the freshly loaded module object.
     import agenticlog.rag as rag  # noqa: PLC0415
 
-    buf = io.StringIO()
-
-    def _capturing_basicConfig(**kwargs):
-        """Replace basicConfig: install our JSON capture handler on root logger."""
-        capture = logging.StreamHandler(buf)
-        capture.setFormatter(rag._JsonFormatter())
-        root = logging.getLogger()
-        for h in root.handlers[:]:
-            root.removeHandler(h)
-        root.addHandler(capture)
-        root.setLevel(kwargs.get("level", logging.INFO))
-
-    with _patch.object(rag.logging, "basicConfig", side_effect=_capturing_basicConfig), \
-         _patch("agenticlog.rag._valida_path_documentos"), \
+    with _patch("agenticlog.rag._valida_path_documentos"), \
          _patch("agenticlog.rag._valida_arquivos_json"), \
          _patch("agenticlog.rag.DirectoryLoader") as mock_loader:
-        # Return empty document list — triggers the WARNING log path and avoids
-        # heavy embedding/Chroma deps while still producing real log output.
         mock_loader.return_value.load.return_value = []
         rag._executar_main()
 
-    buf.seek(0)
-    lines = [line for line in buf.getvalue().splitlines() if line.strip()]
+    captured = capsys.readouterr()
+    lines = [line for line in captured.err.splitlines() if line.strip()]
 
     assert lines, (
         "No log output captured from _executar_main() — "
@@ -199,13 +182,13 @@ def test_ac06_text_format_does_not_use_json_formatter(monkeypatch):
     with patch.object(rag, "cria_vectordb", return_value=None):
         rag._executar_main()
 
-    root_handlers = logging.getLogger().handlers
+    pkg_logger = logging.getLogger("agenticlog")
     json_handlers = [
-        h for h in root_handlers
+        h for h in pkg_logger.handlers
         if isinstance(getattr(h, "formatter", None), rag._JsonFormatter)
     ]
     assert json_handlers == [], (
-        f"Expected no _JsonFormatter on root logger in text mode, found: {json_handlers}"
+        f"Expected no _JsonFormatter on 'agenticlog' logger in text mode, found: {json_handlers}"
     )
 
 

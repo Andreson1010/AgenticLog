@@ -462,20 +462,16 @@ class TestStructuredLogConfig:
 
         captured = io.StringIO()
         captured_handler = logging.StreamHandler(captured)
-        from agenticlog.rag import _JsonFormatter
+        from agenticlog.config import _JsonFormatter
         captured_handler.setFormatter(_JsonFormatter())
 
-        # Intercepta logging.StreamHandler() dentro de _executar_main para devolver o handler capturado
-        with patch.object(rag, "cria_vectordb", return_value=None):
-            with patch("logging.StreamHandler", return_value=captured_handler):
-                with patch("logging.basicConfig"):
-                    # Dispara o log diretamente através do logger do módulo
-                    rag.logger.addHandler(captured_handler)
-                    rag.logger.setLevel(logging.DEBUG)
-                    try:
-                        rag.logger.info("teste json output")
-                    finally:
-                        rag.logger.removeHandler(captured_handler)
+        # Dispara o log diretamente através do logger do módulo
+        rag.logger.addHandler(captured_handler)
+        rag.logger.setLevel(logging.DEBUG)
+        try:
+            rag.logger.info("teste json output")
+        finally:
+            rag.logger.removeHandler(captured_handler)
 
         output = captured.getvalue().strip()
         assert output, "Nenhuma saída de log capturada"
@@ -493,15 +489,14 @@ class TestStructuredLogConfig:
         importlib.reload(config)
         importlib.reload(rag)
 
-        # Em modo text, _executar_main chama basicConfig sem formatter JSON.
-        # Verifica isso inspecionando que LOG_FORMAT é "text" e que _JsonFormatter
-        # NÃO está registrado no root logger após a chamada.
+        # Em modo text, _executar_main configura o logger 'agenticlog' sem formatter JSON.
+        # Verifica que _JsonFormatter NÃO está registrado no logger do pacote após a chamada.
         with patch.object(rag, "cria_vectordb", return_value=None):
             rag._executar_main()
 
-        from agenticlog.rag import _JsonFormatter
-        root_handlers = logging.getLogger().handlers
-        json_handlers = [h for h in root_handlers if isinstance(getattr(h, "formatter", None), _JsonFormatter)]
+        from agenticlog.config import _JsonFormatter
+        pkg_logger = logging.getLogger("agenticlog")
+        json_handlers = [h for h in pkg_logger.handlers if isinstance(getattr(h, "formatter", None), _JsonFormatter)]
         assert json_handlers == [], f"Não esperava _JsonFormatter em modo text, encontrado: {json_handlers}"
         assert config.LOG_FORMAT == "text"
 
