@@ -15,11 +15,11 @@
 ### Reliability
 - [x] Lazy LLM initialization (fix SPOF at module import)
 - [x] Retry logic on LLM calls (httpx.ConnectError handler)
-- [ ] Health check before first workflow invocation
+- [x] Health check before first workflow invocation (PR #10)
 
 ### Observability
-- [ ] Replace print() with logging module across rag.py + agent.py
-- [ ] Structured log output with log level config in config.py
+- [x] Replace print() with logging module across rag.py + agent.py (PR #11)
+- [x] Structured log output with log level config in config.py (PR #12)
 
 ### Configuration
 - [ ] Load LLM credentials from .env (remove hardcoded values in config.py)
@@ -42,3 +42,6 @@
 |---|---|---|
 | Portuguese docstrings | .specs/features/portuguese-docstrings/spec.md | Done |
 | Retry LLM calls | .specs/features/retry-llm-backoff/spec.md | Done |
+| Health check LMStudio | .specs/features/health-check-lmstudio/spec.md | Done |
+| Logging module | .specs/features/logging-module/spec.md | Done |
+| Structured log config | .specs/features/structured-log-config/spec.md | Done |
