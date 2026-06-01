@@ -12,6 +12,8 @@ Execute: python -m agenticlog.rag
 
 import json
 import logging
+import shutil
+import tempfile
 from pathlib import Path
 
 from langchain_chroma import Chroma
@@ -38,6 +40,8 @@ from agenticlog.config import (
 logger = logging.getLogger(__name__)
 
 vectordb = None
+
+INVALID_FILENAME_CHARS: frozenset[str] = frozenset('<>:"/\\|?*\x00')
 
 
 class RAGSecurityError(Exception):
@@ -124,6 +128,80 @@ def _valida_arquivos_json() -> None:
                 f"Arquivo excede {MAX_JSON_FILE_SIZE_MB}MB: {path.name} ({size / (1024*1024):.1f}MB)"
             )
         _valida_json_sem_chaves_proibidas(path)
+
+
+def _sanitizar_nome_arquivo(filename: str) -> str:
+    """Valida e retorna o basename seguro do filename fornecido.
+
+    Entrada: filename — nome do arquivo como string (pode conter path).
+    Saída: basename sanitizado.
+    Lança RAGSecurityError se o nome for vazio, contiver caracteres inválidos
+    ou indicar path traversal.
+    """
+    if not filename:
+        raise RAGSecurityError("Nome de arquivo vazio.")
+    if any(c in INVALID_FILENAME_CHARS for c in filename):
+        raise RAGSecurityError(
+            f"Nome de arquivo contém caracteres inválidos: {filename!r}"
+        )
+    basename = Path(filename).name
+    if basename != filename or ".." in filename:
+        raise RAGSecurityError(
+            f"Nome de arquivo com path traversal detectado: {filename!r}"
+        )
+    return basename
+
+
+def salvar_documento_enviado(filename: str, conteudo: bytes) -> Path:
+    """Valida e persiste um arquivo JSON enviado pelo operador.
+
+    Entrada:
+      filename — nome original do arquivo (str).
+      conteudo — conteúdo binário do arquivo (bytes).
+    Saída: Path do arquivo salvo em DIR_DOCUMENTS.
+    Lança RAGSecurityError em qualquer falha de validação.
+    """
+    if Path(filename).suffix.lower() != ".json":
+        raise RAGSecurityError("Apenas arquivos .json são aceitos.")
+
+    if len(conteudo) > MAX_JSON_FILE_SIZE_MB * 1024 * 1024:
+        raise RAGSecurityError(
+            f"Arquivo excede o limite de {MAX_JSON_FILE_SIZE_MB} MB."
+        )
+
+    safe_name = _sanitizar_nome_arquivo(filename)
+
+    if (DIR_DOCUMENTS / safe_name).exists():
+        raise RAGSecurityError("Arquivo com esse nome já existe.")
+
+    if len(list(DIR_DOCUMENTS.glob("*.json"))) + 1 > MAX_JSON_FILES:
+        raise RAGSecurityError(
+            f"Limite de {MAX_JSON_FILES} arquivos atingido."
+        )
+
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
+            tmp.write(conteudo)
+            tmp_path = Path(tmp.name)
+        _valida_json_sem_chaves_proibidas(tmp_path)
+        shutil.move(str(tmp_path), DIR_DOCUMENTS / safe_name)
+        tmp_path = None  # moved — no cleanup needed
+    finally:
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
+
+    return DIR_DOCUMENTS / safe_name
+
+
+def reconstruir_vectordb() -> None:
+    """Reconstrói o banco vetorial ChromaDB a partir dos documentos em DIR_DOCUMENTS.
+
+    Entrada: nenhuma.
+    Saída: nenhuma (efeito colateral: atualiza data/vectordb/).
+    Lança Exception se cria_vectordb() falhar.
+    """
+    cria_vectordb()
 
 
 def cria_vectordb():
