@@ -12,6 +12,34 @@ from agenticlog import (
     agent_workflow,
     check_lmstudio_health,
 )
+from agenticlog.rag import salvar_documento_enviado, reconstruir_vectordb, RAGSecurityError
+
+def _ingerir_documento(uploaded_file: object) -> None:
+    """Salva o arquivo enviado e reconstrói o banco vetorial.
+
+    Entrada: uploaded_file — objeto UploadedFile do Streamlit.
+    Saída: nenhuma (efeitos colaterais: salva arquivo, reconstrói vectordb, exibe feedback na UI).
+    """
+    conteudo: bytes = uploaded_file.getvalue()
+    filename: str = uploaded_file.name
+
+    try:
+        saved_path = salvar_documento_enviado(filename, conteudo)
+    except RAGSecurityError as e:
+        st.error(str(e))
+        return
+
+    try:
+        with st.spinner("Reconstruindo base vetorial..."):
+            reconstruir_vectordb()
+    except Exception as e:
+        saved_path.unlink(missing_ok=True)
+        st.error(f"Erro ao reconstruir base vetorial. Arquivo removido. Detalhe: {e}")
+        return
+
+    st.success("Documento ingerido com sucesso.")
+    st.rerun()
+
 
 # Define o título, ícone e layout inicial da página Streamlit
 st.set_page_config(page_title="Aivorak", page_icon="🚚", layout="centered")
@@ -47,6 +75,15 @@ if st.sidebar.button("Suporte"):
 
     # Exibe informações de contato caso o botão seja clicado
     st.sidebar.write("Dúvidas? Envie um e-mail para: suporte@aivoraq.com.br")
+
+# Expander para ingestão de novos documentos JSON no banco vetorial
+with st.sidebar.expander("Adicionar Documento"):
+    uploaded_file = st.file_uploader("Selecione um arquivo JSON", type=None)
+    if st.button("Ingerir Documento"):
+        if uploaded_file is None:
+            st.warning("Selecione um arquivo antes de ingerir.")
+        else:
+            _ingerir_documento(uploaded_file)
 
 # Exibe título principal
 st.title("AVK - Agência de IA")

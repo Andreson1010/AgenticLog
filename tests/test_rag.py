@@ -26,6 +26,9 @@ from agenticlog.rag import (
     _valida_arquivos_json,
     cria_vectordb,
     _executar_main,
+    _sanitizar_nome_arquivo,
+    salvar_documento_enviado,
+    reconstruir_vectordb,
 )
 import agenticlog.rag as rag
 import agenticlog.config as config
@@ -513,6 +516,111 @@ class TestStructuredLogConfig:
         monkeypatch.setenv("LOG_FORMAT", "xml")
         with pytest.raises(ValueError, match="Invalid LOG_FORMAT"):
             importlib.reload(config)
+
+
+class TestSanitizarNomeArquivo(unittest.TestCase):
+    """Testes para _sanitizar_nome_arquivo."""
+
+    def teste_1_sanitizar_nome_valido(self):
+        """Nome de arquivo válido é retornado sem alteração."""
+        resultado = _sanitizar_nome_arquivo("doc.json")
+        self.assertEqual(resultado, "doc.json")
+
+    def teste_2_sanitizar_rejeita_path_traversal(self):
+        """Nome com '../' levanta RAGSecurityError."""
+        with self.assertRaises(rag.RAGSecurityError):
+            _sanitizar_nome_arquivo("../evil.json")
+
+    def teste_3_sanitizar_rejeita_chars_invalidos(self):
+        """Nome com caracteres inválidos do Windows levanta RAGSecurityError."""
+        with self.assertRaises(rag.RAGSecurityError):
+            _sanitizar_nome_arquivo("file<>.json")
+
+    def teste_4_sanitizar_rejeita_nome_vazio(self):
+        """Nome vazio levanta RAGSecurityError."""
+        with self.assertRaises(rag.RAGSecurityError):
+            _sanitizar_nome_arquivo("")
+
+
+class TestSalvarDocumentoEnviado(unittest.TestCase):
+    """Testes para salvar_documento_enviado."""
+
+    def _valid_json_bytes(self) -> bytes:
+        return json.dumps({"conteudo": "test"}).encode()
+
+    def teste_1_salvar_documento_enviado_sucesso(self):
+        """Arquivo JSON válido é salvo em DIR_DOCUMENTS."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            with patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path):
+                result = salvar_documento_enviado("doc.json", self._valid_json_bytes())
+            self.assertTrue((tmp_path / "doc.json").exists())
+            self.assertEqual(result, tmp_path / "doc.json")
+
+    def teste_2_salvar_rejeita_extensao_invalida(self):
+        """Extensão não-.json levanta RAGSecurityError antes de qualquer escrita."""
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
+            salvar_documento_enviado("dados.csv", self._valid_json_bytes())
+        self.assertIn(".json", str(ctx.exception))
+
+    def teste_3_salvar_rejeita_tamanho_excedido(self):
+        """Arquivo maior que 10 MB levanta RAGSecurityError."""
+        conteudo_grande = b"x" * (10 * 1024 * 1024 + 1)
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
+            salvar_documento_enviado("grande.json", conteudo_grande)
+        self.assertIn("10", str(ctx.exception))
+
+    def teste_4_salvar_rejeita_chave_proibida(self):
+        """JSON com chave proibida 'lc' levanta RAGSecurityError."""
+        conteudo = json.dumps({"lc": "bad"}).encode()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            with patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path):
+                with self.assertRaises(rag.RAGSecurityError):
+                    salvar_documento_enviado("malicioso.json", conteudo)
+
+    def teste_5_salvar_rejeita_colisao_de_nome(self):
+        """Arquivo com nome já existente levanta RAGSecurityError."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            (tmp_path / "existente.json").write_bytes(b"{}")
+            with patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path):
+                with self.assertRaises(rag.RAGSecurityError) as ctx:
+                    salvar_documento_enviado("existente.json", self._valid_json_bytes())
+            self.assertIn("já existe", str(ctx.exception))
+
+    def teste_6_salvar_rejeita_path_traversal(self):
+        """Nome de arquivo com path traversal levanta RAGSecurityError."""
+        with self.assertRaises(rag.RAGSecurityError):
+            salvar_documento_enviado("../evil.json", self._valid_json_bytes())
+
+    def teste_7_salvar_rejeita_limite_de_arquivos(self):
+        """Quando já há 1000 arquivos .json, levanta RAGSecurityError."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            for i in range(1000):
+                (tmp_path / f"arquivo_{i:04d}.json").write_bytes(b"{}")
+            with patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path):
+                with self.assertRaises(rag.RAGSecurityError) as ctx:
+                    salvar_documento_enviado("novo.json", self._valid_json_bytes())
+            self.assertIn("1000", str(ctx.exception))
+
+
+class TestReconstruirVectordb(unittest.TestCase):
+    """Testes para reconstruir_vectordb."""
+
+    def teste_1_reconstruir_vectordb_chama_cria_vectordb(self):
+        """reconstruir_vectordb() chama cria_vectordb() exatamente uma vez."""
+        with patch("agenticlog.rag.cria_vectordb") as mock_cria:
+            reconstruir_vectordb()
+        mock_cria.assert_called_once()
+
+    def teste_2_reconstruir_vectordb_propaga_excecao(self):
+        """Exceção lançada por cria_vectordb() é propagada pelo reconstruir_vectordb()."""
+        with patch("agenticlog.rag.cria_vectordb", side_effect=Exception("fail")):
+            with self.assertRaises(Exception) as ctx:
+                reconstruir_vectordb()
+        self.assertEqual(str(ctx.exception), "fail")
 
 
 if __name__ == "__main__":
