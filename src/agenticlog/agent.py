@@ -26,8 +26,6 @@ from langchain_openai import ChatOpenAI
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
-from langchain.tools import Tool
-from langchain.agents import initialize_agent, AgentType
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from sklearn.metrics.pairwise import cosine_similarity
@@ -163,26 +161,9 @@ prompt_gerar = PromptTemplate.from_template(
 
 # Ferramentas de busca web — DuckDuckGo não requer LMStudio, inicializado na importação
 search = DuckDuckGoSearchAPIWrapper(region="br-pt", max_results=5)
-web_search_tool = Tool(name="WebSearch", func=search.run, description="Busca web.")
-
-_avk_agent_executor = None
 
 
-def _get_avk_agent_executor():
-    """Retorna o singleton do agente web DuckDuckGo, criando-o na primeira chamada.
 
-    Saída: AgentExecutor configurado com o LLM lazy e a ferramenta de busca web.
-    """
-    global _avk_agent_executor
-    if _avk_agent_executor is None:
-        _avk_agent_executor = initialize_agent(
-            tools=[web_search_tool],
-            llm=_get_llm(),
-            agent=AgentType.CHAT_ZERO_SHOT_REACT_DESCRIPTION,
-            verbose=True,
-            handle_parsing_errors=True,
-        )
-    return _avk_agent_executor
 
 
 class AgentState(BaseModel):
@@ -220,38 +201,30 @@ def passo_decisao_agente(state: AgentState) -> AgentState:
     return state
 
 
-@_llm_retry
-def _invoke_executor(executor, inputs: dict) -> dict:
-    """Invoca o agente executor com retry exponential backoff em erros de conexão/timeout.
-
-    Entrada: executor — AgentExecutor; inputs — dict com chave "input".
-    Saída:   dict com chave "output" contendo a resposta do agente.
-    """
-    return executor.invoke(inputs)
+_prompt_web = PromptTemplate.from_template(
+    "Use the following web search results to answer the question in Brazilian Portuguese.\n\n"
+    "Search results:\n{context}\n\n"
+    "Question: {input}\nAnswer:"
+)
 
 
 def usar_ferramenta_web(state: AgentState) -> AgentState:
-    """Nó de busca web: executa o agente DuckDuckGo e armazena a resposta final.
+    """Nó de busca web: executa DuckDuckGo e chama LLM com os resultados.
 
     Entrada: state.query.
     Saída:   state.ranked_response (resultado da busca), state.confidence_score = 0.0
              (sem base vetorial para calcular similaridade).
-
-    Bloco 1 — DuckDuckGo: falha silenciosa com fallback (comportamento existente mantido).
-    Bloco 2 — LLM: exposto ao _llm_retry via _invoke_executor.
     """
-    # bloco 1 — DuckDuckGo (silent fallback — existing behavior maintained)
     try:
-        resultados = search.run(state.query)  # noqa: F841 — validates connectivity before LLM call
+        resultados = search.run(state.query)
     except Exception as e:
         logger.warning("DuckDuckGo search failed: %s", e)
         state.ranked_response = "Busca indisponível no momento."
         state.confidence_score = 0.0
         return state
 
-    # bloco 2 — LLM call (exposed to _llm_retry via helper)
-    resultado = _invoke_executor(_get_avk_agent_executor(), {"input": state.query})
-    state.ranked_response = resultado.get("output", "No information obtained by web search.")
+    chain = _prompt_web | _get_llm() | StrOutputParser()
+    state.ranked_response = _invoke_chain(chain, {"context": resultados, "input": state.query})
     state.confidence_score = 0.0
     return state
 
@@ -275,6 +248,16 @@ def _invoke_chain(chain, inputs: dict) -> str:
     Saída:   resposta gerada pelo LLM como string.
     """
     return chain.invoke(inputs)
+
+
+@_llm_retry
+def _invoke_executor(executor, inputs: dict) -> dict:
+    """Invoca um executor com retry exponential backoff em erros de conexão/timeout.
+
+    Entrada: executor — objeto com método invoke; inputs — dict com chave "input".
+    Saída:   dict com chave "output" contendo a resposta.
+    """
+    return executor.invoke(inputs)
 
 
 def gera_multiplas_respostas(state: AgentState) -> AgentState:

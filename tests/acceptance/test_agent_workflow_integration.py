@@ -165,20 +165,16 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
     # Caminho 3: usar_web (busca web via DuckDuckGo)
     # ------------------------------------------------------------------
 
-    @patch("agenticlog.agent._get_avk_agent_executor")
+    @patch("agenticlog.agent._invoke_chain")
     @patch("agenticlog.agent.search")
     def teste_5_caminho_usar_web_retorna_ranked_response(
         self,
         mock_search,
-        mock_get_executor,
+        mock_invoke_chain,
     ):
         """INTEG-05: rota 'usar_web' — ranked_response preenchida com resultado do agente web."""
         mock_search.run.return_value = "Resultados de busca web."
-        mock_executor = MagicMock()
-        mock_executor.invoke.return_value = {
-            "output": "Últimas notícias sobre supply chain global."
-        }
-        mock_get_executor.return_value = mock_executor
+        mock_invoke_chain.return_value = "Últimas notícias sobre supply chain global."
 
         state = AgentState(query="Busque na web as últimas informações sobre supply chain.")
 
@@ -193,18 +189,16 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
         self.assertEqual(result["confidence_score"], 0.0)
         self.assertEqual(result["next_step"], "usar_web")
 
-    @patch("agenticlog.agent._get_avk_agent_executor")
+    @patch("agenticlog.agent._invoke_chain")
     @patch("agenticlog.agent.search")
     def teste_6_caminho_usar_web_agentstate_chaves_obrigatorias(
         self,
         mock_search,
-        mock_get_executor,
+        mock_invoke_chain,
     ):
         """INTEG-06: rota 'usar_web' — AgentState pós-invocação contém todas as chaves obrigatórias."""
         mock_search.run.return_value = "Resultados web."
-        mock_executor = MagicMock()
-        mock_executor.invoke.return_value = {"output": "Resposta web."}
-        mock_get_executor.return_value = mock_executor
+        mock_invoke_chain.return_value = "Resposta web."
 
         state = AgentState(query="Últimas notícias sobre logística recente no Brasil.")
 
@@ -214,12 +208,12 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
         for key in required_keys:
             self.assertIn(key, result, f"Chave obrigatória ausente: {key}")
 
-    @patch("agenticlog.agent._get_avk_agent_executor")
+    @patch("agenticlog.agent._invoke_chain")
     @patch("agenticlog.agent.search")
     def teste_7_caminho_usar_web_duckduckgo_falha_retorna_fallback(
         self,
         mock_search,
-        mock_get_executor,
+        mock_invoke_chain,
     ):
         """INTEG-07: rota 'usar_web' — falha no DuckDuckGo retorna mensagem de fallback."""
         mock_search.run.side_effect = Exception("DuckDuckGo indisponível")
@@ -230,7 +224,7 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
 
         self.assertEqual(result["ranked_response"], "Busca indisponível no momento.")
         self.assertEqual(result["confidence_score"], 0.0)
-        mock_get_executor.assert_not_called()
+        mock_invoke_chain.assert_not_called()
 
     # ------------------------------------------------------------------
     # Casos de borda
