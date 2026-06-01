@@ -159,11 +159,14 @@ prompt_gerar = PromptTemplate.from_template(
     Answer:"""
 )
 
+_prompt_web = PromptTemplate.from_template(
+    "Use the following web search results to answer the question in Brazilian Portuguese.\n\n"
+    "Search results:\n{context}\n\n"
+    "Question: {input}\nAnswer:"
+)
+
 # Ferramentas de busca web — DuckDuckGo não requer LMStudio, inicializado na importação
 search = DuckDuckGoSearchAPIWrapper(region="br-pt", max_results=5)
-
-
-
 
 
 class AgentState(BaseModel):
@@ -193,19 +196,20 @@ def passo_decisao_agente(state: AgentState) -> AgentState:
     """
     query = state.query.lower()
     if any(p in query for p in ROUTING_KEYWORDS_GERAR):
-        state.next_step = "gerar"
-    elif any(p in query for p in ROUTING_KEYWORDS_WEB):
-        state.next_step = "usar_web"
-    else:
-        state.next_step = "retrieve"
-    return state
+        return state.model_copy(update={"next_step": "gerar"})
+    if any(p in query for p in ROUTING_KEYWORDS_WEB):
+        return state.model_copy(update={"next_step": "usar_web"})
+    return state.model_copy(update={"next_step": "retrieve"})
 
 
-_prompt_web = PromptTemplate.from_template(
-    "Use the following web search results to answer the question in Brazilian Portuguese.\n\n"
-    "Search results:\n{context}\n\n"
-    "Question: {input}\nAnswer:"
-)
+@_llm_retry
+def _invoke_chain(chain, inputs: dict) -> str:
+    """Invoca uma chain LangChain com retry exponential backoff em erros de conexão/timeout.
+
+    Entrada: chain — pipeline prompt | llm | parser; inputs — dict de variáveis do prompt.
+    Saída:   resposta gerada pelo LLM como string.
+    """
+    return chain.invoke(inputs)
 
 
 def usar_ferramenta_web(state: AgentState) -> AgentState:
@@ -219,14 +223,16 @@ def usar_ferramenta_web(state: AgentState) -> AgentState:
         resultados = search.run(state.query)
     except Exception as e:
         logger.warning("DuckDuckGo search failed: %s", e)
-        state.ranked_response = "Busca indisponível no momento."
-        state.confidence_score = 0.0
-        return state
+        return state.model_copy(update={
+            "ranked_response": "Busca indisponível no momento.",
+            "confidence_score": 0.0,
+        })
 
     chain = _prompt_web | _get_llm() | StrOutputParser()
-    state.ranked_response = _invoke_chain(chain, {"context": resultados, "input": state.query})
-    state.confidence_score = 0.0
-    return state
+    return state.model_copy(update={
+        "ranked_response": _invoke_chain(chain, {"context": resultados, "input": state.query}),
+        "confidence_score": 0.0,
+    })
 
 
 def retrieve_info(state: AgentState) -> AgentState:
@@ -236,28 +242,7 @@ def retrieve_info(state: AgentState) -> AgentState:
     Saída:   state.retrieved_info — lista de Document retornados pelo retriever.
     """
     retrieved_docs = _get_retriever().invoke(state.query)
-    state.retrieved_info = retrieved_docs
-    return state
-
-
-@_llm_retry
-def _invoke_chain(chain, inputs: dict) -> str:
-    """Invoca uma chain LangChain com retry exponential backoff em erros de conexão/timeout.
-
-    Entrada: chain — pipeline prompt | llm | parser; inputs — dict de variáveis do prompt.
-    Saída:   resposta gerada pelo LLM como string.
-    """
-    return chain.invoke(inputs)
-
-
-@_llm_retry
-def _invoke_executor(executor, inputs: dict) -> dict:
-    """Invoca um executor com retry exponential backoff em erros de conexão/timeout.
-
-    Entrada: executor — objeto com método invoke; inputs — dict com chave "input".
-    Saída:   dict com chave "output" contendo a resposta.
-    """
-    return executor.invoke(inputs)
+    return state.model_copy(update={"retrieved_info": retrieved_docs})
 
 
 def gera_multiplas_respostas(state: AgentState) -> AgentState:
@@ -275,10 +260,11 @@ def gera_multiplas_respostas(state: AgentState) -> AgentState:
     if state.next_step == "retrieve":
         context_text = format_docs(state.retrieved_info)
         current_prompt = prompt_rag_retrieve
+        retrieved_info = state.retrieved_info
     else:
         context_text = ""
         current_prompt = prompt_gerar
-        state.retrieved_info = []
+        retrieved_info = []
 
     qa_chain_dynamic = current_prompt | _get_llm() | StrOutputParser()
 
@@ -290,8 +276,10 @@ def gera_multiplas_respostas(state: AgentState) -> AgentState:
             response = _invoke_chain(qa_chain_dynamic, {"input": state.query})
         responses.append(response)
 
-    state.possible_responses = [{"answer": r} for r in responses]
-    return state
+    return state.model_copy(update={
+        "retrieved_info": retrieved_info,
+        "possible_responses": [{"answer": r} for r in responses],
+    })
 
 
 def avalia_similaridade(state: AgentState) -> AgentState:
@@ -318,8 +306,7 @@ def avalia_similaridade(state: AgentState) -> AgentState:
     )
 
     if not retrieved_embeddings or not response_embeddings:
-        state.similarity_scores = [0.0] * len(response_texts)
-        return state
+        return state.model_copy(update={"similarity_scores": [0.0] * len(response_texts)})
 
     similarities = [
         np.mean(
@@ -330,8 +317,7 @@ def avalia_similaridade(state: AgentState) -> AgentState:
         )
         for re in response_embeddings
     ]
-    state.similarity_scores = similarities
-    return state
+    return state.model_copy(update={"similarity_scores": similarities})
 
 
 def rank_respostas(state: AgentState) -> AgentState:
@@ -343,12 +329,14 @@ def rank_respostas(state: AgentState) -> AgentState:
     response_with_scores = list(zip(state.possible_responses, state.similarity_scores))
     if response_with_scores:
         ranked = sorted(response_with_scores, key=lambda x: x[1], reverse=True)
-        state.ranked_response = ranked[0][0]
-        state.confidence_score = ranked[0][1]
-    else:
-        state.ranked_response = "Desculpe, não encontrei informações relevantes."
-        state.confidence_score = 0.0
-    return state
+        return state.model_copy(update={
+            "ranked_response": ranked[0][0],
+            "confidence_score": ranked[0][1],
+        })
+    return state.model_copy(update={
+        "ranked_response": "Desculpe, não encontrei informações relevantes.",
+        "confidence_score": 0.0,
+    })
 
 
 # Workflow

@@ -22,7 +22,6 @@ from openai import AuthenticationError
 import agenticlog.agent as agent_module
 from agenticlog.agent import (
     _invoke_chain,
-    _invoke_executor,
     usar_ferramenta_web,
     gera_multiplas_respostas,
     AgentState,
@@ -130,40 +129,48 @@ class TestAC02UsarWebRetries(unittest.TestCase):
     """
 
     @patch("time.sleep")
-    def test_ac02_invoke_executor_retries_connect_error_succeeds_on_second_attempt(
+    def test_ac02_invoke_chain_retries_connect_error_succeeds_on_second_attempt(
         self, mock_sleep
     ):
         """
-        AC-02: _invoke_executor retries ConnectError and returns the result on the second call.
+        AC-02: _invoke_chain retries ConnectError and returns the result on the second call.
         """
-        mock_executor = MagicMock()
-        mock_executor.invoke.side_effect = [
+        mock_chain = MagicMock()
+        mock_chain.invoke.side_effect = [
             httpx.ConnectError("connection refused"),
-            {"output": "resposta web na segunda tentativa"},
+            "resposta na segunda tentativa",
         ]
 
-        result = _invoke_executor(mock_executor, {"input": "pergunta"})
+        result = _invoke_chain(mock_chain, {"input": "pergunta"})
 
-        self.assertEqual(result, {"output": "resposta web na segunda tentativa"})
-        self.assertEqual(mock_executor.invoke.call_count, 2)
+        self.assertEqual(result, "resposta na segunda tentativa")
+        self.assertEqual(mock_chain.invoke.call_count, 2)
 
-    @patch("agenticlog.agent._invoke_chain")
+    @patch("time.sleep")
     @patch("agenticlog.agent.search")
     def test_ac02_usar_ferramenta_web_llm_retries_connect_error_end_to_end(
-        self, mock_search, mock_invoke_chain
+        self, mock_search, mock_sleep
     ):
         """
-        AC-02 (end-to-end): usar_ferramenta_web calls _invoke_chain with search results
-        and returns the response. Retry behavior is verified at the _invoke_chain unit level.
+        AC-02 (end-to-end): usar_ferramenta_web retries the LLM chain on ConnectError
+        via _invoke_chain's @_llm_retry decorator.
         """
         mock_search.run.return_value = "resultados da busca"
-        mock_invoke_chain.return_value = "Resposta web após retry"
+        mock_chain = MagicMock()
+        mock_chain.invoke.side_effect = [
+            httpx.ConnectError("connection refused"),
+            "Resposta web após retry",
+        ]
+        mock_prompt = MagicMock()
+        mock_prompt.__or__ = MagicMock(return_value=mock_chain)
+        mock_chain.__or__ = MagicMock(return_value=mock_chain)
 
-        state = AgentState(query="últimas notícias sobre supply chain")
-        new_state = usar_ferramenta_web(state)
+        with patch("agenticlog.agent._prompt_web", mock_prompt):
+            state = AgentState(query="últimas notícias sobre supply chain")
+            new_state = usar_ferramenta_web(state)
 
         self.assertEqual(new_state.ranked_response, "Resposta web após retry")
-        mock_invoke_chain.assert_called_once()
+        self.assertEqual(mock_chain.invoke.call_count, 2)
 
 
 # ---------------------------------------------------------------------------
@@ -205,28 +212,28 @@ class TestAC03OriginalExceptionPropagates(unittest.TestCase):
         self.assertEqual(mock_chain.invoke.call_count, LLM_MAX_RETRY_ATTEMPTS)
 
     @patch("time.sleep")
-    def test_ac03_invoke_executor_propagates_connect_error_not_retry_error(
+    def test_ac03_invoke_chain_propagates_connect_error_after_retries_exhausted(
         self, mock_sleep
     ):
         """
-        AC-03 (_invoke_executor): after retries exhausted, ConnectError propagates
+        AC-03 (_invoke_chain): after retries exhausted, ConnectError propagates
         directly — tenacity.RetryError must NOT surface.
         """
         from tenacity import RetryError
 
-        mock_executor = MagicMock()
-        mock_executor.invoke.side_effect = httpx.ConnectError("connection refused")
+        mock_chain = MagicMock()
+        mock_chain.invoke.side_effect = httpx.ConnectError("connection refused")
 
         raised = None
         try:
-            _invoke_executor(mock_executor, {"input": "pergunta"})
+            _invoke_chain(mock_chain, {"input": "pergunta"})
         except Exception as e:
             raised = e
 
         self.assertIsNotNone(raised)
         self.assertNotIsInstance(raised, RetryError)
         self.assertIsInstance(raised, httpx.ConnectError)
-        self.assertEqual(mock_executor.invoke.call_count, LLM_MAX_RETRY_ATTEMPTS)
+        self.assertEqual(mock_chain.invoke.call_count, LLM_MAX_RETRY_ATTEMPTS)
 
 
 # ---------------------------------------------------------------------------
@@ -290,7 +297,7 @@ class TestAC05TcpStallRetryable(unittest.TestCase):
         self.assertEqual(mock_chain.invoke.call_count, 2)
 
     @patch("time.sleep")
-    def test_ac05_timeout_constant_value_is_ten_seconds(self, mock_sleep):
+    def test_ac05_timeout_constant_value_is_sixty_seconds(self, mock_sleep):
         """AC-05: LLM_TIMEOUT_SECONDS == 60.0 (the TCP-stall deadline)."""
         self.assertEqual(LLM_TIMEOUT_SECONDS, 60.0)
 
