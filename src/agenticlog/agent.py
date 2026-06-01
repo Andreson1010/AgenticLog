@@ -26,8 +26,6 @@ from langchain_openai import ChatOpenAI
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
-from langchain.tools import Tool
-from langchain.agents import initialize_agent, AgentType
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from sklearn.metrics.pairwise import cosine_similarity
@@ -161,28 +159,14 @@ prompt_gerar = PromptTemplate.from_template(
     Answer:"""
 )
 
+_prompt_web = PromptTemplate.from_template(
+    "Use the following web search results to answer the question in Brazilian Portuguese.\n\n"
+    "Search results:\n{context}\n\n"
+    "Question: {input}\nAnswer:"
+)
+
 # Ferramentas de busca web — DuckDuckGo não requer LMStudio, inicializado na importação
 search = DuckDuckGoSearchAPIWrapper(region="br-pt", max_results=5)
-web_search_tool = Tool(name="WebSearch", func=search.run, description="Busca web.")
-
-_avk_agent_executor = None
-
-
-def _get_avk_agent_executor():
-    """Retorna o singleton do agente web DuckDuckGo, criando-o na primeira chamada.
-
-    Saída: AgentExecutor configurado com o LLM lazy e a ferramenta de busca web.
-    """
-    global _avk_agent_executor
-    if _avk_agent_executor is None:
-        _avk_agent_executor = initialize_agent(
-            tools=[web_search_tool],
-            llm=_get_llm(),
-            agent=AgentType.CHAT_ZERO_SHOT_REACT_DESCRIPTION,
-            verbose=True,
-            handle_parsing_errors=True,
-        )
-    return _avk_agent_executor
 
 
 class AgentState(BaseModel):
@@ -212,59 +196,10 @@ def passo_decisao_agente(state: AgentState) -> AgentState:
     """
     query = state.query.lower()
     if any(p in query for p in ROUTING_KEYWORDS_GERAR):
-        state.next_step = "gerar"
-    elif any(p in query for p in ROUTING_KEYWORDS_WEB):
-        state.next_step = "usar_web"
-    else:
-        state.next_step = "retrieve"
-    return state
-
-
-@_llm_retry
-def _invoke_executor(executor, inputs: dict) -> dict:
-    """Invoca o agente executor com retry exponential backoff em erros de conexão/timeout.
-
-    Entrada: executor — AgentExecutor; inputs — dict com chave "input".
-    Saída:   dict com chave "output" contendo a resposta do agente.
-    """
-    return executor.invoke(inputs)
-
-
-def usar_ferramenta_web(state: AgentState) -> AgentState:
-    """Nó de busca web: executa o agente DuckDuckGo e armazena a resposta final.
-
-    Entrada: state.query.
-    Saída:   state.ranked_response (resultado da busca), state.confidence_score = 0.0
-             (sem base vetorial para calcular similaridade).
-
-    Bloco 1 — DuckDuckGo: falha silenciosa com fallback (comportamento existente mantido).
-    Bloco 2 — LLM: exposto ao _llm_retry via _invoke_executor.
-    """
-    # bloco 1 — DuckDuckGo (silent fallback — existing behavior maintained)
-    try:
-        resultados = search.run(state.query)  # noqa: F841 — validates connectivity before LLM call
-    except Exception as e:
-        logger.warning("DuckDuckGo search failed: %s", e)
-        state.ranked_response = "Busca indisponível no momento."
-        state.confidence_score = 0.0
-        return state
-
-    # bloco 2 — LLM call (exposed to _llm_retry via helper)
-    resultado = _invoke_executor(_get_avk_agent_executor(), {"input": state.query})
-    state.ranked_response = resultado.get("output", "No information obtained by web search.")
-    state.confidence_score = 0.0
-    return state
-
-
-def retrieve_info(state: AgentState) -> AgentState:
-    """Nó de recuperação: busca documentos relevantes no ChromaDB via retriever vetorial.
-
-    Entrada: state.query.
-    Saída:   state.retrieved_info — lista de Document retornados pelo retriever.
-    """
-    retrieved_docs = _get_retriever().invoke(state.query)
-    state.retrieved_info = retrieved_docs
-    return state
+        return state.model_copy(update={"next_step": "gerar"})
+    if any(p in query for p in ROUTING_KEYWORDS_WEB):
+        return state.model_copy(update={"next_step": "usar_web"})
+    return state.model_copy(update={"next_step": "retrieve"})
 
 
 @_llm_retry
@@ -275,6 +210,39 @@ def _invoke_chain(chain, inputs: dict) -> str:
     Saída:   resposta gerada pelo LLM como string.
     """
     return chain.invoke(inputs)
+
+
+def usar_ferramenta_web(state: AgentState) -> AgentState:
+    """Nó de busca web: executa DuckDuckGo e chama LLM com os resultados.
+
+    Entrada: state.query.
+    Saída:   state.ranked_response (resultado da busca), state.confidence_score = 0.0
+             (sem base vetorial para calcular similaridade).
+    """
+    try:
+        resultados = search.run(state.query)
+    except Exception as e:
+        logger.warning("DuckDuckGo search failed: %s", e)
+        return state.model_copy(update={
+            "ranked_response": "Busca indisponível no momento.",
+            "confidence_score": 0.0,
+        })
+
+    chain = _prompt_web | _get_llm() | StrOutputParser()
+    return state.model_copy(update={
+        "ranked_response": _invoke_chain(chain, {"context": resultados, "input": state.query}),
+        "confidence_score": 0.0,
+    })
+
+
+def retrieve_info(state: AgentState) -> AgentState:
+    """Nó de recuperação: busca documentos relevantes no ChromaDB via retriever vetorial.
+
+    Entrada: state.query.
+    Saída:   state.retrieved_info — lista de Document retornados pelo retriever.
+    """
+    retrieved_docs = _get_retriever().invoke(state.query)
+    return state.model_copy(update={"retrieved_info": retrieved_docs})
 
 
 def gera_multiplas_respostas(state: AgentState) -> AgentState:
@@ -292,10 +260,11 @@ def gera_multiplas_respostas(state: AgentState) -> AgentState:
     if state.next_step == "retrieve":
         context_text = format_docs(state.retrieved_info)
         current_prompt = prompt_rag_retrieve
+        retrieved_info = state.retrieved_info
     else:
         context_text = ""
         current_prompt = prompt_gerar
-        state.retrieved_info = []
+        retrieved_info = []
 
     qa_chain_dynamic = current_prompt | _get_llm() | StrOutputParser()
 
@@ -307,8 +276,10 @@ def gera_multiplas_respostas(state: AgentState) -> AgentState:
             response = _invoke_chain(qa_chain_dynamic, {"input": state.query})
         responses.append(response)
 
-    state.possible_responses = [{"answer": r} for r in responses]
-    return state
+    return state.model_copy(update={
+        "retrieved_info": retrieved_info,
+        "possible_responses": [{"answer": r} for r in responses],
+    })
 
 
 def avalia_similaridade(state: AgentState) -> AgentState:
@@ -335,8 +306,7 @@ def avalia_similaridade(state: AgentState) -> AgentState:
     )
 
     if not retrieved_embeddings or not response_embeddings:
-        state.similarity_scores = [0.0] * len(response_texts)
-        return state
+        return state.model_copy(update={"similarity_scores": [0.0] * len(response_texts)})
 
     similarities = [
         np.mean(
@@ -347,8 +317,7 @@ def avalia_similaridade(state: AgentState) -> AgentState:
         )
         for re in response_embeddings
     ]
-    state.similarity_scores = similarities
-    return state
+    return state.model_copy(update={"similarity_scores": similarities})
 
 
 def rank_respostas(state: AgentState) -> AgentState:
@@ -360,12 +329,14 @@ def rank_respostas(state: AgentState) -> AgentState:
     response_with_scores = list(zip(state.possible_responses, state.similarity_scores))
     if response_with_scores:
         ranked = sorted(response_with_scores, key=lambda x: x[1], reverse=True)
-        state.ranked_response = ranked[0][0]
-        state.confidence_score = ranked[0][1]
-    else:
-        state.ranked_response = "Desculpe, não encontrei informações relevantes."
-        state.confidence_score = 0.0
-    return state
+        return state.model_copy(update={
+            "ranked_response": ranked[0][0],
+            "confidence_score": ranked[0][1],
+        })
+    return state.model_copy(update={
+        "ranked_response": "Desculpe, não encontrei informações relevantes.",
+        "confidence_score": 0.0,
+    })
 
 
 # Workflow

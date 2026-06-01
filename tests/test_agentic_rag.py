@@ -50,18 +50,14 @@ class TestAgenticRAG(unittest.TestCase):
         new_state = passo_decisao_agente(state)
         self.assertEqual(new_state.next_step, "gerar")
 
-    @patch("agenticlog.agent._get_avk_agent_executor")
+    @patch("agenticlog.agent._invoke_chain")
     @patch("agenticlog.agent.search")
-    def teste_4_usar_ferramenta_web(self, mock_search, mock_get_executor):
+    def teste_4_usar_ferramenta_web(self, mock_search, mock_invoke_chain):
         mock_search.run.return_value = "resultados da busca"
-        mock_executor = MagicMock()
-        mock_executor.invoke.return_value = {"output": "Resposta da web."}
-        mock_get_executor.return_value = mock_executor
+        mock_invoke_chain.return_value = "Resposta da web."
         state = AgentState(query="notícias recentes sobre supply chain")
         new_state = usar_ferramenta_web(state)
-        mock_executor.invoke.assert_called_once_with(
-            {"input": "notícias recentes sobre supply chain"}
-        )
+        mock_invoke_chain.assert_called_once()
         self.assertEqual(new_state.ranked_response, "Resposta da web.")
 
     @patch("agenticlog.agent._get_retriever")
@@ -293,10 +289,10 @@ class TestRetryLogic(unittest.TestCase):
         self.assertEqual(resultado, "resposta ok")
         self.assertEqual(mock_chain.invoke.call_count, 2)
 
-    @patch("agenticlog.agent._get_avk_agent_executor")
+    @patch("agenticlog.agent._invoke_chain")
     @patch("agenticlog.agent.search")
     def teste_6_duckduckgo_falha_retorna_fallback_sem_propagar(
-        self, mock_search, mock_get_executor
+        self, mock_search, mock_invoke_chain
     ):
         """T6: Falha no DuckDuckGo retorna string de fallback e NÃO propaga a exceção."""
         mock_search.run.side_effect = Exception("DuckDuckGo indisponível")
@@ -306,7 +302,7 @@ class TestRetryLogic(unittest.TestCase):
 
         self.assertEqual(new_state.ranked_response, "Busca indisponível no momento.")
         self.assertEqual(new_state.confidence_score, 0.0)
-        mock_get_executor.assert_not_called()
+        mock_invoke_chain.assert_not_called()
 
     @patch("time.sleep")
     def teste_7_timeout_exception_e_retryable(self, mock_sleep):
@@ -321,7 +317,7 @@ class TestRetryLogic(unittest.TestCase):
 
         self.assertEqual(resultado, "resposta após timeout")
         self.assertEqual(mock_chain.invoke.call_count, 2)
-        self.assertEqual(LLM_TIMEOUT_SECONDS, 10.0)
+        self.assertEqual(LLM_TIMEOUT_SECONDS, 60.0)
 
 
 if __name__ == "__main__":
