@@ -541,6 +541,14 @@ class TestSanitizarNomeArquivo(unittest.TestCase):
         with self.assertRaises(rag.RAGSecurityError):
             _sanitizar_nome_arquivo("")
 
+    def teste_5_sanitizar_rejeita_nomes_reservados_windows(self):
+        """Nomes reservados do Windows levantam RAGSecurityError."""
+        reserved = ["CON.json", "PRN.json", "AUX.json", "NUL.json", "COM1.json", "LPT9.json"]
+        for name in reserved:
+            with self.subTest(name=name):
+                with self.assertRaises(rag.RAGSecurityError):
+                    _sanitizar_nome_arquivo(name)
+
 
 class TestSalvarDocumentoEnviado(unittest.TestCase):
     """Testes para salvar_documento_enviado."""

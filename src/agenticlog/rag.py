@@ -42,6 +42,11 @@ logger = logging.getLogger(__name__)
 vectordb = None
 
 INVALID_FILENAME_CHARS: frozenset[str] = frozenset('<>:"/\\|?*\x00')
+WINDOWS_RESERVED_NAMES: frozenset[str] = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{i}" for i in range(1, 10)}
+    | {f"LPT{i}" for i in range(1, 10)}
+)
 
 
 class RAGSecurityError(Exception):
@@ -148,6 +153,11 @@ def _sanitizar_nome_arquivo(filename: str) -> str:
     if basename != filename or ".." in filename:
         raise RAGSecurityError(
             f"Nome de arquivo com path traversal detectado: {filename!r}"
+        )
+    stem = Path(basename).stem.upper()
+    if stem in WINDOWS_RESERVED_NAMES:
+        raise RAGSecurityError(
+            f"Nome de arquivo reservado pelo Windows: {filename!r}"
         )
     return basename
 
