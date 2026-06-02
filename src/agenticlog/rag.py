@@ -32,6 +32,8 @@ from agenticlog.config import (
     MAX_JSON_FILES,
     MAX_JSON_FILE_SIZE_MB,
     FORBIDDEN_JSON_KEYS,
+    INVALID_FILENAME_CHARS,
+    WINDOWS_RESERVED_NAMES,
     LOG_LEVEL,
     LOG_FORMAT,
     _JsonFormatter,
@@ -40,13 +42,6 @@ from agenticlog.config import (
 logger = logging.getLogger(__name__)
 
 vectordb = None
-
-INVALID_FILENAME_CHARS: frozenset[str] = frozenset('<>:"/\\|?*\x00')
-WINDOWS_RESERVED_NAMES: frozenset[str] = frozenset(
-    {"CON", "PRN", "AUX", "NUL"}
-    | {f"COM{i}" for i in range(1, 10)}
-    | {f"LPT{i}" for i in range(1, 10)}
-)
 
 
 class RAGSecurityError(Exception):
