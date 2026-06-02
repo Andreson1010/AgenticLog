@@ -10,10 +10,12 @@ Responsabilidades:
 Execute: python -m agenticlog.rag
 """
 
+import hashlib
 import json
 import logging
 import shutil
 import tempfile
+import uuid
 from pathlib import Path
 
 from langchain_chroma import Chroma
@@ -36,6 +38,7 @@ from agenticlog.config import (
     LOG_FORMAT,
     _JsonFormatter,
 )
+from agenticlog.agent import invalidar_vector_db  # noqa: E402 — import after config to avoid circular
 
 logger = logging.getLogger(__name__)
 
@@ -257,6 +260,152 @@ def cria_vectordb():
     )
 
     logger.info("Banco de Dados Vetorial Criado com sucesso!")
+
+
+def _computar_hash_conteudo(conteudo: bytes) -> str:
+    """Computa o hash SHA-256 do conteúdo binário do arquivo.
+
+    Entrada: conteudo — bytes do arquivo.
+    Saída: string hexadecimal de 64 caracteres (SHA-256).
+    """
+    return hashlib.sha256(conteudo).hexdigest()
+
+
+def adicionar_documento_incrementalmente(
+    filename: str,
+    conteudo: bytes,
+) -> dict[str, str]:
+    """Adiciona chunks de um novo arquivo JSON ao ChromaDB existente sem reconstrução.
+
+    Entrada:
+      filename — nome original do arquivo (str).
+      conteudo — conteúdo binário do arquivo (bytes).
+    Saída: dict com chaves "status" e "mensagem":
+      {"status": "adicionado", "mensagem": "Arquivo <nome> adicionado com sucesso. N chunks inseridos."}
+      {"status": "duplicado", "mensagem": "Arquivo <nome> já está presente na base vetorial."}
+      {"status": "hash_diferente", "mensagem": "Arquivo <nome> já existe com conteúdo diferente. Remoção e substituição não são suportadas nesta versão."}
+    Lança RAGSecurityError em qualquer falha de validação de segurança.
+    Lança Exception se a ingestão falhar após rollback.
+    """
+    # --- validações de segurança ---
+    if Path(filename).suffix.lower() != ".json":
+        raise RAGSecurityError("Apenas arquivos .json são aceitos.")
+
+    if len(conteudo) > MAX_JSON_FILE_SIZE_MB * 1024 * 1024:
+        raise RAGSecurityError(
+            f"Arquivo excede o limite de {MAX_JSON_FILE_SIZE_MB} MB."
+        )
+
+    safe_name = _sanitizar_nome_arquivo(filename)
+
+    existing_count = len(list(DIR_DOCUMENTS.glob("*.json")))
+    arquivo_ja_existia = (DIR_DOCUMENTS / safe_name).exists()
+    if not arquivo_ja_existia and existing_count + 1 > MAX_JSON_FILES:
+        raise RAGSecurityError(
+            f"Limite de {MAX_JSON_FILES} arquivos atingido."
+        )
+
+    # --- hash e save condicional ---
+    hash_str = _computar_hash_conteudo(conteudo)
+    saved_path = DIR_DOCUMENTS / safe_name
+
+    if arquivo_ja_existia:
+        # arquivo já no disco — não re-escreve, vai direto ao dedup
+        pass
+    else:
+        # salva via temp + move (valida chaves proibidas antes de mover)
+        tmp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
+                tmp.write(conteudo)
+                tmp_path = Path(tmp.name)
+            _valida_json_sem_chaves_proibidas(tmp_path)
+            shutil.move(str(tmp_path), saved_path)
+            tmp_path = None  # moved — no cleanup needed
+        finally:
+            if tmp_path is not None:
+                tmp_path.unlink(missing_ok=True)
+
+    # --- abre (ou cria) coleção ChromaDB ---
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    embedding_model = HuggingFaceEmbeddings(
+        model_name=EMBEDDING_MODEL,
+        model_kwargs={"device": device},
+        encode_kwargs={"normalize_embeddings": True},
+    )
+    vectordb_instance = Chroma(
+        persist_directory=str(DIR_VECTORDB),
+        embedding_function=embedding_model,
+    )
+
+    # --- dedup check ---
+    existing = vectordb_instance.get(
+        where={"source": {"$eq": str(saved_path)}}
+    )
+    if existing["ids"]:
+        existing_hash = existing["metadatas"][0].get("content_hash")
+        if existing_hash == hash_str:
+            if not arquivo_ja_existia:
+                saved_path.unlink(missing_ok=True)
+            return {
+                "status": "duplicado",
+                "mensagem": f"Arquivo {safe_name} já está presente na base vetorial.",
+            }
+        else:
+            if not arquivo_ja_existia:
+                saved_path.unlink(missing_ok=True)
+            return {
+                "status": "hash_diferente",
+                "mensagem": (
+                    f"Arquivo {safe_name} já existe com conteúdo diferente. "
+                    "Remoção e substituição não são suportadas nesta versão."
+                ),
+            }
+
+    # --- chunking ---
+    jq_schema = 'to_entries | map(.key + ": " + .value) | join("\\n")'
+    loader = JSONLoader(str(saved_path), jq_schema=jq_schema)
+    documents = loader.load()
+
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
+    )
+    chunks = text_splitter.split_documents(documents)
+
+    if not chunks:
+        logger.warning("Documento %s produziu 0 chunks após splitting.", safe_name)
+        return {
+            "status": "adicionado",
+            "mensagem": f"Arquivo {safe_name} adicionado. 0 chunks gerados.",
+        }
+
+    # --- anexar content_hash a cada chunk ---
+    for chunk in chunks:
+        chunk.metadata["content_hash"] = hash_str
+
+    # --- ingestão com rollback ---
+    chunk_ids = [uuid.uuid4().hex for _ in chunks]
+    try:
+        vectordb_instance.add_documents(chunks, ids=chunk_ids)
+    except Exception as ingestion_exc:
+        try:
+            vectordb_instance.delete(ids=chunk_ids)
+        except Exception as rollback_exc:
+            logger.critical(
+                "Rollback falhou após erro de ingestão. IDs órfãos: %s. Erro de rollback: %s",
+                chunk_ids,
+                rollback_exc,
+            )
+        saved_path.unlink(missing_ok=True)
+        raise ingestion_exc
+
+    invalidar_vector_db()
+
+    return {
+        "status": "adicionado",
+        "mensagem": f"Arquivo {safe_name} adicionado com sucesso. {len(chunks)} chunks inseridos.",
+    }
 
 
 def _executar_main() -> None:

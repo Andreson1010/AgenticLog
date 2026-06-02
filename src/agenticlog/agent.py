@@ -359,3 +359,14 @@ workflow.add_edge("generate_multiple", "evaluate_similarity")
 workflow.add_edge("evaluate_similarity", "rank_responses")
 
 agent_workflow = workflow.compile()
+
+
+def invalidar_vector_db() -> None:
+    """Invalida o singleton _vector_db para que a próxima chamada a _get_vector_db() reconecte ao ChromaDB.
+
+    Entrada: nenhuma.
+    Saída: nenhuma.
+    Efeito colateral: atribui None a _vector_db global.
+    """
+    global _vector_db
+    _vector_db = None

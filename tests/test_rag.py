@@ -29,6 +29,8 @@ from agenticlog.rag import (
     _sanitizar_nome_arquivo,
     salvar_documento_enviado,
     reconstruir_vectordb,
+    _computar_hash_conteudo,
+    adicionar_documento_incrementalmente,
 )
 import agenticlog.rag as rag
 import agenticlog.config as config
@@ -621,6 +623,223 @@ class TestReconstruirVectordb(unittest.TestCase):
             with self.assertRaises(Exception) as ctx:
                 reconstruir_vectordb()
         self.assertEqual(str(ctx.exception), "fail")
+
+
+class TestComputarHash(unittest.TestCase):
+    """Testes para _computar_hash_conteudo — T-02."""
+
+    def teste_1_hash_deterministico(self):
+        """Mesmo input deve gerar mesmo hash com 64 caracteres."""
+        h1 = _computar_hash_conteudo(b"hello")
+        h2 = _computar_hash_conteudo(b"hello")
+        self.assertEqual(h1, h2)
+        self.assertEqual(len(h1), 64)
+
+    def teste_2_hash_diferente_para_conteudo_diferente(self):
+        """Conteúdos distintos devem gerar hashes distintos."""
+        h1 = _computar_hash_conteudo(b"hello")
+        h2 = _computar_hash_conteudo(b"world")
+        self.assertNotEqual(h1, h2)
+
+
+class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
+    """Testes para adicionar_documento_incrementalmente — T-03 a T-06."""
+
+    def _valid_json_bytes(self) -> bytes:
+        return json.dumps({"pedido": "P001", "status": "entregue"}).encode()
+
+    # -----------------------------------------------------------------------
+    # T-03: validações de segurança (RED antes de implementar)
+    # -----------------------------------------------------------------------
+
+    def teste_5_rejeita_extensao_invalida(self):
+        """Arquivo com extensão não-.json levanta RAGSecurityError."""
+        with self.assertRaises(rag.RAGSecurityError):
+            adicionar_documento_incrementalmente("bad.txt", b"{}")
+
+    def teste_6_rejeita_arquivo_grande_demais(self):
+        """Arquivo maior que MAX_JSON_FILE_SIZE_MB levanta RAGSecurityError."""
+        from agenticlog.config import MAX_JSON_FILE_SIZE_MB
+        big = b"x" * (MAX_JSON_FILE_SIZE_MB * 1024 * 1024 + 1)
+        with self.assertRaises(rag.RAGSecurityError):
+            adicionar_documento_incrementalmente("big.json", big)
+
+    def teste_6b_rejeita_limite_arquivos(self):
+        """Quando DIR_DOCUMENTS já tem MAX_JSON_FILES arquivos, levanta RAGSecurityError."""
+        from agenticlog.config import MAX_JSON_FILES
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            # criar MAX_JSON_FILES arquivos fictícios
+            for i in range(MAX_JSON_FILES):
+                (tmp_path / f"arquivo_{i:04d}.json").write_bytes(b"{}")
+            with patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path):
+                with self.assertRaises(rag.RAGSecurityError):
+                    adicionar_documento_incrementalmente("novo.json", self._valid_json_bytes())
+
+    # -----------------------------------------------------------------------
+    # T-04: dedup — duplicata (mesmo hash)
+    # -----------------------------------------------------------------------
+
+    def teste_3_detecta_duplicata_mesmo_hash(self):
+        """Mesmo arquivo, mesmo hash: retorna status 'duplicado', sem adicionar chunks."""
+        import hashlib
+        conteudo = self._valid_json_bytes()
+        hash_str = hashlib.sha256(conteudo).hexdigest()
+        mock_vectordb = MagicMock()
+        mock_vectordb.get.return_value = {
+            "ids": ["id1"],
+            "metadatas": [{"content_hash": hash_str, "source": "/some/path/doc.json"}],
+        }
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            # arquivo já existe em disco — bypass do save
+            (tmp_path / "doc.json").write_bytes(conteudo)
+            with patch("agenticlog.rag.Chroma", return_value=mock_vectordb), \
+                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path), \
+                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"):
+                result = adicionar_documento_incrementalmente("doc.json", conteudo)
+        self.assertEqual(result["status"], "duplicado")
+        mock_vectordb.add_documents.assert_not_called()
+
+    # -----------------------------------------------------------------------
+    # T-04: dedup — hash diferente
+    # -----------------------------------------------------------------------
+
+    def teste_4_detecta_hash_diferente(self):
+        """Mesmo nome, hash diferente: retorna status 'hash_diferente', sem chunks."""
+        import hashlib
+        conteudo_novo = self._valid_json_bytes()
+        conteudo_existente = b'{"pedido": "OUTRO"}'
+        hash_existente = hashlib.sha256(conteudo_existente).hexdigest()
+        mock_vectordb = MagicMock()
+        mock_vectordb.get.return_value = {
+            "ids": ["id1"],
+            "metadatas": [{"content_hash": hash_existente, "source": "/some/path/doc.json"}],
+        }
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            # arquivo no disco com conteúdo diferente
+            (tmp_path / "doc.json").write_bytes(conteudo_existente)
+            with patch("agenticlog.rag.Chroma", return_value=mock_vectordb), \
+                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path), \
+                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"):
+                result = adicionar_documento_incrementalmente("doc.json", conteudo_novo)
+        self.assertEqual(result["status"], "hash_diferente")
+        mock_vectordb.add_documents.assert_not_called()
+
+    # -----------------------------------------------------------------------
+    # T-05: happy path — novo arquivo adicionado
+    # -----------------------------------------------------------------------
+
+    def teste_1_adiciona_novo_arquivo_retorna_adicionado(self):
+        """Novo arquivo: chunks adicionados, status 'adicionado', invalidar_vector_db chamado."""
+        mock_vectordb = MagicMock()
+        mock_vectordb.get.return_value = {"ids": [], "metadatas": []}
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            with patch("agenticlog.rag.Chroma", return_value=mock_vectordb), \
+                 patch("agenticlog.rag.invalidar_vector_db") as mock_invalidar, \
+                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path), \
+                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"), \
+                 patch("agenticlog.rag.HuggingFaceEmbeddings"):
+                result = adicionar_documento_incrementalmente("pedido.json", self._valid_json_bytes())
+        self.assertEqual(result["status"], "adicionado")
+        self.assertIn("chunks", result["mensagem"])
+        mock_invalidar.assert_called_once()
+
+    def teste_2_primeira_ingestao_sem_colecao_existente(self):
+        """Sem coleção existente (nova pasta): cria coleção e ingere sem erro."""
+        mock_vectordb = MagicMock()
+        mock_vectordb.get.return_value = {"ids": [], "metadatas": []}
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            vectordb_path = tmp_path / "vectordb"
+            # vectordb_path não existe ainda
+            self.assertFalse(vectordb_path.exists())
+            with patch("agenticlog.rag.Chroma", return_value=mock_vectordb), \
+                 patch("agenticlog.rag.invalidar_vector_db"), \
+                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path), \
+                 patch("agenticlog.rag.DIR_VECTORDB", new=vectordb_path), \
+                 patch("agenticlog.rag.HuggingFaceEmbeddings"):
+                result = adicionar_documento_incrementalmente("primeiro.json", self._valid_json_bytes())
+        self.assertEqual(result["status"], "adicionado")
+
+    # -----------------------------------------------------------------------
+    # T-05: zero chunks
+    # -----------------------------------------------------------------------
+
+    def teste_9_zero_chunks_retorna_adicionado_com_zero(self):
+        """Documento que produz zero chunks: warning logado, retorna adicionado com 0 chunks."""
+        mock_vectordb = MagicMock()
+        mock_vectordb.get.return_value = {"ids": [], "metadatas": []}
+        mock_splitter = MagicMock()
+        mock_splitter.split_documents.return_value = []
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            with patch("agenticlog.rag.Chroma", return_value=mock_vectordb), \
+                 patch("agenticlog.rag.invalidar_vector_db"), \
+                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path), \
+                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"), \
+                 patch("agenticlog.rag.HuggingFaceEmbeddings"), \
+                 patch("agenticlog.rag.RecursiveCharacterTextSplitter", return_value=mock_splitter), \
+                 self.assertLogs("agenticlog.rag", level="WARNING") as log_ctx:
+                result = adicionar_documento_incrementalmente("vazio.json", self._valid_json_bytes())
+        self.assertEqual(result["status"], "adicionado")
+        self.assertIn("0", result["mensagem"])
+        self.assertTrue(any("chunk" in m.lower() for m in log_ctx.output))
+        mock_vectordb.add_documents.assert_not_called()
+
+    # -----------------------------------------------------------------------
+    # T-06: rollback em falha de ingestão
+    # -----------------------------------------------------------------------
+
+    def teste_7_falha_no_add_dispara_rollback(self):
+        """Exceção no add_documents: delete chamado com IDs pré-gerados, exceção re-levantada."""
+        mock_vectordb = MagicMock()
+        mock_vectordb.get.return_value = {"ids": [], "metadatas": []}
+        mock_vectordb.add_documents.side_effect = RuntimeError("embed fail")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            with patch("agenticlog.rag.Chroma", return_value=mock_vectordb), \
+                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path), \
+                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"), \
+                 patch("agenticlog.rag.HuggingFaceEmbeddings"):
+                with self.assertRaises(RuntimeError):
+                    adicionar_documento_incrementalmente("doc.json", self._valid_json_bytes())
+        mock_vectordb.delete.assert_called_once()
+        # arquivo não deve permanecer em disco após rollback
+        self.assertFalse((tmp_path / "doc.json").exists())
+
+    def teste_8_rollback_falha_loga_critico_e_relevanva_original(self):
+        """Se delete também falhar: CRITICAL logado com IDs órfãos, exceção original re-levantada."""
+        mock_vectordb = MagicMock()
+        mock_vectordb.get.return_value = {"ids": [], "metadatas": []}
+        mock_vectordb.add_documents.side_effect = RuntimeError("embed fail")
+        mock_vectordb.delete.side_effect = RuntimeError("rollback fail")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            with patch("agenticlog.rag.Chroma", return_value=mock_vectordb), \
+                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path), \
+                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"), \
+                 patch("agenticlog.rag.HuggingFaceEmbeddings"), \
+                 self.assertLogs("agenticlog.rag", level="CRITICAL") as log_ctx:
+                with self.assertRaises(RuntimeError) as exc_ctx:
+                    adicionar_documento_incrementalmente("doc.json", self._valid_json_bytes())
+        self.assertIn("embed fail", str(exc_ctx.exception))
+        self.assertTrue(any("órfãos" in m or "orfaos" in m.lower() for m in log_ctx.output))
+
+    # -----------------------------------------------------------------------
+    # T-05: segurança — arquivo com chave proibida
+    # -----------------------------------------------------------------------
+
+    def teste_5b_rejeita_chave_proibida(self):
+        """JSON com chave proibida 'lc' levanta RAGSecurityError."""
+        conteudo = json.dumps({"lc": "bad"}).encode()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            with patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path):
+                with self.assertRaises(rag.RAGSecurityError):
+                    adicionar_documento_incrementalmente("malicioso.json", conteudo)
 
 
 if __name__ == "__main__":
