@@ -12,33 +12,36 @@ from agenticlog import (
     agent_workflow,
     check_lmstudio_health,
 )
-from agenticlog.rag import salvar_documento_enviado, reconstruir_vectordb, RAGSecurityError
+from agenticlog.rag import adicionar_documento_incrementalmente, RAGSecurityError
 
 def _ingerir_documento(uploaded_file: object) -> None:
-    """Salva o arquivo enviado e reconstrói o banco vetorial.
+    """Adiciona o arquivo enviado incrementalmente ao banco vetorial.
 
     Entrada: uploaded_file — objeto UploadedFile do Streamlit.
-    Saída: nenhuma (efeitos colaterais: salva arquivo, reconstrói vectordb, exibe feedback na UI).
+    Saída: nenhuma (efeitos colaterais: salva arquivo, adiciona chunks ao vectordb, exibe feedback na UI).
     """
     conteudo: bytes = uploaded_file.getvalue()
     filename: str = uploaded_file.name
 
     try:
-        saved_path = salvar_documento_enviado(filename, conteudo)
+        with st.spinner("Adicionando documento à base vetorial..."):
+            resultado = adicionar_documento_incrementalmente(filename, conteudo)
     except RAGSecurityError as e:
         st.error(str(e))
         return
-
-    try:
-        with st.spinner("Reconstruindo base vetorial..."):
-            reconstruir_vectordb()
     except Exception as e:
-        saved_path.unlink(missing_ok=True)
-        st.error(f"Erro ao reconstruir base vetorial. Arquivo removido. Detalhe: {e}")
+        st.error(f"Erro ao adicionar documento. Detalhe: {e}")
         return
 
-    st.success("Documento ingerido com sucesso.")
-    st.rerun()
+    status = resultado["status"]
+    mensagem = resultado["mensagem"]
+    if status == "adicionado":
+        st.success(mensagem)
+        st.rerun()
+    elif status == "duplicado":
+        st.info(mensagem)
+    elif status == "hash_diferente":
+        st.warning(mensagem)
 
 
 # Define o título, ícone e layout inicial da página Streamlit
@@ -66,7 +69,7 @@ st.sidebar.title("Instruções")
 st.sidebar.write("""
 - Digite perguntas específicas sobre logística e supply chain para obter respostas detalhadas.
 - O assistente de IA vai utilizar a base de dados do RAG para gerar respostas customizadas.
-- Documentos, contratos e procedimentos complementares podem ser usados para aperfeiçoar o sistema de RAG (que nesse caso deve ser recriado com cada novo documento).
+- Documentos, contratos e procedimentos complementares podem ser usados para aperfeiçoar o sistema de RAG.
 - IA Generativa comete erros. SEMPRE valide as respostas.
 """)
 
