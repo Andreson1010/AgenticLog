@@ -16,8 +16,10 @@ import shutil
 import tempfile
 from pathlib import Path
 
+import fitz  # PyMuPDF
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import DirectoryLoader, JSONLoader
+from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 import torch
@@ -31,6 +33,7 @@ from agenticlog.config import (
     CHUNK_OVERLAP,
     MAX_JSON_FILES,
     MAX_JSON_FILE_SIZE_MB,
+    MAX_DOCUMENT_FILE_SIZE_MB,
     FORBIDDEN_JSON_KEYS,
     INVALID_FILENAME_CHARS,
     WINDOWS_RESERVED_NAMES,
@@ -179,7 +182,9 @@ def salvar_documento_enviado(filename: str, conteudo: bytes) -> Path:
     if (DIR_DOCUMENTS / safe_name).exists():
         raise RAGSecurityError("Arquivo com esse nome já existe.")
 
-    if len(list(DIR_DOCUMENTS.glob("*.json"))) + 1 > MAX_JSON_FILES:
+    pdf_count = len(list(DIR_DOCUMENTS.glob("*.pdf")))
+    json_count = len(list(DIR_DOCUMENTS.glob("*.json")))
+    if pdf_count + json_count + 1 > MAX_JSON_FILES:
         raise RAGSecurityError(
             f"Limite de {MAX_JSON_FILES} arquivos atingido."
         )
@@ -192,6 +197,81 @@ def salvar_documento_enviado(filename: str, conteudo: bytes) -> Path:
         _valida_json_sem_chaves_proibidas(tmp_path)
         shutil.move(str(tmp_path), DIR_DOCUMENTS / safe_name)
         tmp_path = None  # moved — no cleanup needed
+    finally:
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
+
+    return DIR_DOCUMENTS / safe_name
+
+
+def extrair_texto_pdf(path: Path) -> str:
+    """Extrai texto de um arquivo PDF usando PyMuPDF (fitz).
+
+    Entrada: path — Path para um arquivo PDF já salvo em disco.
+    Saída: string com todo o texto extraível (páginas concatenadas).
+    Lança RAGSecurityError se:
+      - fitz.open() lança qualquer Exception (arquivo corrompido).
+      - doc.needs_pass == True (PDF protegido por senha).
+      - Texto extraído tem zero caracteres não-brancos (PDF somente-imagem).
+    """
+    try:
+        doc_handle = fitz.open(str(path))
+    except fitz.FileDataError:
+        raise RAGSecurityError("PDF inválido ou corrompido.")
+
+    with doc_handle:
+        if doc_handle.needs_pass:
+            raise RAGSecurityError("PDF protegido por senha.")
+        texto = "".join(page.get_text() for page in doc_handle)
+
+    if not texto.strip():
+        raise RAGSecurityError("PDF não contém texto extraível (somente imagem).")
+
+    return texto
+
+
+def salvar_pdf_enviado(filename: str, conteudo: bytes) -> Path:
+    """Valida e persiste um arquivo PDF enviado pelo operador.
+
+    Entrada:
+      filename — nome original do arquivo (str).
+      conteudo — conteúdo binário do arquivo (bytes).
+    Saída: Path do arquivo salvo em DIR_DOCUMENTS.
+    Lança RAGSecurityError em qualquer falha de validação.
+    """
+    if Path(filename).suffix.lower() != ".pdf":
+        raise RAGSecurityError("Apenas arquivos .pdf são aceitos.")
+
+    if len(conteudo) > MAX_DOCUMENT_FILE_SIZE_MB * 1024 * 1024:
+        raise RAGSecurityError(
+            f"Arquivo excede o limite de {MAX_DOCUMENT_FILE_SIZE_MB} MB."
+        )
+
+    safe_name = _sanitizar_nome_arquivo(filename)
+
+    if (DIR_DOCUMENTS / safe_name).exists():
+        raise RAGSecurityError("Arquivo com esse nome já existe.")
+
+    pdf_count = len(list(DIR_DOCUMENTS.glob("*.pdf")))
+    json_count = len(list(DIR_DOCUMENTS.glob("*.json")))
+    if pdf_count + json_count + 1 > MAX_JSON_FILES:
+        raise RAGSecurityError(
+            f"Limite de {MAX_JSON_FILES} arquivos atingido."
+        )
+
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            tmp.write(conteudo)
+            tmp_path = Path(tmp.name)
+        extrair_texto_pdf(tmp_path)
+        shutil.move(str(tmp_path), DIR_DOCUMENTS / safe_name)
+        tmp_path = None  # moved — no cleanup needed
+    except RAGSecurityError:
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
+            tmp_path = None
+        raise
     finally:
         if tmp_path is not None:
             tmp_path.unlink(missing_ok=True)
@@ -236,7 +316,17 @@ def cria_vectordb():
         loader_cls=JSONLoader,
         loader_kwargs={"jq_schema": jq_schema},
     )
-    documents = loader.load()
+    json_docs = loader.load()
+
+    pdf_docs = []
+    for pdf_path in DIR_DOCUMENTS.glob("*.pdf"):
+        try:
+            texto = extrair_texto_pdf(pdf_path)
+            pdf_docs.append(Document(page_content=texto, metadata={"source": str(pdf_path)}))
+        except RAGSecurityError as e:
+            logger.error("PDF corrompido ignorado durante reconstrução: %s — %s", pdf_path.name, e)
+
+    documents = json_docs + pdf_docs
 
     if not documents:
         logger.warning("Nenhum documento encontrado.")

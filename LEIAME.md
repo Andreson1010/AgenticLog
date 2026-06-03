@@ -112,6 +112,14 @@ Após ativar, o prompt mostrará `(.venv)` indicando que o ambiente está ativo.
 python -m agenticlog.rag
 ```
 
+
+
+
+
+
+
+
+
 **Rodar a interface Streamlit:**
 
 ```bash

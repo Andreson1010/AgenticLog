@@ -12,19 +12,25 @@ from agenticlog import (
     agent_workflow,
     check_lmstudio_health,
 )
-from agenticlog.rag import salvar_documento_enviado, reconstruir_vectordb, RAGSecurityError
+from pathlib import Path
+from agenticlog.rag import salvar_documento_enviado, salvar_pdf_enviado, reconstruir_vectordb, RAGSecurityError
 
 def _ingerir_documento(uploaded_file: object) -> None:
     """Salva o arquivo enviado e reconstrói o banco vetorial.
 
     Entrada: uploaded_file — objeto UploadedFile do Streamlit.
     Saída: nenhuma (efeitos colaterais: salva arquivo, reconstrói vectordb, exibe feedback na UI).
+    Suporta extensões .json e .pdf (verificação case-insensitive).
     """
     conteudo: bytes = uploaded_file.getvalue()
     filename: str = uploaded_file.name
 
     try:
-        saved_path = salvar_documento_enviado(filename, conteudo)
+        suffix = Path(filename).suffix.lower()
+        if suffix == ".pdf":
+            saved_path = salvar_pdf_enviado(filename, conteudo)
+        else:
+            saved_path = salvar_documento_enviado(filename, conteudo)
     except RAGSecurityError as e:
         st.error(str(e))
         return
@@ -78,7 +84,7 @@ if st.sidebar.button("Suporte"):
 
 # Expander para ingestão de novos documentos JSON no banco vetorial
 with st.sidebar.expander("Adicionar Documento"):
-    uploaded_file = st.file_uploader("Selecione um arquivo JSON", type=None)
+    uploaded_file = st.file_uploader("Selecione um arquivo JSON ou PDF", type=None)
     if st.button("Ingerir Documento"):
         if uploaded_file is None:
             st.warning("Selecione um arquivo antes de ingerir.")
