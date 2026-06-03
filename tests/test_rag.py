@@ -28,6 +28,8 @@ from agenticlog.rag import (
     _executar_main,
     _sanitizar_nome_arquivo,
     salvar_documento_enviado,
+    salvar_pdf_enviado,
+    extrair_texto_pdf,
     reconstruir_vectordb,
 )
 import agenticlog.rag as rag
@@ -199,16 +201,18 @@ class TestCriaVectordb(unittest.TestCase):
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.DIR_DOCUMENTS")
     @patch("agenticlog.rag.DirectoryLoader")
     @patch("agenticlog.rag._valida_arquivos_json")
     @patch("agenticlog.rag._valida_path_documentos")
     def test_cria_vectordb_sem_documentos_retorna_cedo(
-        self, mock_valida_path, mock_valida_json, mock_loader, mock_splitter, mock_emb, mock_chroma
+        self, mock_valida_path, mock_valida_json, mock_loader, mock_dir, mock_splitter, mock_emb, mock_chroma
     ):
         """Quando não há documentos, cria_vectordb retorna sem criar Chroma."""
         mock_loader_instance = MagicMock()
         mock_loader_instance.load.return_value = []
         mock_loader.return_value = mock_loader_instance
+        mock_dir.glob.return_value = []
 
         cria_vectordb()
 
@@ -220,11 +224,12 @@ class TestCriaVectordb(unittest.TestCase):
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.DIR_DOCUMENTS")
     @patch("agenticlog.rag.DirectoryLoader")
     @patch("agenticlog.rag._valida_arquivos_json")
     @patch("agenticlog.rag._valida_path_documentos")
     def test_cria_vectordb_com_documentos_cria_chroma(
-        self, mock_valida_path, mock_valida_json, mock_loader, mock_splitter, mock_emb, mock_chroma
+        self, mock_valida_path, mock_valida_json, mock_loader, mock_dir, mock_splitter, mock_emb, mock_chroma
     ):
         """Com documentos válidos, cria_vectordb chama Chroma.from_documents."""
         from langchain_core.documents import Document
@@ -234,6 +239,7 @@ class TestCriaVectordb(unittest.TestCase):
             Document(page_content="Conteúdo de teste"),
         ]
         mock_loader.return_value = mock_loader_instance
+        mock_dir.glob.return_value = []  # nenhum PDF
 
         mock_splitter_instance = MagicMock()
         mock_splitter_instance.split_documents.return_value = [
@@ -255,11 +261,12 @@ class TestLogging(unittest.TestCase):
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.DIR_DOCUMENTS")
     @patch("agenticlog.rag.DirectoryLoader")
     @patch("agenticlog.rag._valida_arquivos_json")
     @patch("agenticlog.rag._valida_path_documentos")
     def teste_1_log_info_gerando_embeddings(
-        self, mock_valida_path, mock_valida_json, mock_loader,
+        self, mock_valida_path, mock_valida_json, mock_loader, mock_dir,
         mock_splitter, mock_emb, mock_chroma
     ):
         """assertLogs INFO captura registro contendo 'Gerando' ao executar cria_vectordb (AC-04)."""
@@ -268,6 +275,7 @@ class TestLogging(unittest.TestCase):
         mock_loader_instance = MagicMock()
         mock_loader_instance.load.return_value = [Document(page_content="doc")]
         mock_loader.return_value = mock_loader_instance
+        mock_dir.glob.return_value = []
 
         mock_splitter_instance = MagicMock()
         mock_splitter_instance.split_documents.return_value = [Document(page_content="chunk")]
@@ -284,11 +292,12 @@ class TestLogging(unittest.TestCase):
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.DIR_DOCUMENTS")
     @patch("agenticlog.rag.DirectoryLoader")
     @patch("agenticlog.rag._valida_arquivos_json")
     @patch("agenticlog.rag._valida_path_documentos")
     def teste_2_log_info_criado_com_sucesso(
-        self, mock_valida_path, mock_valida_json, mock_loader,
+        self, mock_valida_path, mock_valida_json, mock_loader, mock_dir,
         mock_splitter, mock_emb, mock_chroma
     ):
         """assertLogs INFO captura registro contendo 'Criado' ao finalizar cria_vectordb (AC-04)."""
@@ -297,6 +306,7 @@ class TestLogging(unittest.TestCase):
         mock_loader_instance = MagicMock()
         mock_loader_instance.load.return_value = [Document(page_content="doc")]
         mock_loader.return_value = mock_loader_instance
+        mock_dir.glob.return_value = []
 
         mock_splitter_instance = MagicMock()
         mock_splitter_instance.split_documents.return_value = [Document(page_content="chunk")]
@@ -310,16 +320,18 @@ class TestLogging(unittest.TestCase):
             f"Esperava 'Criado' nos logs, encontrado: {cm.output}",
         )
 
+    @patch("agenticlog.rag.DIR_DOCUMENTS")
     @patch("agenticlog.rag.DirectoryLoader")
     @patch("agenticlog.rag._valida_arquivos_json")
     @patch("agenticlog.rag._valida_path_documentos")
     def teste_3_log_warning_nenhum_documento(
-        self, mock_valida_path, mock_valida_json, mock_loader
+        self, mock_valida_path, mock_valida_json, mock_loader, mock_dir
     ):
         """assertLogs WARNING captura registro com 'Nenhum documento' quando loader retorna [] (AC-07)."""
         mock_loader_instance = MagicMock()
         mock_loader_instance.load.return_value = []
         mock_loader.return_value = mock_loader_instance
+        mock_dir.glob.return_value = []
 
         with self.assertLogs("agenticlog.rag", level=logging.WARNING) as cm:
             cria_vectordb()
@@ -332,11 +344,12 @@ class TestLogging(unittest.TestCase):
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.DIR_DOCUMENTS")
     @patch("agenticlog.rag.DirectoryLoader")
     @patch("agenticlog.rag._valida_arquivos_json")
     @patch("agenticlog.rag._valida_path_documentos")
     def teste_4_sem_stdout_quando_importado_como_biblioteca(
-        self, mock_valida_path, mock_valida_json, mock_loader,
+        self, mock_valida_path, mock_valida_json, mock_loader, mock_dir,
         mock_splitter, mock_emb, mock_chroma
     ):
         """Nenhuma saída em stdout quando cria_vectordb() chamada como biblioteca (AC-01)."""
@@ -346,6 +359,7 @@ class TestLogging(unittest.TestCase):
         mock_loader_instance = MagicMock()
         mock_loader_instance.load.return_value = [Document(page_content="doc")]
         mock_loader.return_value = mock_loader_instance
+        mock_dir.glob.return_value = []
 
         mock_splitter_instance = MagicMock()
         mock_splitter_instance.split_documents.return_value = [Document(page_content="chunk")]
@@ -629,6 +643,168 @@ class TestReconstruirVectordb(unittest.TestCase):
             with self.assertRaises(Exception) as ctx:
                 reconstruir_vectordb()
         self.assertEqual(str(ctx.exception), "fail")
+
+
+class TestExtrairTextoPdf(unittest.TestCase):
+    """Testes para extrair_texto_pdf."""
+
+    @patch("agenticlog.rag.fitz.open")
+    def teste_1_extrair_pdf_valido_retorna_texto(self, mock_fitz_open):
+        """PDF com texto retorna string não-vazia."""
+        mock_page = MagicMock()
+        mock_page.get_text.return_value = "texto do contrato"
+        mock_doc = MagicMock()
+        mock_doc.needs_pass = False
+        mock_doc.__iter__ = MagicMock(return_value=iter([mock_page]))
+        mock_fitz_open.return_value = mock_doc
+
+        resultado = extrair_texto_pdf(Path("qualquer.pdf"))
+
+        self.assertIn("texto do contrato", resultado)
+
+    @patch("agenticlog.rag.fitz.open")
+    def teste_2_extrair_pdf_com_senha_lanca_erro(self, mock_fitz_open):
+        """PDF com senha lança RAGSecurityError."""
+        mock_doc = MagicMock()
+        mock_doc.needs_pass = True
+        mock_fitz_open.return_value = mock_doc
+
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
+            extrair_texto_pdf(Path("qualquer.pdf"))
+        self.assertIn("senha", str(ctx.exception))
+
+    @patch("agenticlog.rag.fitz.open")
+    def teste_3_extrair_pdf_somente_imagem_lanca_erro(self, mock_fitz_open):
+        """PDF somente-imagem (todas as páginas retornam texto vazio) lança RAGSecurityError."""
+        mock_page = MagicMock()
+        mock_page.get_text.return_value = "   \n\t  "
+        mock_doc = MagicMock()
+        mock_doc.needs_pass = False
+        mock_doc.__iter__ = MagicMock(return_value=iter([mock_page, mock_page]))
+        mock_fitz_open.return_value = mock_doc
+
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
+            extrair_texto_pdf(Path("qualquer.pdf"))
+        self.assertIn("somente imagem", str(ctx.exception))
+
+    @patch("agenticlog.rag.fitz.open")
+    def teste_4_extrair_pdf_mix_texto_imagem_aceita(self, mock_fitz_open):
+        """PDF com mix de páginas texto e imagem retorna texto sem erro."""
+        mock_page_texto = MagicMock()
+        mock_page_texto.get_text.return_value = "conteúdo real"
+        mock_page_imagem = MagicMock()
+        mock_page_imagem.get_text.return_value = ""
+        mock_doc = MagicMock()
+        mock_doc.needs_pass = False
+        mock_doc.__iter__ = MagicMock(return_value=iter([mock_page_texto, mock_page_imagem]))
+        mock_fitz_open.return_value = mock_doc
+
+        resultado = extrair_texto_pdf(Path("qualquer.pdf"))
+
+        self.assertIn("conteúdo real", resultado)
+
+    @patch("agenticlog.rag.fitz.open")
+    def teste_5_extrair_exception_generica_lanca_erro(self, mock_fitz_open):
+        """fitz.open() lançando Exception genérica é convertida em RAGSecurityError."""
+        mock_fitz_open.side_effect = RuntimeError("unexpected fitz error")
+
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
+            extrair_texto_pdf(Path("qualquer.pdf"))
+        self.assertIn("corrompido", str(ctx.exception))
+
+
+class TestSalvarPdfEnviado(unittest.TestCase):
+    """Testes para salvar_pdf_enviado."""
+
+    def _valid_pdf_bytes(self) -> bytes:
+        return b"%PDF-1.4 fake content"
+
+    @patch("agenticlog.rag.extrair_texto_pdf")
+    def teste_1_salvar_pdf_valido_sucesso(self, mock_extrair):
+        """PDF válido é salvo em DIR_DOCUMENTS."""
+        mock_extrair.return_value = "texto extraído"
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            with patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path):
+                result = salvar_pdf_enviado("contrato.pdf", self._valid_pdf_bytes())
+            self.assertTrue((tmp_path / "contrato.pdf").exists())
+            self.assertEqual(result, tmp_path / "contrato.pdf")
+
+    def teste_2_salvar_rejeita_extensao_invalida(self):
+        """Extensão .txt levanta RAGSecurityError."""
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
+            salvar_pdf_enviado("documento.txt", self._valid_pdf_bytes())
+        self.assertIn(".pdf", str(ctx.exception))
+
+    def teste_2b_salvar_rejeita_magic_bytes_invalidos(self):
+        """Conteúdo sem magic bytes %PDF levanta RAGSecurityError antes de escrita em disco."""
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
+            salvar_pdf_enviado("fake.pdf", b"PK\x03\x04 not a pdf")
+        self.assertIn("PDF válido", str(ctx.exception))
+
+    @patch("agenticlog.rag.extrair_texto_pdf")
+    def teste_3_salvar_aceita_extensao_maiuscula(self, mock_extrair):
+        """Extensão .PDF (maiúscula) é aceita (case-insensitive)."""
+        mock_extrair.return_value = "texto extraído"
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            with patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path):
+                result = salvar_pdf_enviado("CONTRATO.PDF", self._valid_pdf_bytes())
+            self.assertTrue((tmp_path / "CONTRATO.PDF").exists())
+
+    def teste_4_salvar_rejeita_tamanho_excedido(self):
+        """Conteúdo maior que 10 MB levanta RAGSecurityError antes de extração."""
+        conteudo_grande = b"%PDF" + b"x" * (10 * 1024 * 1024 + 1)
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
+            salvar_pdf_enviado("grande.pdf", conteudo_grande)
+        self.assertIn("10", str(ctx.exception))
+
+    def teste_5_salvar_rejeita_nome_duplicado(self):
+        """Arquivo com nome já existente levanta RAGSecurityError."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            (tmp_path / "existente.pdf").write_bytes(b"%PDF")
+            with patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path):
+                with self.assertRaises(rag.RAGSecurityError) as ctx:
+                    salvar_pdf_enviado("existente.pdf", self._valid_pdf_bytes())
+            self.assertIn("já existe", str(ctx.exception))
+
+    def teste_6_salvar_rejeita_path_traversal(self):
+        """Nome com path traversal levanta RAGSecurityError."""
+        with self.assertRaises(rag.RAGSecurityError):
+            salvar_pdf_enviado("../evil.pdf", self._valid_pdf_bytes())
+
+    def teste_7_salvar_rejeita_nome_reservado_windows(self):
+        """Nome reservado Windows levanta RAGSecurityError."""
+        with self.assertRaises(rag.RAGSecurityError):
+            salvar_pdf_enviado("CON.pdf", self._valid_pdf_bytes())
+
+    @patch("agenticlog.rag.extrair_texto_pdf")
+    def teste_8_salvar_rollback_se_pdf_invalido(self, mock_extrair):
+        """Se extrair_texto_pdf lança RAGSecurityError, tempfile é deletado e erro é relançado."""
+        mock_extrair.side_effect = RAGSecurityError("PDF protegido por senha.")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            with patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path):
+                with self.assertRaises(RAGSecurityError) as ctx:
+                    salvar_pdf_enviado("invalido.pdf", self._valid_pdf_bytes())
+            self.assertNotIn("invalido.pdf", [f.name for f in tmp_path.iterdir()])
+        # Verifica que o tempfile passado para extrair_texto_pdf foi deletado
+        called_path = mock_extrair.call_args[0][0]
+        self.assertFalse(called_path.exists(), "Tempfile não foi deletado no rollback")
+        self.assertIn("senha", str(ctx.exception))
+
+    @patch("agenticlog.rag.MAX_JSON_FILES", new=2)
+    def teste_9_salvar_rejeita_limite_de_arquivos(self):
+        """pdf_count + json_count + 1 > MAX_JSON_FILES levanta RAGSecurityError."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            (tmp_path / "doc_1.pdf").write_bytes(b"%PDF")
+            (tmp_path / "doc_2.json").write_bytes(b"{}")
+            with patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path):
+                with self.assertRaises(rag.RAGSecurityError) as ctx:
+                    salvar_pdf_enviado("novo.pdf", self._valid_pdf_bytes())
+        self.assertIn("Limite", str(ctx.exception))
 
 
 if __name__ == "__main__":

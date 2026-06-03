@@ -46,6 +46,7 @@ ROUTING_KEYWORDS_WEB: tuple[str, ...] = (
 # Segurança - limites para carregamento de documentos
 MAX_JSON_FILES = 1000          # impede carregamento irrestrito de arquivos maliciosos
 MAX_JSON_FILE_SIZE_MB = 10     # bloqueia arquivos excessivamente grandes (proteção contra DoS)
+MAX_DOCUMENT_FILE_SIZE_MB = MAX_JSON_FILE_SIZE_MB  # limite compartilhado para qualquer formato (JSON, PDF)
 FORBIDDEN_JSON_KEYS = ("lc",)  # mitiga injeção via chave "lc" usada pela classe Serializable do LangChain
 INVALID_FILENAME_CHARS: frozenset[str] = frozenset('<>:"/\\|?*\x00')
 WINDOWS_RESERVED_NAMES: frozenset[str] = frozenset(
