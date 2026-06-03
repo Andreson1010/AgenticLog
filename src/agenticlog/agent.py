@@ -130,6 +130,17 @@ def _get_retriever():
     )
 
 
+def invalidar_vector_db() -> None:
+    """Invalida o singleton _vector_db para que a próxima chamada a _get_vector_db() reconecte ao ChromaDB.
+
+    Entrada: nenhuma.
+    Saída: nenhuma.
+    Efeito colateral: atribui None a _vector_db global.
+    """
+    global _vector_db
+    _vector_db = None
+
+
 # Prompts — inicializados na importação do módulo
 prompt_rag_retrieve = PromptTemplate.from_template(
     """You are a truthful and precise assistant in logistics and supply chain.

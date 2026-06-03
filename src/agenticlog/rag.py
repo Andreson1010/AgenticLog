@@ -10,10 +10,12 @@ Responsabilidades:
 Execute: python -m agenticlog.rag
 """
 
+import hashlib
 import json
 import logging
 import shutil
 import tempfile
+import uuid
 from pathlib import Path
 
 import fitz  # PyMuPDF
@@ -45,6 +47,19 @@ from agenticlog.config import (
 logger = logging.getLogger(__name__)
 
 vectordb = None
+_rag_embedding_model = None
+
+
+def _get_rag_embedding_model() -> HuggingFaceEmbeddings:
+    """Retorna singleton de HuggingFaceEmbeddings para ingestão incremental.
+
+    Entrada: nenhuma.
+    Saída: instância de HuggingFaceEmbeddings (criada uma única vez por processo).
+    """
+    global _rag_embedding_model
+    if _rag_embedding_model is None:
+        _rag_embedding_model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+    return _rag_embedding_model
 
 
 class RAGSecurityError(Exception):
@@ -204,6 +219,139 @@ def salvar_documento_enviado(filename: str, conteudo: bytes) -> Path:
     return DIR_DOCUMENTS / safe_name
 
 
+def _computar_hash_conteudo(conteudo: bytes) -> str:
+    """Computa o hash SHA-256 do conteúdo binário do arquivo.
+
+    Entrada: conteudo — bytes do arquivo.
+    Saída: string hexadecimal de 64 caracteres (SHA-256).
+    """
+    return hashlib.sha256(conteudo).hexdigest()
+
+
+def adicionar_documento_incrementalmente(
+    filename: str,
+    conteudo: bytes,
+) -> dict[str, str]:
+    """Adiciona chunks de um novo arquivo JSON ao ChromaDB existente sem reconstrução.
+
+    Entrada:
+      filename — nome original do arquivo (str).
+      conteudo — conteúdo binário do arquivo (bytes).
+    Saída: dict com chaves "status" e "mensagem":
+      {"status": "adicionado", "mensagem": "Arquivo <nome> adicionado com sucesso. N chunks inseridos."}
+      {"status": "duplicado", "mensagem": "Arquivo <nome> já está presente na base vetorial."}
+      {"status": "hash_diferente", "mensagem": "Arquivo <nome> já existe com conteúdo diferente. Remoção e substituição não são suportadas nesta versão."}
+    Lança RAGSecurityError em qualquer falha de validação de segurança.
+    Lança Exception se a ingestão falhar após rollback.
+    """
+    if Path(filename).suffix.lower() != ".json":
+        raise RAGSecurityError("Apenas arquivos .json são aceitos.")
+
+    max_bytes = MAX_JSON_FILE_SIZE_MB * 1024 * 1024
+    if len(conteudo) > max_bytes:
+        raise RAGSecurityError(
+            f"Arquivo excede o limite de {MAX_JSON_FILE_SIZE_MB} MB."
+        )
+
+    safe_name = _sanitizar_nome_arquivo(filename)
+
+    json_count = len(list(DIR_DOCUMENTS.glob("*.json")))
+    pdf_count = len(list(DIR_DOCUMENTS.glob("*.pdf")))
+    if json_count + pdf_count + 1 > MAX_JSON_FILES:
+        raise RAGSecurityError(
+            f"Limite de {MAX_JSON_FILES} arquivos atingido."
+        )
+
+    hash_str = _computar_hash_conteudo(conteudo)
+    planned_path = DIR_DOCUMENTS / safe_name
+
+    embedding_model = _get_rag_embedding_model()
+    vectordb_instance = Chroma(
+        persist_directory=str(DIR_VECTORDB),
+        embedding_function=embedding_model,
+    )
+
+    existing = vectordb_instance.get(
+        where={"source": {"$eq": str(planned_path)}}
+    )
+    if existing["ids"]:
+        existing_hash = existing["metadatas"][0].get("content_hash")
+        if existing_hash == hash_str:
+            return {
+                "status": "duplicado",
+                "mensagem": f"Arquivo {safe_name} já está presente na base vetorial.",
+            }
+        return {
+            "status": "hash_diferente",
+            "mensagem": (
+                f"Arquivo {safe_name} já existe com conteúdo diferente. "
+                "Remoção e substituição não são suportadas nesta versão."
+            ),
+        }
+
+    saved_path: Path | None = None
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
+            tmp.write(conteudo)
+            tmp_path = Path(tmp.name)
+        _valida_json_sem_chaves_proibidas(tmp_path)
+        shutil.move(str(tmp_path), planned_path)
+        saved_path = planned_path
+        tmp_path = None
+    finally:
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
+
+    jq_schema = 'to_entries | map(.key + ": " + (.value | tostring)) | join("\\n")'
+    loader = JSONLoader(str(saved_path), jq_schema=jq_schema)
+    docs = loader.load()
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
+    )
+    chunks = text_splitter.split_documents(docs)
+
+    if not chunks:
+        logger.warning("Arquivo %s produziu zero chunks após divisão.", safe_name)
+        saved_path.unlink(missing_ok=True)
+        return {
+            "status": "adicionado",
+            "mensagem": f"Arquivo {safe_name} não pôde ser indexado: 0 chunks gerados.",
+        }
+
+    for chunk in chunks:
+        chunk.metadata["content_hash"] = hash_str
+
+    chunk_ids = [uuid.uuid4().hex for _ in chunks]
+
+    try:
+        vectordb_instance.add_documents(chunks, ids=chunk_ids)
+    except Exception as ingestion_exc:
+        try:
+            if chunk_ids:
+                vectordb_instance.delete(ids=chunk_ids)
+        except Exception as rollback_exc:
+            logger.warning(
+                "Rollback falhou após erro de ingestão. IDs órfãos: %s. Erro de rollback: %s",
+                chunk_ids,
+                rollback_exc,
+            )
+        saved_path.unlink(missing_ok=True)
+        raise ingestion_exc
+
+    try:
+        from agenticlog.agent import invalidar_vector_db  # lazy — evita importação pesada no CLI
+        invalidar_vector_db()
+    except ImportError as e:
+        logger.warning("Não foi possível invalidar o singleton do agente: %s", e)
+
+    return {
+        "status": "adicionado",
+        "mensagem": f"Arquivo {safe_name} adicionado com sucesso. {len(chunks)} chunks inseridos.",
+    }
+
+
 def extrair_texto_pdf(path: Path) -> str:
     """Extrai texto de um arquivo PDF usando PyMuPDF (fitz).
 
@@ -314,7 +462,7 @@ def cria_vectordb() -> None:
     logger.info("Gerando as Embeddings. Aguarde...")
 
     # jq_schema: achata o JSON em "chave: valor\nchave: valor" para facilitar chunking e busca semântica
-    jq_schema = 'to_entries | map(.key + ": " + .value) | join("\\n")'
+    jq_schema = 'to_entries | map(.key + ": " + (.value | tostring)) | join("\\n")'
     loader = DirectoryLoader(
         str(DIR_DOCUMENTS),
         glob="*.json",

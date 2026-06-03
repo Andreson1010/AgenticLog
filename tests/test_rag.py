@@ -19,6 +19,11 @@ sys.path.insert(0, str(_root / "src"))
 import unittest
 import pytest
 
+import hashlib
+import tempfile
+
+from langchain_core.documents import Document as LCDocument
+
 from agenticlog.rag import (
     RAGSecurityError,
     _valida_path_documentos,
@@ -27,11 +32,14 @@ from agenticlog.rag import (
     cria_vectordb,
     _executar_main,
     _sanitizar_nome_arquivo,
+    _computar_hash_conteudo,
+    adicionar_documento_incrementalmente,
     salvar_documento_enviado,
     salvar_pdf_enviado,
     extrair_texto_pdf,
     reconstruir_vectordb,
 )
+from agenticlog.config import MAX_JSON_FILES, MAX_JSON_FILE_SIZE_MB
 import agenticlog.rag as rag
 import agenticlog.config as config
 
@@ -805,6 +813,237 @@ class TestSalvarPdfEnviado(unittest.TestCase):
                 with self.assertRaises(rag.RAGSecurityError) as ctx:
                     salvar_pdf_enviado("novo.pdf", self._valid_pdf_bytes())
         self.assertIn("Limite", str(ctx.exception))
+
+
+class TestComputarHash(unittest.TestCase):
+    """Testes para _computar_hash_conteudo."""
+
+    def teste_1_hash_deterministico(self) -> None:
+        """Mesmo input deve gerar mesmo hash de 64 caracteres."""
+        h1 = _computar_hash_conteudo(b"hello")
+        h2 = _computar_hash_conteudo(b"hello")
+        self.assertEqual(h1, h2)
+        self.assertEqual(len(h1), 64)
+
+    def teste_2_hash_diferente_para_conteudo_diferente(self) -> None:
+        """Inputs distintos devem gerar hashes diferentes."""
+        h1 = _computar_hash_conteudo(b"hello")
+        h2 = _computar_hash_conteudo(b"world")
+        self.assertNotEqual(h1, h2)
+
+
+class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
+    """Testes para adicionar_documento_incrementalmente."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        import agenticlog.agent  # garante que o módulo está em sys.modules antes dos patches  # noqa: F401
+
+    def _chunk(self, content: str = "chunk") -> LCDocument:
+        return LCDocument(page_content=content, metadata={})
+
+    def _setup_vectordb_mock(self, ids: list, metadatas: list) -> MagicMock:
+        mock_vdb = MagicMock()
+        mock_vdb.get.return_value = {"ids": ids, "metadatas": metadatas}
+        return mock_vdb
+
+    def teste_1_adiciona_novo_arquivo_retorna_adicionado(self) -> None:
+        """Novo arquivo: chunks adicionados, status adicionado, invalidar chamado."""
+        conteudo = b'{"pedido": "P001", "status": "entregue"}'
+        mock_vdb = self._setup_vectordb_mock([], [])
+        chunks = [self._chunk("chunk1"), self._chunk("chunk2")]
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+
+            with (
+                patch("agenticlog.rag.Chroma", return_value=mock_vdb),
+                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
+                patch("agenticlog.rag.RecursiveCharacterTextSplitter") as mock_splitter_cls,
+                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
+                patch("agenticlog.agent.invalidar_vector_db") as mock_invalidar,
+            ):
+                mock_loader = MagicMock()
+                mock_loader.load.return_value = [LCDocument(page_content="doc", metadata={})]
+                mock_loader_cls.return_value = mock_loader
+                mock_splitter = MagicMock()
+                mock_splitter.split_documents.return_value = chunks
+                mock_splitter_cls.return_value = mock_splitter
+
+                result = adicionar_documento_incrementalmente("pedido.json", conteudo)
+
+        self.assertEqual(result["status"], "adicionado")
+        self.assertIn("2 chunks", result["mensagem"])
+        mock_vdb.add_documents.assert_called_once()
+        mock_invalidar.assert_called_once()
+
+    def teste_2_primeira_ingestao_sem_colecao_existente(self) -> None:
+        """Cold-start (sem coleção existente): cria coleção, ingere sem erro."""
+        conteudo = b'{"produto": "caixa"}'
+        mock_vdb = self._setup_vectordb_mock([], [])
+        chunks = [self._chunk()]
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+
+            with (
+                patch("agenticlog.rag.Chroma", return_value=mock_vdb),
+                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
+                patch("agenticlog.rag.RecursiveCharacterTextSplitter") as mock_splitter_cls,
+                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
+                patch("agenticlog.agent.invalidar_vector_db"),
+            ):
+                mock_loader_cls.return_value.load.return_value = [LCDocument(page_content="d", metadata={})]
+                mock_splitter_cls.return_value.split_documents.return_value = chunks
+
+                result = adicionar_documento_incrementalmente("produto.json", conteudo)
+
+        self.assertEqual(result["status"], "adicionado")
+        mock_vdb.add_documents.assert_called_once()
+
+    def teste_3_detecta_duplicata_mesmo_hash(self) -> None:
+        """Mesmo arquivo, mesmo hash: retorna status duplicado, sem adicionar chunks."""
+        conteudo = b'{"pedido": "123"}'
+        hash_str = hashlib.sha256(conteudo).hexdigest()
+        mock_vdb = self._setup_vectordb_mock(
+            ["id1"], [{"content_hash": hash_str, "source": "/some/path/doc.json"}]
+        )
+
+        with (
+            patch("agenticlog.rag.Chroma", return_value=mock_vdb),
+            patch("agenticlog.rag._get_rag_embedding_model"),
+            patch("agenticlog.rag.DIR_DOCUMENTS") as mock_dir,
+            patch("agenticlog.rag.DIR_VECTORDB"),
+        ):
+            mock_dir.glob.return_value = []
+
+            result = adicionar_documento_incrementalmente("doc.json", conteudo)
+
+        self.assertEqual(result["status"], "duplicado")
+        mock_vdb.add_documents.assert_not_called()
+
+    def teste_4_detecta_hash_diferente(self) -> None:
+        """Mesmo nome, hash diferente: retorna status hash_diferente, sem adicionar chunks."""
+        conteudo = b'{"pedido": "123_v2"}'
+        hash_antigo = hashlib.sha256(b"versao_anterior").hexdigest()
+        mock_vdb = self._setup_vectordb_mock(
+            ["id1"], [{"content_hash": hash_antigo, "source": "/path/doc.json"}]
+        )
+
+        with (
+            patch("agenticlog.rag.Chroma", return_value=mock_vdb),
+            patch("agenticlog.rag._get_rag_embedding_model"),
+            patch("agenticlog.rag.DIR_DOCUMENTS") as mock_dir,
+            patch("agenticlog.rag.DIR_VECTORDB"),
+        ):
+            mock_dir.glob.return_value = []
+
+            result = adicionar_documento_incrementalmente("doc.json", conteudo)
+
+        self.assertEqual(result["status"], "hash_diferente")
+        mock_vdb.add_documents.assert_not_called()
+
+    def teste_5_rejeita_seguranca(self) -> None:
+        """Falha de validação de segurança levanta RAGSecurityError antes de tocar Chroma."""
+        with self.assertRaises(rag.RAGSecurityError):
+            rag.adicionar_documento_incrementalmente("arquivo.txt", b"{}")
+
+    def teste_6_rejeita_limite_arquivos(self) -> None:
+        """MAX_JSON_FILES atingido levanta RAGSecurityError."""
+        with patch("agenticlog.rag.DIR_DOCUMENTS") as mock_dir:
+            mock_dir.glob.return_value = [MagicMock()] * MAX_JSON_FILES
+            with self.assertRaises(rag.RAGSecurityError) as ctx:
+                rag.adicionar_documento_incrementalmente("novo.json", b'{"k": "v"}')
+        self.assertIn(str(MAX_JSON_FILES), str(ctx.exception))
+
+    def teste_7_falha_no_add_dispara_rollback(self) -> None:
+        """Exceção no add_documents: delete chamado com IDs pré-gerados, exceção re-levantada."""
+        conteudo = b'{"k": "v"}'
+        mock_vdb = self._setup_vectordb_mock([], [])
+        mock_vdb.add_documents.side_effect = RuntimeError("embed fail")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+
+            with (
+                patch("agenticlog.rag.Chroma", return_value=mock_vdb),
+                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
+                patch("agenticlog.rag.RecursiveCharacterTextSplitter") as mock_splitter_cls,
+                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
+            ):
+                mock_loader_cls.return_value.load.return_value = [LCDocument(page_content="d", metadata={})]
+                mock_splitter_cls.return_value.split_documents.return_value = [self._chunk()]
+
+                with self.assertRaises(RuntimeError) as exc_ctx:
+                    adicionar_documento_incrementalmente("doc.json", conteudo)
+
+            self.assertNotIn("doc.json", [f.name for f in tmp_path.iterdir()])
+
+        mock_vdb.delete.assert_called_once()
+        self.assertEqual(str(exc_ctx.exception), "embed fail")
+
+    def teste_8_rollback_falha_loga_warning_e_relevanva_original(self) -> None:
+        """delete falha: WARNING logado com IDs órfãos, exceção original re-levantada."""
+        conteudo = b'{"k": "v"}'
+        mock_vdb = self._setup_vectordb_mock([], [])
+        mock_vdb.add_documents.side_effect = RuntimeError("embed fail")
+        mock_vdb.delete.side_effect = RuntimeError("rollback fail")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+
+            with (
+                patch("agenticlog.rag.Chroma", return_value=mock_vdb),
+                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
+                patch("agenticlog.rag.RecursiveCharacterTextSplitter") as mock_splitter_cls,
+                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
+                self.assertLogs("agenticlog.rag", level="WARNING") as log_ctx,
+            ):
+                mock_loader_cls.return_value.load.return_value = [LCDocument(page_content="d", metadata={})]
+                mock_splitter_cls.return_value.split_documents.return_value = [self._chunk()]
+
+                with self.assertRaises(RuntimeError) as exc_ctx:
+                    adicionar_documento_incrementalmente("doc.json", conteudo)
+
+        self.assertEqual(str(exc_ctx.exception), "embed fail")
+        self.assertTrue(any("IDs órfãos" in m for m in log_ctx.output))
+
+    def teste_9_zero_chunks_retorna_adicionado_com_zero(self) -> None:
+        """Documento sem chunks: WARNING logado, status adicionado, arquivo removido do disco, add_documents não chamado."""
+        conteudo = b'{"k": "v"}'
+        mock_vdb = self._setup_vectordb_mock([], [])
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+
+            with (
+                patch("agenticlog.rag.Chroma", return_value=mock_vdb),
+                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
+                patch("agenticlog.rag.RecursiveCharacterTextSplitter") as mock_splitter_cls,
+                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
+                self.assertLogs("agenticlog.rag", level="WARNING") as log_ctx,
+            ):
+                mock_loader_cls.return_value.load.return_value = [LCDocument(page_content="d", metadata={})]
+                mock_splitter_cls.return_value.split_documents.return_value = []
+
+                result = adicionar_documento_incrementalmente("doc.json", conteudo)
+
+            self.assertNotIn("doc.json", [f.name for f in tmp_path.iterdir()])
+
+        self.assertEqual(result["status"], "adicionado")
+        self.assertIn("0 chunks", result["mensagem"])
+        mock_vdb.add_documents.assert_not_called()
+        self.assertTrue(any("zero chunks" in m for m in log_ctx.output))
 
 
 if __name__ == "__main__":

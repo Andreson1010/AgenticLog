@@ -2,14 +2,11 @@
 """
 Testes para a função _ingerir_documento de app.py.
 
-Todos os chamados a salvar_documento_enviado, reconstruir_vectordb e
-funções Streamlit são mockados — nenhuma chamada real ao filesystem ou
-LMStudio é feita nestes testes.
-
 Paths de mock:
-- app.salvar_documento_enviado  — função importada em app.py
-- app.reconstruir_vectordb      — função importada em app.py
-- app.st                        — módulo streamlit usado por app.py
+- app.adicionar_documento_incrementalmente — JSON incremental (novo)
+- app.salvar_pdf_enviado                   — salva PDF em disco
+- app.reconstruir_vectordb                 — rebuild completo (PDF path)
+- app.st                                   — módulo streamlit usado por app.py
 """
 
 import sys
@@ -41,13 +38,15 @@ class TestIngerirDocumento(unittest.TestCase):
     """Testes para o helper _ingerir_documento de app.py."""
 
     def teste_1_upload_fluxo_sucesso(self) -> None:
-        """Fluxo feliz: salvar e reconstruir com sucesso exibem st.success e chamam st.rerun."""
+        """JSON feliz: adicionar_documento retorna adicionado → st.success + st.rerun."""
         uploaded_file = _make_uploaded_file()
-        saved_path = Path("/tmp/doc.json")
+        resultado = {
+            "status": "adicionado",
+            "mensagem": "Arquivo doc.json adicionado com sucesso. 3 chunks inseridos.",
+        }
 
         with (
-            patch("app.salvar_documento_enviado", return_value=saved_path) as mock_salvar,
-            patch("app.reconstruir_vectordb") as mock_rebuild,
+            patch("app.adicionar_documento_incrementalmente", return_value=resultado) as mock_add,
             patch("app.st") as mock_st,
         ):
             mock_st.spinner.return_value.__enter__ = MagicMock(return_value=None)
@@ -55,41 +54,38 @@ class TestIngerirDocumento(unittest.TestCase):
 
             _ingerir_documento(uploaded_file)
 
-        mock_salvar.assert_called_once_with("doc.json", b"{}")
-        mock_rebuild.assert_called_once()
-        mock_st.success.assert_called_once_with("Documento ingerido com sucesso.")
+        mock_add.assert_called_once_with("doc.json", b"{}")
+        mock_st.success.assert_called_once_with(resultado["mensagem"])
         mock_st.rerun.assert_called_once()
         mock_st.error.assert_not_called()
 
     def teste_2_upload_erro_validacao_exibido(self) -> None:
-        """RAGSecurityError de salvar_documento_enviado deve exibir st.error e não chamar st.rerun."""
-        uploaded_file = _make_uploaded_file(name="doc.txt")
+        """RAGSecurityError de adicionar_documento exibe st.error e não chama st.rerun."""
+        uploaded_file = _make_uploaded_file(name="doc.json")
         mensagem_erro = "Apenas arquivos .json são aceitos."
 
         with (
             patch(
-                "app.salvar_documento_enviado",
+                "app.adicionar_documento_incrementalmente",
                 side_effect=RAGSecurityError(mensagem_erro),
             ),
-            patch("app.reconstruir_vectordb") as mock_rebuild,
             patch("app.st") as mock_st,
         ):
+            mock_st.spinner.return_value.__enter__ = MagicMock(return_value=None)
+            mock_st.spinner.return_value.__exit__ = MagicMock(return_value=False)
             _ingerir_documento(uploaded_file)
 
         mock_st.error.assert_called_once_with(mensagem_erro)
         mock_st.rerun.assert_not_called()
-        mock_rebuild.assert_not_called()
 
-    def teste_3_upload_erro_rebuild_exibido(self) -> None:
-        """Falha em reconstruir_vectordb deve remover arquivo salvo e exibir st.error sem st.rerun."""
+    def teste_3_upload_json_erro_add_exibido(self) -> None:
+        """Exception genérica de adicionar_documento exibe st.error sem st.rerun (rollback em rag.py)."""
         uploaded_file = _make_uploaded_file()
-        mock_path = MagicMock(spec=Path)
 
         with (
-            patch("app.salvar_documento_enviado", return_value=mock_path),
             patch(
-                "app.reconstruir_vectordb",
-                side_effect=Exception("fail"),
+                "app.adicionar_documento_incrementalmente",
+                side_effect=RuntimeError("embed falhou"),
             ),
             patch("app.st") as mock_st,
         ):
@@ -98,23 +94,74 @@ class TestIngerirDocumento(unittest.TestCase):
 
             _ingerir_documento(uploaded_file)
 
-        mock_path.unlink.assert_called_once_with(missing_ok=True)
         mock_st.error.assert_called_once()
         error_msg = mock_st.error.call_args[0][0]
-        self.assertIn("Erro ao reconstruir base vetorial", error_msg)
-        self.assertIn("fail", error_msg)
+        self.assertIn("embed falhou", error_msg)
         mock_st.rerun.assert_not_called()
         mock_st.success.assert_not_called()
 
+    def teste_3b_extensao_invalida_exibe_erro_antes_de_chamar_backend(self) -> None:
+        """Extensão não suportada → st.error antes de qualquer chamada ao backend."""
+        uploaded_file = _make_uploaded_file(name="dados.csv", conteudo=b"col1,col2")
+
+        with (
+            patch("app.adicionar_documento_incrementalmente") as mock_add,
+            patch("app.st") as mock_st,
+        ):
+            _ingerir_documento(uploaded_file)
+
+        mock_add.assert_not_called()
+        mock_st.error.assert_called_once()
+        self.assertIn("suportado", mock_st.error.call_args[0][0].lower())
+
     def teste_4_upload_sem_arquivo_selecionado(self) -> None:
         """Quando uploaded_file é None, _ingerir_documento não deve ser chamado."""
-        with patch("app.salvar_documento_enviado") as mock_salvar:
-            # Simula a lógica do botão: uploaded_file is None → não chama _ingerir_documento
+        with patch("app.adicionar_documento_incrementalmente") as mock_add:
             uploaded_file = None
             if uploaded_file is not None:
                 _ingerir_documento(uploaded_file)
 
-        mock_salvar.assert_not_called()
+        mock_add.assert_not_called()
+
+    def teste_5_upload_duplicado_exibe_info(self) -> None:
+        """Status duplicado → st.info chamado, st.rerun NÃO chamado."""
+        uploaded_file = _make_uploaded_file()
+        resultado = {
+            "status": "duplicado",
+            "mensagem": "Arquivo doc.json já está presente na base vetorial.",
+        }
+
+        with (
+            patch("app.adicionar_documento_incrementalmente", return_value=resultado),
+            patch("app.st") as mock_st,
+        ):
+            mock_st.spinner.return_value.__enter__ = MagicMock(return_value=None)
+            mock_st.spinner.return_value.__exit__ = MagicMock(return_value=False)
+            _ingerir_documento(uploaded_file)
+
+        mock_st.info.assert_called_once_with(resultado["mensagem"])
+        mock_st.rerun.assert_not_called()
+        mock_st.success.assert_not_called()
+
+    def teste_6_upload_hash_diferente_exibe_warning(self) -> None:
+        """Status hash_diferente → st.warning chamado, st.rerun NÃO chamado."""
+        uploaded_file = _make_uploaded_file()
+        resultado = {
+            "status": "hash_diferente",
+            "mensagem": "Arquivo doc.json já existe com conteúdo diferente.",
+        }
+
+        with (
+            patch("app.adicionar_documento_incrementalmente", return_value=resultado),
+            patch("app.st") as mock_st,
+        ):
+            mock_st.spinner.return_value.__enter__ = MagicMock(return_value=None)
+            mock_st.spinner.return_value.__exit__ = MagicMock(return_value=False)
+            _ingerir_documento(uploaded_file)
+
+        mock_st.warning.assert_called_once_with(resultado["mensagem"])
+        mock_st.rerun.assert_not_called()
+        mock_st.success.assert_not_called()
 
 
 if __name__ == "__main__":
