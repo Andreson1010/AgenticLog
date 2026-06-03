@@ -47,6 +47,19 @@ from agenticlog.config import (
 logger = logging.getLogger(__name__)
 
 vectordb = None
+_rag_embedding_model = None
+
+
+def _get_rag_embedding_model() -> HuggingFaceEmbeddings:
+    """Retorna singleton de HuggingFaceEmbeddings para ingestão incremental.
+
+    Entrada: nenhuma.
+    Saída: instância de HuggingFaceEmbeddings (criada uma única vez por processo).
+    """
+    global _rag_embedding_model
+    if _rag_embedding_model is None:
+        _rag_embedding_model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+    return _rag_embedding_model
 
 
 class RAGSecurityError(Exception):
@@ -243,7 +256,8 @@ def adicionar_documento_incrementalmente(
     safe_name = _sanitizar_nome_arquivo(filename)
 
     json_count = len(list(DIR_DOCUMENTS.glob("*.json")))
-    if json_count + 1 > MAX_JSON_FILES:
+    pdf_count = len(list(DIR_DOCUMENTS.glob("*.pdf")))
+    if json_count + pdf_count + 1 > MAX_JSON_FILES:
         raise RAGSecurityError(
             f"Limite de {MAX_JSON_FILES} arquivos atingido."
         )
@@ -251,7 +265,7 @@ def adicionar_documento_incrementalmente(
     hash_str = _computar_hash_conteudo(conteudo)
     planned_path = DIR_DOCUMENTS / safe_name
 
-    embedding_model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+    embedding_model = _get_rag_embedding_model()
     vectordb_instance = Chroma(
         persist_directory=str(DIR_VECTORDB),
         embedding_function=embedding_model,
@@ -289,7 +303,7 @@ def adicionar_documento_incrementalmente(
         if tmp_path is not None:
             tmp_path.unlink(missing_ok=True)
 
-    jq_schema = 'to_entries | map(.key + ": " + .value) | join("\\n")'
+    jq_schema = 'to_entries | map(.key + ": " + (.value | tostring)) | join("\\n")'
     loader = JSONLoader(str(saved_path), jq_schema=jq_schema)
     docs = loader.load()
     text_splitter = RecursiveCharacterTextSplitter(
@@ -300,9 +314,10 @@ def adicionar_documento_incrementalmente(
 
     if not chunks:
         logger.warning("Arquivo %s produziu zero chunks após divisão.", safe_name)
+        saved_path.unlink(missing_ok=True)
         return {
             "status": "adicionado",
-            "mensagem": f"Arquivo {safe_name} adicionado. 0 chunks gerados.",
+            "mensagem": f"Arquivo {safe_name} não pôde ser indexado: 0 chunks gerados.",
         }
 
     for chunk in chunks:
@@ -325,8 +340,11 @@ def adicionar_documento_incrementalmente(
         saved_path.unlink(missing_ok=True)
         raise ingestion_exc
 
-    from agenticlog.agent import invalidar_vector_db  # lazy — evita importação pesada no CLI
-    invalidar_vector_db()
+    try:
+        from agenticlog.agent import invalidar_vector_db  # lazy — evita importação pesada no CLI
+        invalidar_vector_db()
+    except ImportError as e:
+        logger.warning("Não foi possível invalidar o singleton do agente: %s", e)
 
     return {
         "status": "adicionado",
@@ -444,7 +462,7 @@ def cria_vectordb() -> None:
     logger.info("Gerando as Embeddings. Aguarde...")
 
     # jq_schema: achata o JSON em "chave: valor\nchave: valor" para facilitar chunking e busca semântica
-    jq_schema = 'to_entries | map(.key + ": " + .value) | join("\\n")'
+    jq_schema = 'to_entries | map(.key + ": " + (.value | tostring)) | join("\\n")'
     loader = DirectoryLoader(
         str(DIR_DOCUMENTS),
         glob="*.json",

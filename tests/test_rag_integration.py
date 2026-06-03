@@ -46,7 +46,7 @@ class TestIngestionIntegration:
         with (
             patch("agenticlog.rag.DIR_DOCUMENTS", new=doc_dir),
             patch("agenticlog.rag.DIR_VECTORDB", new=vdb_dir),
-            patch("agenticlog.rag.HuggingFaceEmbeddings", return_value=mock_emb_instance),
+            patch("agenticlog.rag._get_rag_embedding_model", return_value=mock_emb_instance),
             patch("agenticlog.agent.invalidar_vector_db"),
         ):
             result_a = adicionar_documento_incrementalmente("cadeira.json", conteudo_a)
@@ -72,7 +72,7 @@ class TestIngestionIntegration:
         with (
             patch("agenticlog.rag.DIR_DOCUMENTS", new=doc_dir),
             patch("agenticlog.rag.DIR_VECTORDB", new=vdb_dir),
-            patch("agenticlog.rag.HuggingFaceEmbeddings", return_value=mock_emb_instance),
+            patch("agenticlog.rag._get_rag_embedding_model", return_value=mock_emb_instance),
             patch("agenticlog.agent.invalidar_vector_db"),
         ):
             result_a = adicionar_documento_incrementalmente("p001.json", conteudo_a)
@@ -97,7 +97,7 @@ class TestIngestionIntegration:
         with (
             patch("agenticlog.rag.DIR_DOCUMENTS", new=doc_dir),
             patch("agenticlog.rag.DIR_VECTORDB", new=vdb_dir),
-            patch("agenticlog.rag.HuggingFaceEmbeddings", return_value=mock_emb_instance),
+            patch("agenticlog.rag._get_rag_embedding_model", return_value=mock_emb_instance),
             patch("agenticlog.agent.invalidar_vector_db"),
         ):
             result = adicionar_documento_incrementalmente("rota.json", conteudo)
@@ -115,8 +115,6 @@ class TestIngestionIntegration:
         conteudo = json.dumps({"carga": "fragil"}).encode()
         mock_emb_instance = _mock_emb()
 
-        from langchain_chroma import Chroma as RealChroma
-
         fail_vdb = MagicMock()
         fail_vdb.get.return_value = {"ids": [], "metadatas": []}
         fail_vdb.add_documents.side_effect = RuntimeError("falha simulada")
@@ -124,7 +122,7 @@ class TestIngestionIntegration:
         with (
             patch("agenticlog.rag.DIR_DOCUMENTS", new=doc_dir),
             patch("agenticlog.rag.DIR_VECTORDB", new=vdb_dir),
-            patch("agenticlog.rag.HuggingFaceEmbeddings", return_value=mock_emb_instance),
+            patch("agenticlog.rag._get_rag_embedding_model", return_value=mock_emb_instance),
             patch("agenticlog.rag.Chroma", return_value=fail_vdb),
             patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
             patch("agenticlog.rag.RecursiveCharacterTextSplitter") as mock_splitter_cls,

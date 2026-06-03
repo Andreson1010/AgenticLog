@@ -25,6 +25,10 @@ def _ingerir_documento(uploaded_file: object) -> None:
     filename: str = uploaded_file.name
     suffix = Path(filename).suffix.lower()
 
+    if suffix not in {".json", ".pdf"}:
+        st.error("Formato não suportado. Envie apenas arquivos .json ou .pdf.")
+        return
+
     if suffix == ".pdf":
         try:
             saved_path = salvar_pdf_enviado(filename, conteudo)

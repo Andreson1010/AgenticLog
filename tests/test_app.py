@@ -100,6 +100,20 @@ class TestIngerirDocumento(unittest.TestCase):
         mock_st.rerun.assert_not_called()
         mock_st.success.assert_not_called()
 
+    def teste_3b_extensao_invalida_exibe_erro_antes_de_chamar_backend(self) -> None:
+        """Extensão não suportada → st.error antes de qualquer chamada ao backend."""
+        uploaded_file = _make_uploaded_file(name="dados.csv", conteudo=b"col1,col2")
+
+        with (
+            patch("app.adicionar_documento_incrementalmente") as mock_add,
+            patch("app.st") as mock_st,
+        ):
+            _ingerir_documento(uploaded_file)
+
+        mock_add.assert_not_called()
+        mock_st.error.assert_called_once()
+        self.assertIn("suportado", mock_st.error.call_args[0][0].lower())
+
     def teste_4_upload_sem_arquivo_selecionado(self) -> None:
         """Quando uploaded_file é None, _ingerir_documento não deve ser chamado."""
         with patch("app.adicionar_documento_incrementalmente") as mock_add:

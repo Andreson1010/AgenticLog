@@ -835,6 +835,10 @@ class TestComputarHash(unittest.TestCase):
 class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
     """Testes para adicionar_documento_incrementalmente."""
 
+    @classmethod
+    def setUpClass(cls) -> None:
+        import agenticlog.agent  # garante que o módulo está em sys.modules antes dos patches  # noqa: F401
+
     def _chunk(self, content: str = "chunk") -> LCDocument:
         return LCDocument(page_content=content, metadata={})
 
@@ -854,7 +858,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
 
             with (
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
-                patch("agenticlog.rag.HuggingFaceEmbeddings"),
+                patch("agenticlog.rag._get_rag_embedding_model"),
                 patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.rag.RecursiveCharacterTextSplitter") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
@@ -886,7 +890,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
 
             with (
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
-                patch("agenticlog.rag.HuggingFaceEmbeddings"),
+                patch("agenticlog.rag._get_rag_embedding_model"),
                 patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.rag.RecursiveCharacterTextSplitter") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
@@ -911,7 +915,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
 
         with (
             patch("agenticlog.rag.Chroma", return_value=mock_vdb),
-            patch("agenticlog.rag.HuggingFaceEmbeddings"),
+            patch("agenticlog.rag._get_rag_embedding_model"),
             patch("agenticlog.rag.DIR_DOCUMENTS") as mock_dir,
             patch("agenticlog.rag.DIR_VECTORDB"),
         ):
@@ -932,7 +936,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
 
         with (
             patch("agenticlog.rag.Chroma", return_value=mock_vdb),
-            patch("agenticlog.rag.HuggingFaceEmbeddings"),
+            patch("agenticlog.rag._get_rag_embedding_model"),
             patch("agenticlog.rag.DIR_DOCUMENTS") as mock_dir,
             patch("agenticlog.rag.DIR_VECTORDB"),
         ):
@@ -967,7 +971,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
 
             with (
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
-                patch("agenticlog.rag.HuggingFaceEmbeddings"),
+                patch("agenticlog.rag._get_rag_embedding_model"),
                 patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.rag.RecursiveCharacterTextSplitter") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
@@ -996,7 +1000,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
 
             with (
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
-                patch("agenticlog.rag.HuggingFaceEmbeddings"),
+                patch("agenticlog.rag._get_rag_embedding_model"),
                 patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.rag.RecursiveCharacterTextSplitter") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
@@ -1013,7 +1017,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
         self.assertTrue(any("IDs órfãos" in m for m in log_ctx.output))
 
     def teste_9_zero_chunks_retorna_adicionado_com_zero(self) -> None:
-        """Documento sem chunks: WARNING logado, status adicionado, add_documents não chamado."""
+        """Documento sem chunks: WARNING logado, status adicionado, arquivo removido do disco, add_documents não chamado."""
         conteudo = b'{"k": "v"}'
         mock_vdb = self._setup_vectordb_mock([], [])
 
@@ -1022,7 +1026,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
 
             with (
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
-                patch("agenticlog.rag.HuggingFaceEmbeddings"),
+                patch("agenticlog.rag._get_rag_embedding_model"),
                 patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.rag.RecursiveCharacterTextSplitter") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
@@ -1034,8 +1038,10 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
 
                 result = adicionar_documento_incrementalmente("doc.json", conteudo)
 
+            self.assertNotIn("doc.json", [f.name for f in tmp_path.iterdir()])
+
         self.assertEqual(result["status"], "adicionado")
-        self.assertIn("0", result["mensagem"])
+        self.assertIn("0 chunks", result["mensagem"])
         mock_vdb.add_documents.assert_not_called()
         self.assertTrue(any("zero chunks" in m for m in log_ctx.output))
 

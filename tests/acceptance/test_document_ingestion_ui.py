@@ -141,21 +141,19 @@ class TestDOCING03NonJsonExtensionRejected(unittest.TestCase):
     """
 
     @patch("app.st")
-    @patch("app.adicionar_documento_incrementalmente")
     def test_docing_03_non_json_extension_shows_error_no_disk_write(
         self,
-        mock_adicionar: MagicMock,
         mock_st: MagicMock,
     ) -> None:
-        """DOCING-03: extensão inválida → RAGSecurityError capturada, st.error exibido."""
-        mock_adicionar.side_effect = RAGSecurityError("Apenas arquivos .json são aceitos.")
-
+        """DOCING-03: extensão .csv → guard de extensão em app.py → st.error, backend não chamado."""
         uploaded_file = _make_uploaded_file("planilha.csv", b"col1,col2")
 
         from app import _ingerir_documento
         _ingerir_documento(uploaded_file)
 
-        mock_st.error.assert_called_once_with("Apenas arquivos .json são aceitos.")
+        mock_st.error.assert_called_once()
+        error_msg = mock_st.error.call_args[0][0]
+        self.assertIn("suportado", error_msg.lower())
         mock_st.rerun.assert_not_called()
         mock_st.success.assert_not_called()
 
@@ -733,29 +731,19 @@ class TestPDFIngestion(unittest.TestCase):
     # ------------------------------------------------------------------
 
     @patch("app.st")
-    @patch("app.adicionar_documento_incrementalmente")
     def test_pdf_09_extensao_invalida(
         self,
-        mock_adicionar: MagicMock,
         mock_st: MagicMock,
     ) -> None:
-        """PDF-09: arquivo .docx → roteado para adicionar_documento (JSON path) → RAGSecurityError → st.error."""
-        mock_adicionar.side_effect = _rag_module.RAGSecurityError("Apenas arquivos .json são aceitos.")
-
+        """PDF-09: arquivo .docx → guard de extensão em app.py → st.error, backend não chamado."""
         uploaded_file = _make_uploaded_file("contrato.docx", b"PK fake docx")
-
-        mock_spinner_ctx = MagicMock()
-        mock_spinner_ctx.__enter__ = MagicMock(return_value=None)
-        mock_spinner_ctx.__exit__ = MagicMock(return_value=False)
-        mock_st.spinner.return_value = mock_spinner_ctx
 
         from app import _ingerir_documento
         _ingerir_documento(uploaded_file)
 
-        mock_adicionar.assert_called_once_with("contrato.docx", b"PK fake docx")
         mock_st.error.assert_called_once()
         error_msg = mock_st.error.call_args[0][0]
-        self.assertIn("aceitos", error_msg.lower())
+        self.assertIn("suportado", error_msg.lower())
         mock_st.rerun.assert_not_called()
 
     # ------------------------------------------------------------------
