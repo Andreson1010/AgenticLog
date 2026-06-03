@@ -1,9 +1,12 @@
 # AgenticLog — Acceptance Tests: Document Ingestion UI Feature
 """
-Verifica todos os critérios de aceite da story:
+Verifica todos os critérios de aceite das stories:
   "Como operador logístico, quero fazer upload de um documento JSON pela
    barra lateral do Streamlit para que o ChromaDB seja reconstruído com o
    novo conteúdo sem reiniciar a aplicação."
+
+  "Como operador de logística, quero fazer upload de arquivos PDF diretamente
+   pela interface Streamlit para indexação no ChromaDB."
 
 Mapeamento de critérios (DOCING-01 a DOCING-10):
   DOCING-01 — AC-1: happy path (salvar + rebuild + rerun)
@@ -16,6 +19,16 @@ Mapeamento de critérios (DOCING-01 a DOCING-10):
   DOCING-08 — AC-8: limite de 1000 arquivos rejeitado
   DOCING-09 — AC-9: rollback ao falhar rebuild (arquivo removido)
   DOCING-10 — AC-10: verificado por design (st.rerun() aciona re-import do agente)
+
+Mapeamento de critérios PDF (PDF-01 a PDF-11):
+  PDF-01 — AC1: happy path PDF (salvar_pdf_enviado + rebuild + rerun)
+  PDF-03 — AC3: PDF com senha → RAGSecurityError, st.error, sem rerun
+  PDF-04 — AC4: PDF somente-imagem → RAGSecurityError, st.error
+  PDF-05 — AC5: PDF > 10 MB → RAGSecurityError, st.error
+  PDF-06 — AC6: nome duplicado → RAGSecurityError, st.error
+  PDF-08 — AC8: rollback ao falhar rebuild (arquivo removido, st.error)
+  PDF-09 — AC9: extensão não-.pdf → RAGSecurityError, st.error
+  PDF-10 — AC10: extensão .PDF maiúscula aceita (case-insensitive)
 """
 
 import sys
@@ -27,6 +40,7 @@ sys.path.insert(0, str(_root / "src"))
 import unittest
 from unittest.mock import patch, MagicMock, call
 
+import agenticlog.rag as _rag_module
 from agenticlog.rag import RAGSecurityError
 
 
@@ -535,6 +549,238 @@ class TestDOCING10RetrieverRebuiltAfterRerun(unittest.TestCase):
         _ingerir_documento(uploaded_file)
 
         mock_st.rerun.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# TestPDFIngestion: PDF-01, PDF-03 a PDF-10
+# ---------------------------------------------------------------------------
+
+class TestPDFIngestion(unittest.TestCase):
+    """
+    Verifica os critérios de aceite do fluxo de upload de PDF (PDF-01 a PDF-10).
+    Usa o mesmo padrão de mock que as classes DOCING existentes:
+    patch app.salvar_pdf_enviado, app.salvar_documento_enviado, app.reconstruir_vectordb, app.st.
+    """
+
+    # ------------------------------------------------------------------
+    # Utilitário interno: spinner context manager padrão
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _spinner_ctx() -> MagicMock:
+        ctx = MagicMock()
+        ctx.__enter__ = MagicMock(return_value=None)
+        ctx.__exit__ = MagicMock(return_value=False)
+        return ctx
+
+    # ------------------------------------------------------------------
+    # PDF-01: Happy path — salva, reconstrói, exibe sucesso, rerun
+    # ------------------------------------------------------------------
+
+    @patch("app.st")
+    @patch("app.reconstruir_vectordb")
+    @patch("app.salvar_pdf_enviado")
+    def test_pdf_01_happy_path(
+        self,
+        mock_salvar_pdf: MagicMock,
+        mock_reconstruir: MagicMock,
+        mock_st: MagicMock,
+    ) -> None:
+        """PDF-01: PDF válido → salvar_pdf_enviado + reconstruir chamados, success + rerun disparados."""
+        saved_path = MagicMock(spec=Path)
+        mock_salvar_pdf.return_value = saved_path
+        mock_reconstruir.return_value = None
+        mock_st.spinner.return_value = self._spinner_ctx()
+
+        uploaded_file = _make_uploaded_file("contrato.pdf", b"%PDF-1.4 fake content")
+
+        from app import _ingerir_documento
+        _ingerir_documento(uploaded_file)
+
+        mock_salvar_pdf.assert_called_once_with("contrato.pdf", b"%PDF-1.4 fake content")
+        mock_reconstruir.assert_called_once()
+        mock_st.success.assert_called_once_with("Documento ingerido com sucesso.")
+        mock_st.rerun.assert_called_once()
+        mock_st.error.assert_not_called()
+
+    # ------------------------------------------------------------------
+    # PDF-03: PDF protegido por senha → st.error, sem rerun
+    # ------------------------------------------------------------------
+
+    @patch("app.st")
+    @patch("app.salvar_pdf_enviado")
+    def test_pdf_03_senha_mostra_erro(
+        self,
+        mock_salvar_pdf: MagicMock,
+        mock_st: MagicMock,
+    ) -> None:
+        """PDF-03: salvar_pdf_enviado lança RAGSecurityError(senha) → st.error, sem rerun."""
+        mock_salvar_pdf.side_effect = _rag_module.RAGSecurityError("PDF protegido por senha.")
+
+        uploaded_file = _make_uploaded_file("protegido.pdf", b"%PDF-1.4")
+
+        from app import _ingerir_documento
+        _ingerir_documento(uploaded_file)
+
+        mock_st.error.assert_called_once_with("PDF protegido por senha.")
+        mock_st.rerun.assert_not_called()
+
+    # ------------------------------------------------------------------
+    # PDF-04: PDF somente-imagem → st.error
+    # ------------------------------------------------------------------
+
+    @patch("app.st")
+    @patch("app.salvar_pdf_enviado")
+    def test_pdf_04_somente_imagem_mostra_erro(
+        self,
+        mock_salvar_pdf: MagicMock,
+        mock_st: MagicMock,
+    ) -> None:
+        """PDF-04: PDF somente-imagem → RAGSecurityError capturada, st.error exibido."""
+        mock_salvar_pdf.side_effect = _rag_module.RAGSecurityError(
+            "PDF não contém texto extraível (somente imagem)."
+        )
+
+        uploaded_file = _make_uploaded_file("scan.pdf", b"%PDF-1.4")
+
+        from app import _ingerir_documento
+        _ingerir_documento(uploaded_file)
+
+        mock_st.error.assert_called_once()
+        error_msg = mock_st.error.call_args[0][0]
+        self.assertIn("somente imagem", error_msg.lower())
+        mock_st.rerun.assert_not_called()
+
+    # ------------------------------------------------------------------
+    # PDF-05: PDF > 10 MB → st.error
+    # ------------------------------------------------------------------
+
+    @patch("app.st")
+    @patch("app.salvar_pdf_enviado")
+    def test_pdf_05_tamanho_excedido(
+        self,
+        mock_salvar_pdf: MagicMock,
+        mock_st: MagicMock,
+    ) -> None:
+        """PDF-05: arquivo > 10 MB → RAGSecurityError capturada, st.error exibido."""
+        mock_salvar_pdf.side_effect = _rag_module.RAGSecurityError("Arquivo excede o limite de 10 MB.")
+
+        uploaded_file = _make_uploaded_file("grande.pdf", b"x" * (11 * 1024 * 1024))
+
+        from app import _ingerir_documento
+        _ingerir_documento(uploaded_file)
+
+        mock_st.error.assert_called_once()
+        error_msg = mock_st.error.call_args[0][0]
+        self.assertIn("10", error_msg)
+        mock_st.rerun.assert_not_called()
+
+    # ------------------------------------------------------------------
+    # PDF-06: Nome duplicado → st.error
+    # ------------------------------------------------------------------
+
+    @patch("app.st")
+    @patch("app.salvar_pdf_enviado")
+    def test_pdf_06_nome_duplicado(
+        self,
+        mock_salvar_pdf: MagicMock,
+        mock_st: MagicMock,
+    ) -> None:
+        """PDF-06: nome de arquivo já existe → RAGSecurityError capturada, st.error exibido."""
+        mock_salvar_pdf.side_effect = _rag_module.RAGSecurityError("Arquivo com esse nome já existe.")
+
+        uploaded_file = _make_uploaded_file("existente.pdf", b"%PDF-1.4")
+
+        from app import _ingerir_documento
+        _ingerir_documento(uploaded_file)
+
+        mock_st.error.assert_called_once_with("Arquivo com esse nome já existe.")
+        mock_st.rerun.assert_not_called()
+
+    # ------------------------------------------------------------------
+    # PDF-08: Rollback quando reconstruir_vectordb falha
+    # ------------------------------------------------------------------
+
+    @patch("app.st")
+    @patch("app.reconstruir_vectordb")
+    @patch("app.salvar_pdf_enviado")
+    def test_pdf_08_rollback_rebuild_falha(
+        self,
+        mock_salvar_pdf: MagicMock,
+        mock_reconstruir: MagicMock,
+        mock_st: MagicMock,
+    ) -> None:
+        """PDF-08: salvar_pdf_enviado sucede, reconstruir falha → unlink chamado, st.error exibido."""
+        saved_path = MagicMock(spec=Path)
+        mock_salvar_pdf.return_value = saved_path
+        mock_reconstruir.side_effect = RuntimeError("ChromaDB falhou")
+        mock_st.spinner.return_value = self._spinner_ctx()
+
+        uploaded_file = _make_uploaded_file("relatorio.pdf", b"%PDF-1.4")
+
+        from app import _ingerir_documento
+        _ingerir_documento(uploaded_file)
+
+        saved_path.unlink.assert_called_once_with(missing_ok=True)
+        mock_st.error.assert_called_once()
+        error_msg = mock_st.error.call_args[0][0]
+        self.assertIn("reconstruir base vetorial", error_msg.lower())
+        self.assertIn("removido", error_msg.lower())
+        mock_st.rerun.assert_not_called()
+        mock_st.success.assert_not_called()
+
+    # ------------------------------------------------------------------
+    # PDF-09: Extensão inválida (.docx) → st.error
+    # ------------------------------------------------------------------
+
+    @patch("app.st")
+    @patch("app.salvar_documento_enviado")
+    def test_pdf_09_extensao_invalida(
+        self,
+        mock_salvar_json: MagicMock,
+        mock_st: MagicMock,
+    ) -> None:
+        """PDF-09: arquivo .docx → roteado para salvar_documento_enviado → RAGSecurityError → st.error."""
+        mock_salvar_json.side_effect = _rag_module.RAGSecurityError("Apenas arquivos .json são aceitos.")
+
+        uploaded_file = _make_uploaded_file("contrato.docx", b"PK fake docx")
+
+        from app import _ingerir_documento
+        _ingerir_documento(uploaded_file)
+
+        mock_salvar_json.assert_called_once_with("contrato.docx", b"PK fake docx")
+        mock_st.error.assert_called_once()
+        error_msg = mock_st.error.call_args[0][0]
+        self.assertIn("aceitos", error_msg.lower())
+        mock_st.rerun.assert_not_called()
+
+    # ------------------------------------------------------------------
+    # PDF-10: Extensão .PDF maiúscula — salvar_pdf_enviado chamado
+    # ------------------------------------------------------------------
+
+    @patch("app.st")
+    @patch("app.reconstruir_vectordb")
+    @patch("app.salvar_pdf_enviado")
+    def test_pdf_10_extensao_maiuscula_aceita(
+        self,
+        mock_salvar_pdf: MagicMock,
+        mock_reconstruir: MagicMock,
+        mock_st: MagicMock,
+    ) -> None:
+        """PDF-10: extensão .PDF (maiúsculo) → salvar_pdf_enviado chamado, salvar_documento_enviado NÃO."""
+        saved_path = MagicMock(spec=Path)
+        mock_salvar_pdf.return_value = saved_path
+        mock_reconstruir.return_value = None
+        mock_st.spinner.return_value = self._spinner_ctx()
+
+        uploaded_file = _make_uploaded_file("NOTA_FISCAL.PDF", b"%PDF-1.4 content")
+
+        from app import _ingerir_documento
+        with patch("app.salvar_documento_enviado") as mock_salvar_json:
+            _ingerir_documento(uploaded_file)
+            mock_salvar_json.assert_not_called()
+
+        mock_salvar_pdf.assert_called_once_with("NOTA_FISCAL.PDF", b"%PDF-1.4 content")
 
 
 if __name__ == "__main__":
