@@ -172,9 +172,9 @@ def salvar_documento_enviado(filename: str, conteudo: bytes) -> Path:
     if Path(filename).suffix.lower() != ".json":
         raise RAGSecurityError("Apenas arquivos .json são aceitos.")
 
-    if len(conteudo) > MAX_JSON_FILE_SIZE_MB * 1024 * 1024:
+    if len(conteudo) > MAX_DOCUMENT_FILE_SIZE_MB * 1024 * 1024:
         raise RAGSecurityError(
-            f"Arquivo excede o limite de {MAX_JSON_FILE_SIZE_MB} MB."
+            f"Arquivo excede o limite de {MAX_DOCUMENT_FILE_SIZE_MB} MB."
         )
 
     safe_name = _sanitizar_nome_arquivo(filename)
@@ -218,6 +218,8 @@ def extrair_texto_pdf(path: Path) -> str:
         doc_handle = fitz.open(str(path))
     except fitz.FileDataError:
         raise RAGSecurityError("PDF inválido ou corrompido.")
+    except Exception as exc:
+        raise RAGSecurityError("PDF inválido ou corrompido.") from exc
 
     with doc_handle:
         if doc_handle.needs_pass:
@@ -241,6 +243,9 @@ def salvar_pdf_enviado(filename: str, conteudo: bytes) -> Path:
     """
     if Path(filename).suffix.lower() != ".pdf":
         raise RAGSecurityError("Apenas arquivos .pdf são aceitos.")
+
+    if not conteudo.startswith(b"%PDF"):
+        raise RAGSecurityError("Conteúdo não é um arquivo PDF válido.")
 
     if len(conteudo) > MAX_DOCUMENT_FILE_SIZE_MB * 1024 * 1024:
         raise RAGSecurityError(
@@ -289,7 +294,7 @@ def reconstruir_vectordb() -> None:
     cria_vectordb()
 
 
-def cria_vectordb():
+def cria_vectordb() -> None:
     """Cria e persiste o banco vetorial ChromaDB a partir dos documentos em data/documents/.
 
     Efeito colateral: atribui a variável global `vectordb` com a instância Chroma criada,

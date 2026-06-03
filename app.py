@@ -1,18 +1,18 @@
 # Projeto 8 - Pipeline de Automação de Testes Para Agentes de IA
 
 # Importa a biblioteca Streamlit para criação da interface web
-import streamlit as st
-import httpx
-import anthropic
+from pathlib import Path
 
-# Importa funções específicas do módulo Agentic RAG
+import anthropic
+import httpx
+import streamlit as st
+
 from agenticlog import (
     AgentState,
     LMStudioUnavailableError,
     agent_workflow,
     check_lmstudio_health,
 )
-from pathlib import Path
 from agenticlog.rag import salvar_documento_enviado, salvar_pdf_enviado, reconstruir_vectordb, RAGSecurityError
 
 def _ingerir_documento(uploaded_file: object) -> None:

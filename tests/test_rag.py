@@ -703,6 +703,15 @@ class TestExtrairTextoPdf(unittest.TestCase):
 
         self.assertIn("conteúdo real", resultado)
 
+    @patch("agenticlog.rag.fitz.open")
+    def teste_5_extrair_exception_generica_lanca_erro(self, mock_fitz_open):
+        """fitz.open() lançando Exception genérica é convertida em RAGSecurityError."""
+        mock_fitz_open.side_effect = RuntimeError("unexpected fitz error")
+
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
+            extrair_texto_pdf(Path("qualquer.pdf"))
+        self.assertIn("corrompido", str(ctx.exception))
+
 
 class TestSalvarPdfEnviado(unittest.TestCase):
     """Testes para salvar_pdf_enviado."""
@@ -727,6 +736,12 @@ class TestSalvarPdfEnviado(unittest.TestCase):
             salvar_pdf_enviado("documento.txt", self._valid_pdf_bytes())
         self.assertIn(".pdf", str(ctx.exception))
 
+    def teste_2b_salvar_rejeita_magic_bytes_invalidos(self):
+        """Conteúdo sem magic bytes %PDF levanta RAGSecurityError antes de escrita em disco."""
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
+            salvar_pdf_enviado("fake.pdf", b"PK\x03\x04 not a pdf")
+        self.assertIn("PDF válido", str(ctx.exception))
+
     @patch("agenticlog.rag.extrair_texto_pdf")
     def teste_3_salvar_aceita_extensao_maiuscula(self, mock_extrair):
         """Extensão .PDF (maiúscula) é aceita (case-insensitive)."""
@@ -739,7 +754,7 @@ class TestSalvarPdfEnviado(unittest.TestCase):
 
     def teste_4_salvar_rejeita_tamanho_excedido(self):
         """Conteúdo maior que 10 MB levanta RAGSecurityError antes de extração."""
-        conteudo_grande = b"x" * (10 * 1024 * 1024 + 1)
+        conteudo_grande = b"%PDF" + b"x" * (10 * 1024 * 1024 + 1)
         with self.assertRaises(rag.RAGSecurityError) as ctx:
             salvar_pdf_enviado("grande.pdf", conteudo_grande)
         self.assertIn("10", str(ctx.exception))
