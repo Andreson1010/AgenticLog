@@ -1,26 +1,20 @@
 # AgenticLog — Acceptance Tests: Document Ingestion UI Feature
 """
-Verifica todos os critérios de aceite das stories:
-  "Como operador logístico, quero fazer upload de um documento JSON pela
-   barra lateral do Streamlit para que o ChromaDB seja reconstruído com o
-   novo conteúdo sem reiniciar a aplicação."
+Verifica todos os critérios de aceite das stories de ingestão de documentos.
 
-  "Como operador de logística, quero fazer upload de arquivos PDF diretamente
-   pela interface Streamlit para indexação no ChromaDB."
-
-Mapeamento de critérios (DOCING-01 a DOCING-10):
-  DOCING-01 — AC-1: happy path (salvar + rebuild + rerun)
-  DOCING-02 — AC-2: spinner visível durante rebuild
-  DOCING-03 — AC-3: extensão não-.json rejeitada antes de escrita
-  DOCING-04 — AC-4: arquivo > 10 MB rejeitado antes de escrita
-  DOCING-05 — AC-5: chave proibida "lc" rejeitada antes de escrita
-  DOCING-06 — AC-6: colisão de nome rejeitada, zero bytes escritos
+Mapeamento de critérios JSON — ingestão incremental (DOCING-01 a DOCING-10):
+  DOCING-01 — AC-1: happy path incremental (adicionar_documento → adicionado + rerun)
+  DOCING-02 — AC-2: spinner visível durante adição incremental
+  DOCING-03 — AC-3: extensão não-.json rejeitada
+  DOCING-04 — AC-4: arquivo > 10 MB rejeitado
+  DOCING-05 — AC-5: chave proibida "lc" rejeitada
+  DOCING-06 — AC-6: colisão de nome → hash check
   DOCING-07 — AC-7: path traversal / chars inválidos rejeitados
   DOCING-08 — AC-8: limite de 1000 arquivos rejeitado
-  DOCING-09 — AC-9: rollback ao falhar rebuild (arquivo removido)
-  DOCING-10 — AC-10: verificado por design (st.rerun() aciona re-import do agente)
+  DOCING-09 — AC-9: rollback incremental (arquivo removido dentro de rag.py)
+  DOCING-10 — AC-10: st.rerun() chamado apenas para status "adicionado"
 
-Mapeamento de critérios PDF (PDF-01 a PDF-11):
+Mapeamento de critérios PDF (PDF-01 a PDF-11) — rebuild completo:
   PDF-01 — AC1: happy path PDF (salvar_pdf_enviado + rebuild + rerun)
   PDF-03 — AC3: PDF com senha → RAGSecurityError, st.error, sem rerun
   PDF-04 — AC4: PDF somente-imagem → RAGSecurityError, st.error
@@ -62,29 +56,26 @@ def _make_uploaded_file(name: str, content: bytes) -> MagicMock:
 
 class TestDOCING01HappyPath(unittest.TestCase):
     """
-    DOCING-01: WHEN operator uploads a valid .json file < 10 MB with no forbidden keys
-    AND clicks "Ingerir Documento"
-    THEN the file SHALL be saved to data/documents/,
-         ChromaDB SHALL be rebuilt,
-         a success message SHALL be shown,
+    DOCING-01: WHEN operator uploads a valid .json file
+    THEN adicionar_documento_incrementalmente SHALL be called,
+         st.success SHALL be shown with the returned mensagem,
          AND st.rerun() SHALL be called.
     """
 
     @patch("app.st")
-    @patch("app.reconstruir_vectordb")
-    @patch("app.salvar_documento_enviado")
-    def test_docing_01_happy_path_saves_rebuilds_and_reruns(
+    @patch("app.adicionar_documento_incrementalmente")
+    def test_docing_01_happy_path_adds_and_reruns(
         self,
-        mock_salvar: MagicMock,
-        mock_reconstruir: MagicMock,
+        mock_adicionar: MagicMock,
         mock_st: MagicMock,
     ) -> None:
-        """DOCING-01: valid upload → salvar + reconstruir chamados, st.success + st.rerun disparados."""
-        saved_path = MagicMock(spec=Path)
-        mock_salvar.return_value = saved_path
-        mock_reconstruir.return_value = None
+        """DOCING-01: valid JSON upload → adicionar chamado, st.success + st.rerun disparados."""
+        resultado = {
+            "status": "adicionado",
+            "mensagem": "Arquivo frete.json adicionado com sucesso. 3 chunks inseridos.",
+        }
+        mock_adicionar.return_value = resultado
 
-        # Configura spinner como context manager
         mock_spinner_ctx = MagicMock()
         mock_spinner_ctx.__enter__ = MagicMock(return_value=None)
         mock_spinner_ctx.__exit__ = MagicMock(return_value=False)
@@ -95,9 +86,8 @@ class TestDOCING01HappyPath(unittest.TestCase):
         from app import _ingerir_documento
         _ingerir_documento(uploaded_file)
 
-        mock_salvar.assert_called_once_with("frete.json", b'{"tipo": "frete"}')
-        mock_reconstruir.assert_called_once()
-        mock_st.success.assert_called_once_with("Documento ingerido com sucesso.")
+        mock_adicionar.assert_called_once_with("frete.json", b'{"tipo": "frete"}')
+        mock_st.success.assert_called_once_with(resultado["mensagem"])
         mock_st.rerun.assert_called_once()
         mock_st.error.assert_not_called()
 
@@ -106,24 +96,24 @@ class TestDOCING01HappyPath(unittest.TestCase):
 # DOCING-02: Spinner visível durante rebuild
 # ---------------------------------------------------------------------------
 
-class TestDOCING02SpinnerDuringRebuild(unittest.TestCase):
+class TestDOCING02SpinnerDuringAdd(unittest.TestCase):
     """
-    DOCING-02: WHEN rebuild is running
-    THEN a spinner with text "Reconstruindo base vetorial..." SHALL be visible.
+    DOCING-02: WHEN JSON ingestion is running
+    THEN a spinner with text "Adicionando documento à base vetorial..." SHALL be visible.
     """
 
     @patch("app.st")
-    @patch("app.reconstruir_vectordb")
-    @patch("app.salvar_documento_enviado")
-    def test_docing_02_spinner_wraps_rebuild(
+    @patch("app.adicionar_documento_incrementalmente")
+    def test_docing_02_spinner_wraps_add(
         self,
-        mock_salvar: MagicMock,
-        mock_reconstruir: MagicMock,
+        mock_adicionar: MagicMock,
         mock_st: MagicMock,
     ) -> None:
-        """DOCING-02: st.spinner chamado com texto correto e envolve reconstruir_vectordb."""
-        saved_path = MagicMock(spec=Path)
-        mock_salvar.return_value = saved_path
+        """DOCING-02: st.spinner chamado com texto correto e envolve adicionar_documento."""
+        mock_adicionar.return_value = {
+            "status": "adicionado",
+            "mensagem": "Arquivo doc.json adicionado com sucesso. 1 chunk inserido.",
+        }
 
         spinner_ctx = MagicMock()
         spinner_ctx.__enter__ = MagicMock(return_value=None)
@@ -135,9 +125,8 @@ class TestDOCING02SpinnerDuringRebuild(unittest.TestCase):
         from app import _ingerir_documento
         _ingerir_documento(uploaded_file)
 
-        mock_st.spinner.assert_called_once_with("Reconstruindo base vetorial...")
-        # reconstruir foi chamado dentro do bloco with spinner
-        mock_reconstruir.assert_called_once()
+        mock_st.spinner.assert_called_once_with("Adicionando documento à base vetorial...")
+        mock_adicionar.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -152,14 +141,14 @@ class TestDOCING03NonJsonExtensionRejected(unittest.TestCase):
     """
 
     @patch("app.st")
-    @patch("app.salvar_documento_enviado")
+    @patch("app.adicionar_documento_incrementalmente")
     def test_docing_03_non_json_extension_shows_error_no_disk_write(
         self,
-        mock_salvar: MagicMock,
+        mock_adicionar: MagicMock,
         mock_st: MagicMock,
     ) -> None:
-        """DOCING-03: extensão .csv → RAGSecurityError capturada, st.error exibido, sem escrita."""
-        mock_salvar.side_effect = RAGSecurityError("Apenas arquivos .json são aceitos.")
+        """DOCING-03: extensão inválida → RAGSecurityError capturada, st.error exibido."""
+        mock_adicionar.side_effect = RAGSecurityError("Apenas arquivos .json são aceitos.")
 
         uploaded_file = _make_uploaded_file("planilha.csv", b"col1,col2")
 
@@ -192,14 +181,14 @@ class TestDOCING04FileSizeRejected(unittest.TestCase):
     """
 
     @patch("app.st")
-    @patch("app.salvar_documento_enviado")
+    @patch("app.adicionar_documento_incrementalmente")
     def test_docing_04_large_file_shows_error_no_disk_write(
         self,
-        mock_salvar: MagicMock,
+        mock_adicionar: MagicMock,
         mock_st: MagicMock,
     ) -> None:
         """DOCING-04: arquivo > 10 MB → RAGSecurityError capturada, st.error exibido."""
-        mock_salvar.side_effect = RAGSecurityError("Arquivo excede o limite de 10 MB.")
+        mock_adicionar.side_effect = RAGSecurityError("Arquivo excede o limite de 10 MB.")
 
         uploaded_file = _make_uploaded_file("grande.json", b"x" * (11 * 1024 * 1024))
 
@@ -233,14 +222,14 @@ class TestDOCING05ForbiddenKeyRejected(unittest.TestCase):
     """
 
     @patch("app.st")
-    @patch("app.salvar_documento_enviado")
+    @patch("app.adicionar_documento_incrementalmente")
     def test_docing_05_forbidden_key_shows_error_no_disk_write(
         self,
-        mock_salvar: MagicMock,
+        mock_adicionar: MagicMock,
         mock_st: MagicMock,
     ) -> None:
         """DOCING-05: chave 'lc' → RAGSecurityError capturada, st.error exibido."""
-        mock_salvar.side_effect = RAGSecurityError("Arquivo contém chave proibida 'lc'")
+        mock_adicionar.side_effect = RAGSecurityError("Arquivo contém chave proibida 'lc'")
 
         uploaded_file = _make_uploaded_file("malicioso.json", b'{"lc": "evil"}')
 
@@ -277,14 +266,14 @@ class TestDOCING06FilenameCollisionRejected(unittest.TestCase):
     """
 
     @patch("app.st")
-    @patch("app.salvar_documento_enviado")
+    @patch("app.adicionar_documento_incrementalmente")
     def test_docing_06_collision_shows_error_no_disk_write(
         self,
-        mock_salvar: MagicMock,
+        mock_adicionar: MagicMock,
         mock_st: MagicMock,
     ) -> None:
-        """DOCING-06: arquivo já existe → RAGSecurityError capturada, st.error exibido."""
-        mock_salvar.side_effect = RAGSecurityError("Arquivo com esse nome já existe.")
+        """DOCING-06: duplicado ou hash diferente → RAGSecurityError ou st.info/warning exibido."""
+        mock_adicionar.side_effect = RAGSecurityError("Arquivo com esse nome já existe.")
 
         uploaded_file = _make_uploaded_file("doc1.json", b'{"tipo": "frete"}')
 
@@ -324,14 +313,14 @@ class TestDOCING07PathTraversalRejected(unittest.TestCase):
     """
 
     @patch("app.st")
-    @patch("app.salvar_documento_enviado")
+    @patch("app.adicionar_documento_incrementalmente")
     def test_docing_07_traversal_filename_shows_error_no_disk_write(
         self,
-        mock_salvar: MagicMock,
+        mock_adicionar: MagicMock,
         mock_st: MagicMock,
     ) -> None:
         """DOCING-07: '../evil.json' → RAGSecurityError capturada, st.error exibido."""
-        mock_salvar.side_effect = RAGSecurityError(
+        mock_adicionar.side_effect = RAGSecurityError(
             "Nome de arquivo com path traversal detectado: '../evil.json'"
         )
 
@@ -378,14 +367,14 @@ class TestDOCING08FileCountLimitRejected(unittest.TestCase):
     """
 
     @patch("app.st")
-    @patch("app.salvar_documento_enviado")
+    @patch("app.adicionar_documento_incrementalmente")
     def test_docing_08_file_count_limit_shows_error(
         self,
-        mock_salvar: MagicMock,
+        mock_adicionar: MagicMock,
         mock_st: MagicMock,
     ) -> None:
-        """DOCING-08: 1000 arquivos já presentes → RAGSecurityError capturada, st.error exibido."""
-        mock_salvar.side_effect = RAGSecurityError("Limite de 1000 arquivos atingido.")
+        """DOCING-08: limite de arquivos atingido → RAGSecurityError capturada, st.error exibido."""
+        mock_adicionar.side_effect = RAGSecurityError("Limite de 1000 arquivos atingido.")
 
         uploaded_file = _make_uploaded_file("novo.json", b'{"x": "y"}')
 
@@ -419,27 +408,23 @@ class TestDOCING08FileCountLimitRejected(unittest.TestCase):
 # DOCING-09: Rollback ao falhar rebuild — arquivo removido, vectordb intacto
 # ---------------------------------------------------------------------------
 
-class TestDOCING09RollbackOnRebuildFailure(unittest.TestCase):
+class TestDOCING09RollbackOnIngestionFailure(unittest.TestCase):
     """
-    DOCING-09: WHEN cria_vectordb() raises any exception during rebuild
-    THEN the uploaded file SHALL be removed from data/documents/,
-         the original vectordb SHALL remain intact,
+    DOCING-09: WHEN adicionar_documento_incrementalmente raises an exception
+    THEN rollback (file removal) happens inside rag.py,
+         app.py SHALL NOT call unlink,
          AND an error message SHALL be displayed.
     """
 
     @patch("app.st")
-    @patch("app.reconstruir_vectordb")
-    @patch("app.salvar_documento_enviado")
-    def test_docing_09_rebuild_failure_removes_file_and_shows_error(
+    @patch("app.adicionar_documento_incrementalmente")
+    def test_docing_09_ingestion_failure_shows_error(
         self,
-        mock_salvar: MagicMock,
-        mock_reconstruir: MagicMock,
+        mock_adicionar: MagicMock,
         mock_st: MagicMock,
     ) -> None:
-        """DOCING-09: reconstruir_vectordb lança Exception → saved_path.unlink chamado, st.error exibido."""
-        saved_path = MagicMock(spec=Path)
-        mock_salvar.return_value = saved_path
-        mock_reconstruir.side_effect = RuntimeError("ChromaDB falhou")
+        """DOCING-09: adicionar lança Exception → st.error exibido, sem rerun."""
+        mock_adicionar.side_effect = RuntimeError("ChromaDB falhou")
 
         spinner_ctx = MagicMock()
         spinner_ctx.__enter__ = MagicMock(return_value=None)
@@ -451,27 +436,19 @@ class TestDOCING09RollbackOnRebuildFailure(unittest.TestCase):
         from app import _ingerir_documento
         _ingerir_documento(uploaded_file)
 
-        saved_path.unlink.assert_called_once_with(missing_ok=True)
         mock_st.error.assert_called_once()
-        error_msg = mock_st.error.call_args[0][0]
-        self.assertIn("reconstruir base vetorial", error_msg.lower())
-        self.assertIn("removido", error_msg.lower())
         mock_st.rerun.assert_not_called()
         mock_st.success.assert_not_called()
 
     @patch("app.st")
-    @patch("app.reconstruir_vectordb")
-    @patch("app.salvar_documento_enviado")
-    def test_docing_09_rebuild_failure_error_includes_detail(
+    @patch("app.adicionar_documento_incrementalmente")
+    def test_docing_09_ingestion_failure_error_includes_detail(
         self,
-        mock_salvar: MagicMock,
-        mock_reconstruir: MagicMock,
+        mock_adicionar: MagicMock,
         mock_st: MagicMock,
     ) -> None:
         """DOCING-09: mensagem de erro inclui detalhe da exceção original."""
-        saved_path = MagicMock(spec=Path)
-        mock_salvar.return_value = saved_path
-        mock_reconstruir.side_effect = RuntimeError("conexão perdida")
+        mock_adicionar.side_effect = RuntimeError("conexão perdida")
 
         spinner_ctx = MagicMock()
         spinner_ctx.__enter__ = MagicMock(return_value=None)
@@ -506,18 +483,17 @@ class TestDOCING10RetrieverRebuiltAfterRerun(unittest.TestCase):
     """
 
     @patch("app.st")
-    @patch("app.reconstruir_vectordb")
-    @patch("app.salvar_documento_enviado")
+    @patch("app.adicionar_documento_incrementalmente")
     def test_docing_10_st_rerun_called_after_successful_ingest(
         self,
-        mock_salvar: MagicMock,
-        mock_reconstruir: MagicMock,
+        mock_adicionar: MagicMock,
         mock_st: MagicMock,
     ) -> None:
-        """DOCING-10: st.rerun() chamado exatamente uma vez após ingest bem-sucedido."""
-        saved_path = MagicMock(spec=Path)
-        mock_salvar.return_value = saved_path
-        mock_reconstruir.return_value = None
+        """DOCING-10: st.rerun() chamado exatamente uma vez após status adicionado."""
+        mock_adicionar.return_value = {
+            "status": "adicionado",
+            "mensagem": "Arquivo doc.json adicionado com sucesso. 2 chunks inseridos.",
+        }
 
         spinner_ctx = MagicMock()
         spinner_ctx.__enter__ = MagicMock(return_value=None)
@@ -532,18 +508,41 @@ class TestDOCING10RetrieverRebuiltAfterRerun(unittest.TestCase):
         self.assertEqual(mock_st.rerun.call_count, 1)
 
     @patch("app.st")
-    @patch("app.reconstruir_vectordb")
-    @patch("app.salvar_documento_enviado")
+    @patch("app.adicionar_documento_incrementalmente")
     def test_docing_10_st_rerun_not_called_on_validation_error(
         self,
-        mock_salvar: MagicMock,
-        mock_reconstruir: MagicMock,
+        mock_adicionar: MagicMock,
         mock_st: MagicMock,
     ) -> None:
-        """DOCING-10: st.rerun() NÃO chamado quando validação falha (retriever não acionado)."""
-        mock_salvar.side_effect = RAGSecurityError("Apenas arquivos .json são aceitos.")
+        """DOCING-10: st.rerun() NÃO chamado quando validação falha."""
+        mock_adicionar.side_effect = RAGSecurityError("Apenas arquivos .json são aceitos.")
 
-        uploaded_file = _make_uploaded_file("bad.txt", b"data")
+        uploaded_file = _make_uploaded_file("bad.json", b"data")
+
+        from app import _ingerir_documento
+        _ingerir_documento(uploaded_file)
+
+        mock_st.rerun.assert_not_called()
+
+    @patch("app.st")
+    @patch("app.adicionar_documento_incrementalmente")
+    def test_docing_10_st_rerun_not_called_for_duplicado(
+        self,
+        mock_adicionar: MagicMock,
+        mock_st: MagicMock,
+    ) -> None:
+        """DOCING-10: st.rerun() NÃO chamado quando status é duplicado."""
+        mock_adicionar.return_value = {
+            "status": "duplicado",
+            "mensagem": "Arquivo doc.json já está presente na base vetorial.",
+        }
+
+        spinner_ctx = MagicMock()
+        spinner_ctx.__enter__ = MagicMock(return_value=None)
+        spinner_ctx.__exit__ = MagicMock(return_value=False)
+        mock_st.spinner.return_value = spinner_ctx
+
+        uploaded_file = _make_uploaded_file("doc.json", b'{"tipo": "frete"}')
 
         from app import _ingerir_documento
         _ingerir_documento(uploaded_file)
@@ -734,21 +733,26 @@ class TestPDFIngestion(unittest.TestCase):
     # ------------------------------------------------------------------
 
     @patch("app.st")
-    @patch("app.salvar_documento_enviado")
+    @patch("app.adicionar_documento_incrementalmente")
     def test_pdf_09_extensao_invalida(
         self,
-        mock_salvar_json: MagicMock,
+        mock_adicionar: MagicMock,
         mock_st: MagicMock,
     ) -> None:
-        """PDF-09: arquivo .docx → roteado para salvar_documento_enviado → RAGSecurityError → st.error."""
-        mock_salvar_json.side_effect = _rag_module.RAGSecurityError("Apenas arquivos .json são aceitos.")
+        """PDF-09: arquivo .docx → roteado para adicionar_documento (JSON path) → RAGSecurityError → st.error."""
+        mock_adicionar.side_effect = _rag_module.RAGSecurityError("Apenas arquivos .json são aceitos.")
 
         uploaded_file = _make_uploaded_file("contrato.docx", b"PK fake docx")
+
+        mock_spinner_ctx = MagicMock()
+        mock_spinner_ctx.__enter__ = MagicMock(return_value=None)
+        mock_spinner_ctx.__exit__ = MagicMock(return_value=False)
+        mock_st.spinner.return_value = mock_spinner_ctx
 
         from app import _ingerir_documento
         _ingerir_documento(uploaded_file)
 
-        mock_salvar_json.assert_called_once_with("contrato.docx", b"PK fake docx")
+        mock_adicionar.assert_called_once_with("contrato.docx", b"PK fake docx")
         mock_st.error.assert_called_once()
         error_msg = mock_st.error.call_args[0][0]
         self.assertIn("aceitos", error_msg.lower())
@@ -776,9 +780,9 @@ class TestPDFIngestion(unittest.TestCase):
         uploaded_file = _make_uploaded_file("NOTA_FISCAL.PDF", b"%PDF-1.4 content")
 
         from app import _ingerir_documento
-        with patch("app.salvar_documento_enviado") as mock_salvar_json:
+        with patch("app.adicionar_documento_incrementalmente") as mock_adicionar:
             _ingerir_documento(uploaded_file)
-            mock_salvar_json.assert_not_called()
+            mock_adicionar.assert_not_called()
 
         mock_salvar_pdf.assert_called_once_with("NOTA_FISCAL.PDF", b"%PDF-1.4 content")
 
