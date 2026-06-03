@@ -32,6 +32,8 @@ from agenticlog.config import (
     MAX_JSON_FILES,
     MAX_JSON_FILE_SIZE_MB,
     FORBIDDEN_JSON_KEYS,
+    INVALID_FILENAME_CHARS,
+    WINDOWS_RESERVED_NAMES,
     LOG_LEVEL,
     LOG_FORMAT,
     _JsonFormatter,
@@ -40,8 +42,6 @@ from agenticlog.config import (
 logger = logging.getLogger(__name__)
 
 vectordb = None
-
-INVALID_FILENAME_CHARS: frozenset[str] = frozenset('<>:"/\\|?*\x00')
 
 
 class RAGSecurityError(Exception):
@@ -148,6 +148,11 @@ def _sanitizar_nome_arquivo(filename: str) -> str:
     if basename != filename or ".." in filename:
         raise RAGSecurityError(
             f"Nome de arquivo com path traversal detectado: {filename!r}"
+        )
+    stem = Path(basename).stem.upper()
+    if stem in WINDOWS_RESERVED_NAMES:
+        raise RAGSecurityError(
+            f"Nome de arquivo reservado pelo Windows: {filename!r}"
         )
     return basename
 
