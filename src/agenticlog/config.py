@@ -55,6 +55,10 @@ WINDOWS_RESERVED_NAMES: frozenset[str] = frozenset(
     | {f"LPT{i}" for i in range(1, 10)}
 )
 
+# API Server
+API_HOST: str = os.environ.get("API_HOST", "0.0.0.0")
+API_PORT: int = int(os.environ.get("API_PORT", "8000"))
+
 # Logging
 _VALID_LOG_LEVELS: frozenset[str] = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 _VALID_LOG_FORMATS: frozenset[str] = frozenset({"text", "json"})

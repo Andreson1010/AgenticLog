@@ -130,6 +130,20 @@ def _get_retriever():
     )
 
 
+def inicializar_recursos() -> None:
+    """Inicializa singletons do agente (LLM, ChromaDB, embeddings) na inicialização do servidor.
+
+    Entrada: nenhuma
+    Saída: nenhuma — efeito colateral: singletons globais inicializados
+
+    Ordem de inicialização: embeddings → vector_db → llm.
+    Chamada única a partir do lifespan do FastAPI; elimina race condition em requisições concorrentes.
+    """
+    _get_embedding_model()
+    _get_vector_db()
+    _get_llm()
+
+
 def invalidar_vector_db() -> None:
     """Invalida o singleton _vector_db para que a próxima chamada a _get_vector_db() reconecte ao ChromaDB.
 
