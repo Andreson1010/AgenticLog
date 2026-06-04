@@ -56,7 +56,7 @@ WINDOWS_RESERVED_NAMES: frozenset[str] = frozenset(
 )
 
 # API Server
-API_HOST: str = os.environ.get("API_HOST", "0.0.0.0")
+API_HOST: str = os.environ.get("API_HOST", "127.0.0.1")
 API_PORT: int = int(os.environ.get("API_PORT", "8000"))
 
 # Logging
