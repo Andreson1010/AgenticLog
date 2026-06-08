@@ -1,90 +1,161 @@
-# AgenticLog - Testes do classificador de erros do app.py
+# AgenticLog - Testes do tratamento de erros HTTP em app.py
 """
-Testes para verificar que app.py classifica erros via isinstance corretamente (T8-T10).
+Testes para app.py usando streamlit.testing.v1.AppTest.
+Cobre todos os ramos de erro do botão "Enviar":
+  503 LMStudio, 503 vectordb, 500, 422, ConnectError, TimeoutException.
 
-Estes testes simulam a lógica de classificação de erro do bloco except em app.py
-sem necessidade de importar streamlit (que requer contexto de servidor).
+Mock strategy: patch("app.httpx.post") retornando MagicMock configurado por caso.
 """
 
 import sys
+import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import httpx
 
 _root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_root / "src"))
 
-import unittest
-import unittest.mock
-import httpx
-import anthropic
+from streamlit.testing.v1 import AppTest  # noqa: E402
 
-from agenticlog.health import LMStudioUnavailableError
+_APP_PATH = str(_root / "app.py")
 
 
-def _classify_error(e: Exception) -> str:
-    """Replica a lógica de classificação de erros do bloco except em app.py.
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-    Retorna:
-        "lmstudio_not_running" — erro de conexão/timeout com o LMStudio.
-        "generic_error"        — qualquer outro erro não classificado.
-    """
-    _msg = str(e).lower()
-    if isinstance(
-        e,
-        (
-            LMStudioUnavailableError,
-            httpx.ConnectError,
-            httpx.TimeoutException,
-            httpx.RemoteProtocolError,
-            anthropic.APIConnectionError,
-        ),
-    ):
-        return "lmstudio_not_running"
-    elif "connection refused" in _msg or ("connect" in _msg and "1234" in _msg):
-        return "lmstudio_not_running"
-    return "generic_error"
+def _make_error_response(status_code: int, detail: str) -> MagicMock:
+    """Cria um MagicMock de resposta HTTP com raise_for_status levantando HTTPStatusError."""
+    mock_response = MagicMock()
+    mock_response.status_code = status_code
+    mock_response.json.return_value = {"detail": detail}
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        f"HTTP {status_code}",
+        request=MagicMock(),
+        response=mock_response,
+    )
+    return mock_response
 
+
+# ---------------------------------------------------------------------------
+# Classe de testes
+# ---------------------------------------------------------------------------
 
 class TestAppErrorHandler(unittest.TestCase):
-    """Testes T8-T10: isinstance classifica erros de conexão/LLM corretamente."""
+    """Testes de tratamento de erros HTTP para app.py."""
 
-    def teste_8_isinstance_classifica_api_connection_error(self):
-        """T8: APIConnectionError da anthropic é classificado corretamente como erro de conexão."""
-        # anthropic.APIConnectionError herda de httpx.ConnectError via cadeia de herança
-        # Testamos que o padrão isinstance captura erros do tipo httpx corretos
-        err = httpx.ConnectError("connection refused to 127.0.0.1:1234")
-        resultado = _classify_error(err)
-        self.assertEqual(resultado, "lmstudio_not_running")
+    def _run_with_query(self, mock_post: MagicMock) -> AppTest:
+        """Executa o app com uma consulta e retorna o AppTest após o clique.
 
-    def teste_11_isinstance_classifica_anthropic_api_connection_error(self):
-        """T11: anthropic.APIConnectionError é classificado como lmstudio_not_running, não genérico."""
-        request = unittest.mock.MagicMock()
-        err = anthropic.APIConnectionError(request=request)
-        resultado = _classify_error(err)
-        self.assertEqual(resultado, "lmstudio_not_running")
+        mock_post deve ser um MagicMock pronto para uso como httpx.post —
+        com return_value=response_mock ou side_effect=exception, conforme o caso.
+        """
+        with patch("app.httpx.post", mock_post):
+            at = AppTest.from_file(_APP_PATH)
+            at.run()
+            at.text_input[0].set_value("pergunta de teste").run()
+            at.button[0].click().run()
+        return at
 
-    def teste_9_isinstance_classifica_authentication_error_como_generico(self):
-        """T9: AuthenticationError não é capturado pelo isinstance — vai para ramo genérico."""
-        from openai import AuthenticationError
+    def teste_1_erro_503_lmstudio(self) -> None:
+        """503 com detalhe LMStudio: st.error exibe MSG_LMSTUDIO_DOWN."""
+        from app import MSG_LMSTUDIO_DOWN
 
-        mock_response = unittest.mock.MagicMock()
-        mock_response.request = unittest.mock.MagicMock()
-        err = AuthenticationError("invalid api key", response=mock_response, body={})
-        resultado = _classify_error(err)
-        self.assertEqual(resultado, "generic_error")
+        mock_response = _make_error_response(
+            503,
+            "LMStudio indisponível. Inicie o servidor e carregue o modelo.",
+        )
+        at = self._run_with_query(MagicMock(return_value=mock_response))
 
-    def teste_10_isinstance_nao_captura_excecao_generica(self):
-        """T10: ValueError genérico não é capturado pelo isinstance — vai para ramo genérico."""
-        err = ValueError("algum erro de validação inesperado")
-        resultado = _classify_error(err)
-        self.assertEqual(resultado, "generic_error")
+        self.assertFalse(at.exception, msg=f"Exceção inesperada: {at.exception}")
+        error_texts = [e.value for e in at.error]
+        self.assertTrue(
+            any(MSG_LMSTUDIO_DOWN in t for t in error_texts),
+            msg=f"MSG_LMSTUDIO_DOWN não encontrada em: {error_texts}",
+        )
+        self.assertIsNone(at.session_state.ranked_response)
 
-    def teste_12_lmstudio_unavailable_error_classificado_como_lmstudio(self):
-        """Health check: LMStudioUnavailableError vai para mensagem LMStudio, não genérico."""
-        err = LMStudioUnavailableError("LMStudio não está acessível.")
-        resultado = _classify_error(err)
-        self.assertEqual(resultado, "lmstudio_not_running")
+    def teste_2_erro_503_vectordb(self) -> None:
+        """503 com detalhe vectordb: st.error exibe MSG_VECTORDB_AUSENTE."""
+        from app import MSG_VECTORDB_AUSENTE
+
+        mock_response = _make_error_response(
+            503,
+            "Base vetorial não encontrada. Execute: python -m agenticlog.rag",
+        )
+        at = self._run_with_query(MagicMock(return_value=mock_response))
+
+        self.assertFalse(at.exception, msg=f"Exceção inesperada: {at.exception}")
+        error_texts = [e.value for e in at.error]
+        self.assertTrue(
+            any(MSG_VECTORDB_AUSENTE in t for t in error_texts),
+            msg=f"MSG_VECTORDB_AUSENTE não encontrada em: {error_texts}",
+        )
+        self.assertIsNone(at.session_state.ranked_response)
+
+    def teste_3_erro_500(self) -> None:
+        """500: st.error exibe MSG_ERRO_INTERNO e expander contém o detalhe."""
+        from app import MSG_ERRO_INTERNO
+
+        mock_response = _make_error_response(500, "Internal server error details.")
+        at = self._run_with_query(MagicMock(return_value=mock_response))
+
+        self.assertFalse(at.exception, msg=f"Exceção inesperada: {at.exception}")
+        error_texts = [e.value for e in at.error]
+        self.assertTrue(
+            any(MSG_ERRO_INTERNO in t for t in error_texts),
+            msg=f"MSG_ERRO_INTERNO não encontrada em: {error_texts}",
+        )
+        self.assertGreater(len(at.expander), 0, msg="Expander de detalhes não encontrado.")
+        self.assertIsNone(at.session_state.ranked_response)
+
+    def teste_4_erro_422(self) -> None:
+        """422: st.error exibe MSG_ERRO_VALIDACAO."""
+        from app import MSG_ERRO_VALIDACAO
+
+        mock_response = _make_error_response(422, "value is not a valid string")
+        at = self._run_with_query(MagicMock(return_value=mock_response))
+
+        self.assertFalse(at.exception, msg=f"Exceção inesperada: {at.exception}")
+        error_texts = [e.value for e in at.error]
+        self.assertTrue(
+            any(MSG_ERRO_VALIDACAO in t for t in error_texts),
+            msg=f"MSG_ERRO_VALIDACAO não encontrada em: {error_texts}",
+        )
+        self.assertIsNone(at.session_state.ranked_response)
+
+    def teste_5_connect_error(self) -> None:
+        """httpx.ConnectError: st.error exibe MSG_CONNECT_ERROR."""
+        from app import MSG_CONNECT_ERROR
+
+        mock_post = MagicMock(side_effect=httpx.ConnectError("connection refused"))
+        at = self._run_with_query(mock_post)
+
+        self.assertFalse(at.exception, msg=f"Exceção inesperada: {at.exception}")
+        error_texts = [e.value for e in at.error]
+        self.assertTrue(
+            any(MSG_CONNECT_ERROR in t for t in error_texts),
+            msg=f"MSG_CONNECT_ERROR não encontrada em: {error_texts}",
+        )
+        self.assertIsNone(at.session_state.ranked_response)
+
+    def teste_6_timeout(self) -> None:
+        """httpx.TimeoutException: st.error exibe MSG_TIMEOUT."""
+        from app import MSG_TIMEOUT
+
+        mock_post = MagicMock(side_effect=httpx.TimeoutException("timeout"))
+        at = self._run_with_query(mock_post)
+
+        self.assertFalse(at.exception, msg=f"Exceção inesperada: {at.exception}")
+        error_texts = [e.value for e in at.error]
+        self.assertTrue(
+            any(MSG_TIMEOUT in t for t in error_texts),
+            msg=f"MSG_TIMEOUT não encontrada em: {error_texts}",
+        )
+        self.assertIsNone(at.session_state.ranked_response)
 
 
 if __name__ == "__main__":
-    import unittest
-    unittest.main(verbosity=2)
+    unittest.main()

@@ -2,20 +2,57 @@
 
 # Importa a biblioteca Streamlit para criação da interface web
 from pathlib import Path
+from typing import Any
 
-import anthropic
 import httpx
 import streamlit as st
 
-from agenticlog import (
-    AgentState,
-    LMStudioUnavailableError,
-    agent_workflow,
-    check_lmstudio_health,
+from agenticlog.config import API_CLIENT_TIMEOUT_SECONDS, API_HOST, API_PORT
+from agenticlog.rag import (
+    RAGSecurityError,
+    adicionar_documento_incrementalmente,
+    reconstruir_vectordb,
+    salvar_pdf_enviado,
 )
-from agenticlog.rag import salvar_pdf_enviado, reconstruir_vectordb, adicionar_documento_incrementalmente, RAGSecurityError
 
-def _ingerir_documento(uploaded_file: object) -> None:
+# ---------------------------------------------------------------------------
+# Constantes de mensagem de erro
+# ---------------------------------------------------------------------------
+MSG_LMSTUDIO_DOWN = "LMStudio indisponível. Inicie o servidor e carregue o modelo."
+MSG_VECTORDB_AUSENTE = "Base vetorial não encontrada. Execute: python -m agenticlog.rag"
+MSG_CONNECT_ERROR = (
+    "Não foi possível conectar ao servidor FastAPI. "
+    "Inicie com: uvicorn agenticlog.api:app"
+)
+MSG_TIMEOUT = "Tempo limite de resposta excedido. O servidor pode estar sobrecarregado."
+MSG_ERRO_VALIDACAO = "Erro de validação na consulta. Verifique o texto enviado."
+MSG_ERRO_INTERNO = "Erro interno do servidor."
+
+
+def _safe_detail(response: httpx.Response) -> str:
+    try:
+        return response.json().get("detail", "")
+    except Exception:
+        return ""
+
+
+def _consultar_api(query: str) -> dict:
+    """Envia consulta ao endpoint POST /query e retorna o JSON de resposta.
+
+    Lança httpx.HTTPStatusError para respostas com status >= 400.
+    Lança httpx.ConnectError ou httpx.TimeoutException para falhas de rede.
+    Não captura exceções — o chamador é responsável pelo tratamento.
+    """
+    response = httpx.post(  # nosec B113
+        f"http://{API_HOST}:{API_PORT}/query",
+        json={"query": query},
+        timeout=API_CLIENT_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def _ingerir_documento(uploaded_file: Any) -> None:
     """Processa o arquivo enviado: PDF faz rebuild completo; JSON usa ingestão incremental.
 
     Entrada: uploaded_file — objeto UploadedFile do Streamlit.
@@ -90,7 +127,8 @@ st.sidebar.title("Instruções")
 st.sidebar.write("""
 - Digite perguntas específicas sobre logística e supply chain para obter respostas detalhadas.
 - O assistente de IA vai utilizar a base de dados do RAG para gerar respostas customizadas.
-- Documentos, contratos e procedimentos complementares podem ser usados para aperfeiçoar o sistema de RAG.
+- Documentos, contratos e procedimentos complementares podem ser usados para
+  aperfeiçoar o sistema de RAG.
 - IA Generativa comete erros. SEMPRE valide as respostas.
 """)
 
@@ -118,7 +156,7 @@ st.subheader("IA Generativa e Agentic RAG Para a Área de Logística")
 # Solicita ao usuário que digite uma pergunta através de um campo de texto
 query = st.text_input("Digite sua pergunta:")
 
-# Mapeia os valores de next_step retornados pelo agente para rótulos legíveis em português exibidos na UI
+# Mapeia next_step para rótulos legíveis em português exibidos na UI
 _ROTAS = {
     "retrieve": "Rota: Busca no Banco de Dados",
     "gerar": "Rota: Geração Direta",
@@ -132,46 +170,41 @@ if st.button("Enviar"):
     with st.spinner("Processando consulta... Aguarde."):
 
         try:
-            check_lmstudio_health()
-            output = agent_workflow.invoke(AgentState(query=query))
+            output = _consultar_api(query)
 
-            # agent_workflow.invoke() retorna um dict cujas chaves espelham os campos de AgentState;
-            # lemos cada chave com .get() para garantir valor padrão seguro caso alguma esteja ausente
+            # _consultar_api() retorna dict com as chaves do JSON de resposta;
+            # lemos cada chave com .get() para garantir valor padrão seguro
             st.session_state.ranked_response = output.get("ranked_response", "Nenhuma resposta.")
             st.session_state.confidence_score = output.get("confidence_score", 0.0)
             st.session_state.retrieved_info = output.get("retrieved_info", [])
             st.session_state.next_step = output.get("next_step", None)
 
-        except Exception as e:
-            _msg = str(e).lower()
-            if isinstance(
-                e,
-                (
-                    LMStudioUnavailableError,
-                    httpx.ConnectError,
-                    httpx.TimeoutException,
-                    httpx.RemoteProtocolError,
-                    anthropic.APIConnectionError,
-                ),
-            ):
-                st.error(
-                    "LMStudio não está rodando. Inicie o LMStudio e carregue o modelo "
-                    "hermes-3-llama-3.2-3b antes de usar o sistema."
-                )
-            elif "connection refused" in _msg or ("connect" in _msg and "1234" in _msg):
-                st.error(
-                    "LMStudio não está rodando. Inicie o LMStudio e carregue o modelo "
-                    "hermes-3-llama-3.2-3b antes de usar o sistema."
-                )
-            elif "does not exist" in _msg or "no such file" in _msg:
-                st.error(
-                    "Base vetorial não encontrada. Execute o seguinte comando para criá-la:"
-                    "\n\n    python -m agenticlog.rag"
-                )
-            else:
-                st.error("Erro ao processar consulta. Verifique se o LMStudio está em execução.")
+        except httpx.HTTPStatusError as e:
+            status_code = e.response.status_code
+            if status_code == 503:
+                detail = _safe_detail(e.response)
+                if "LMStudio" in detail:
+                    st.error(MSG_LMSTUDIO_DOWN)
+                elif "vetorial" in detail or "agenticlog.rag" in detail:
+                    st.error(MSG_VECTORDB_AUSENTE)
+                else:
+                    st.error(f"Serviço indisponível: {detail}" if detail else MSG_ERRO_INTERNO)
+            elif status_code == 500:
+                detail = _safe_detail(e.response)
+                st.error(MSG_ERRO_INTERNO)
                 with st.expander("Detalhes do erro"):
-                    st.exception(e)
+                    st.write(detail)
+            elif status_code == 422:
+                st.error(MSG_ERRO_VALIDACAO)
+            else:
+                detail = _safe_detail(e.response) or str(e)
+                st.error(detail)
+
+        except httpx.ConnectError:
+            st.error(MSG_CONNECT_ERROR)
+
+        except httpx.TimeoutException:
+            st.error(MSG_TIMEOUT)
 
 # Exibe os resultados armazenados no session_state (persistem entre reruns)
 if st.session_state.ranked_response is not None:
@@ -199,11 +232,12 @@ if st.session_state.ranked_response is not None:
     # Exibe subtítulo indicando o nível de confiança da resposta
     st.subheader("Confiança da Resposta com Base no RAG:")
 
-    # Obtém o score de confiança do session_state; usa 0.0 se None (ex.: após erro)
-    confidence = st.session_state.confidence_score or 0.0
+    # Obtém o score de confiança do session_state; usa 0.0 se None ou não-numérico (ex.: após erro)
+    raw_confidence = st.session_state.confidence_score
+    confidence = float(raw_confidence) if isinstance(raw_confidence, (int, float)) else 0.0
 
     # Exibe barra de progresso visual com o valor de confiança (0.0 a 1.0)
-    st.progress(float(confidence))
+    st.progress(confidence)
 
     # Exibe badge colorido de acordo com o nível de confiança
     if confidence >= 0.7:
@@ -226,20 +260,14 @@ if st.session_state.ranked_response is not None:
         for i, doc in enumerate(documentos_relacionados):
 
             # Obtém a fonte do documento para usar no título do expander
-            source = doc.metadata.get("source", "Desconhecida")
+            source = doc["metadata"].get("source", "Desconhecida")
 
             # Exibe cada documento em um expander colapsável para melhor legibilidade
             with st.expander(f"Documento {i + 1} — {source}"):
 
-                # Exibe o ID do documento
-                st.markdown(f"**ID:** `{doc.id}`")
-
-                # Exibe a fonte do documento
-                st.markdown(f"**Fonte:** `{source}`")
-
                 # Exibe o conteúdo do documento numa caixa de texto com altura definida
                 # key único evita StreamlitDuplicateElementId quando há múltiplos documentos
-                st.text_area("Conteúdo", doc.page_content, height=80, key=f"doc_content_{i}_{doc.id}")
+                st.text_area("Conteúdo", doc["page_content"], height=80, key=f"doc_content_{i}")
     else:
 
         # Caso não haja documentos, exibe mensagem informando ao usuário
