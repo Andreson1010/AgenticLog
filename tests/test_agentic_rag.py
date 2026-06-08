@@ -62,25 +62,22 @@ class TestAgenticRAG(unittest.TestCase):
 
     @patch("agenticlog.agent._get_retriever")
     def teste_5_retrieve_info(self, mock_get_retriever):
-        mock_retriever = MagicMock()
-        mock_retriever.invoke.return_value = [
+        """_get_retriever(query) retorna list[Document] diretamente — sem .invoke()."""
+        mock_get_retriever.return_value = [
             Document(page_content="Documento sobre cadeia de suprimentos")
         ]
-        mock_get_retriever.return_value = mock_retriever
         state = AgentState(query="fases da cadeia de suprimentos")
         new_state = retrieve_info(state)
-        mock_retriever.invoke.assert_called_once_with("fases da cadeia de suprimentos")
+        mock_get_retriever.assert_called_once_with("fases da cadeia de suprimentos")
         self.assertEqual(len(new_state.retrieved_info), 1)
 
     @patch("agenticlog.agent._get_retriever")
     def teste_5b_retrieve_info_empty(self, mock_get_retriever):
-        """Recuperação vazia: retriever retorna lista vazia."""
-        mock_retriever = MagicMock()
-        mock_retriever.invoke.return_value = []
-        mock_get_retriever.return_value = mock_retriever
+        """Recuperação vazia: _get_retriever retorna lista vazia."""
+        mock_get_retriever.return_value = []
         state = AgentState(query="consulta sem resultados")
         new_state = retrieve_info(state)
-        mock_retriever.invoke.assert_called_once_with("consulta sem resultados")
+        mock_get_retriever.assert_called_once_with("consulta sem resultados")
         self.assertEqual(len(new_state.retrieved_info), 0)
         self.assertEqual(new_state.retrieved_info, [])
 

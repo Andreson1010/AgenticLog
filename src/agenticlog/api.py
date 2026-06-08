@@ -17,9 +17,12 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
+from langchain_chroma import Chroma
+
 from agenticlog.agent import AgentState, agent_workflow, inicializar_recursos
-from agenticlog.config import DIR_VECTORDB
+from agenticlog.config import DEFAULT_COLLECTION_NAME, DIR_VECTORDB
 from agenticlog.health import LMStudioUnavailableError
+from agenticlog.rag import _get_rag_embedding_model
 
 logger = logging.getLogger(__name__)
 
@@ -76,13 +79,19 @@ class QueryResponse(BaseModel):
 
 
 def _verificar_vectordb() -> None:
-    """Verifica se o diretório do ChromaDB existe no disco.
+    """Verifica se o diretório do ChromaDB existe e abre a coleção padrão.
 
     Saída: nenhuma.
-    Raises: RuntimeError com MSG_VECTORDB_AUSENTE se o diretório estiver ausente.
+    Raises: RuntimeError com MSG_VECTORDB_AUSENTE se o diretório estiver ausente
+            ou a coleção padrão não puder ser aberta.
     """
     if not Path(DIR_VECTORDB).exists():
         raise RuntimeError(MSG_VECTORDB_AUSENTE)
+    Chroma(
+        persist_directory=str(DIR_VECTORDB),
+        collection_name=DEFAULT_COLLECTION_NAME,
+        embedding_function=_get_rag_embedding_model(),
+    )
 
 
 # ---------------------------------------------------------------------------

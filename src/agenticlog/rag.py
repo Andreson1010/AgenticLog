@@ -42,6 +42,10 @@ from agenticlog.config import (
     LOG_LEVEL,
     LOG_FORMAT,
     _JsonFormatter,
+    DEFAULT_COLLECTION_NAME,
+    COLLECTION_NAME_MIN_LEN,
+    COLLECTION_NAME_MAX_LEN,
+    COLLECTION_NAME_PATTERN,
 )
 
 logger = logging.getLogger(__name__)
@@ -175,15 +179,48 @@ def _sanitizar_nome_arquivo(filename: str) -> str:
     return basename
 
 
-def salvar_documento_enviado(filename: str, conteudo: bytes) -> Path:
+def _sanitizar_nome_colecao(name: str) -> str:
+    """Valida e retorna o nome de coleção ChromaDB fornecido.
+
+    Entrada: name — nome da coleção como string.
+    Saída: name inalterado se válido.
+    Lança RAGSecurityError se o nome for vazio, muito curto, muito longo ou
+    não corresponder ao padrão de nomes válidos do ChromaDB.
+    """
+    if not name:
+        raise RAGSecurityError("Nome de coleção vazio.")
+    if len(name) < COLLECTION_NAME_MIN_LEN:
+        raise RAGSecurityError(
+            f"Nome de coleção muito curto: mínimo {COLLECTION_NAME_MIN_LEN} caracteres."
+        )
+    if len(name) > COLLECTION_NAME_MAX_LEN:
+        raise RAGSecurityError(
+            f"Nome de coleção muito longo: máximo {COLLECTION_NAME_MAX_LEN} caracteres."
+        )
+    if not COLLECTION_NAME_PATTERN.match(name):
+        raise RAGSecurityError(
+            "Nome de coleção inválido: use apenas letras, números, hífen e underscore, "
+            "começando e terminando com alfanumérico."
+        )
+    return name
+
+
+def salvar_documento_enviado(
+    filename: str,
+    conteudo: bytes,
+    collection_name: str = DEFAULT_COLLECTION_NAME,
+) -> Path:
     """Valida e persiste um arquivo JSON enviado pelo operador.
 
     Entrada:
       filename — nome original do arquivo (str).
       conteudo — conteúdo binário do arquivo (bytes).
+      collection_name — nome da coleção ChromaDB de destino.
     Saída: Path do arquivo salvo em DIR_DOCUMENTS.
     Lança RAGSecurityError em qualquer falha de validação.
     """
+    _sanitizar_nome_colecao(collection_name)
+
     if Path(filename).suffix.lower() != ".json":
         raise RAGSecurityError("Apenas arquivos .json são aceitos.")
 
@@ -231,12 +268,14 @@ def _computar_hash_conteudo(conteudo: bytes) -> str:
 def adicionar_documento_incrementalmente(
     filename: str,
     conteudo: bytes,
+    collection_name: str = DEFAULT_COLLECTION_NAME,
 ) -> dict[str, str]:
     """Adiciona chunks de um novo arquivo JSON ao ChromaDB existente sem reconstrução.
 
     Entrada:
       filename — nome original do arquivo (str).
       conteudo — conteúdo binário do arquivo (bytes).
+      collection_name — nome da coleção ChromaDB de destino.
     Saída: dict com chaves "status" e "mensagem":
       {"status": "adicionado", "mensagem": "Arquivo <nome> adicionado com sucesso. N chunks inseridos."}
       {"status": "duplicado", "mensagem": "Arquivo <nome> já está presente na base vetorial."}
@@ -244,6 +283,8 @@ def adicionar_documento_incrementalmente(
     Lança RAGSecurityError em qualquer falha de validação de segurança.
     Lança Exception se a ingestão falhar após rollback.
     """
+    _sanitizar_nome_colecao(collection_name)
+
     if Path(filename).suffix.lower() != ".json":
         raise RAGSecurityError("Apenas arquivos .json são aceitos.")
 
@@ -268,6 +309,7 @@ def adicionar_documento_incrementalmente(
     embedding_model = _get_rag_embedding_model()
     vectordb_instance = Chroma(
         persist_directory=str(DIR_VECTORDB),
+        collection_name=collection_name,
         embedding_function=embedding_model,
     )
 
@@ -380,15 +422,22 @@ def extrair_texto_pdf(path: Path) -> str:
     return texto
 
 
-def salvar_pdf_enviado(filename: str, conteudo: bytes) -> Path:
+def salvar_pdf_enviado(
+    filename: str,
+    conteudo: bytes,
+    collection_name: str = DEFAULT_COLLECTION_NAME,
+) -> Path:
     """Valida e persiste um arquivo PDF enviado pelo operador.
 
     Entrada:
       filename — nome original do arquivo (str).
       conteudo — conteúdo binário do arquivo (bytes).
+      collection_name — nome da coleção ChromaDB de destino.
     Saída: Path do arquivo salvo em DIR_DOCUMENTS.
     Lança RAGSecurityError em qualquer falha de validação.
     """
+    _sanitizar_nome_colecao(collection_name)
+
     if Path(filename).suffix.lower() != ".pdf":
         raise RAGSecurityError("Apenas arquivos .pdf são aceitos.")
 
@@ -432,17 +481,18 @@ def salvar_pdf_enviado(filename: str, conteudo: bytes) -> Path:
     return DIR_DOCUMENTS / safe_name
 
 
-def reconstruir_vectordb() -> None:
+def reconstruir_vectordb(collection_name: str = DEFAULT_COLLECTION_NAME) -> None:
     """Reconstrói o banco vetorial ChromaDB a partir dos documentos em DIR_DOCUMENTS.
 
-    Entrada: nenhuma.
+    Entrada: collection_name — nome da coleção ChromaDB a reconstruir.
     Saída: nenhuma (efeito colateral: atualiza data/vectordb/).
     Lança Exception se cria_vectordb() falhar.
     """
-    cria_vectordb()
+    _sanitizar_nome_colecao(collection_name)
+    cria_vectordb(collection_name)
 
 
-def cria_vectordb() -> None:
+def cria_vectordb(collection_name: str = DEFAULT_COLLECTION_NAME) -> None:
     """Cria e persiste o banco vetorial ChromaDB a partir dos documentos em data/documents/.
 
     Efeito colateral: atribui a variável global `vectordb` com a instância Chroma criada,
@@ -454,6 +504,7 @@ def cria_vectordb() -> None:
     3. Divide em chunks com RecursiveCharacterTextSplitter.
     4. Gera embeddings com HuggingFace e persiste no ChromaDB.
     """
+    _sanitizar_nome_colecao(collection_name)
     global vectordb  # inicializado como None no nível do módulo; preenchido aqui
 
     _valida_path_documentos()
@@ -502,6 +553,7 @@ def cria_vectordb() -> None:
         chunks,
         embedding_model,
         persist_directory=str(DIR_VECTORDB),
+        collection_name=collection_name,
     )
 
     logger.info("Banco de Dados Vetorial Criado com sucesso!")
