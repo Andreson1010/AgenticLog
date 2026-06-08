@@ -18,7 +18,7 @@ Mapeamento de critérios (AC1–AC18, conforme user story aprovada):
   AC9  — Chars inválidos → RAGSecurityError, sem escrita
   AC10 — Começa/termina com não-alfanumérico → RAGSecurityError, sem escrita
   AC11 — (UNTESTABLE) Política documentada; sem comportamento de runtime verificável
-  AC12 — _sanitizar_nome_colecao() executado antes de qualquer escrita
+  AC12 — sanitizar_nome_colecao() executado antes de qualquer escrita
   AC13 — invalidar_vector_db() limpa todo _vector_dbs; sem exceção em dict vazio
   AC14 — QueryRequest sem campo collection_name
   AC15 — Limites de validação vêm das constantes de config.py
@@ -41,7 +41,7 @@ from agenticlog.config import (
     COLLECTION_NAME_MIN_LEN,
     DEFAULT_COLLECTION_NAME,
 )
-from agenticlog.rag import RAGSecurityError, _sanitizar_nome_colecao
+from agenticlog.rag import RAGSecurityError, sanitizar_nome_colecao
 
 
 # ---------------------------------------------------------------------------
@@ -158,23 +158,23 @@ class TestAC02NovaColecaoValidacaoInline(unittest.TestCase):
     """
     AC2: WHEN operador seleciona "Nova coleção…"
     THEN o sistema SHALL revelar input com feedback de validação inline via
-    _sanitizar_nome_colecao() — nome válido → "Nome válido.", inválido → caption de erro.
+    sanitizar_nome_colecao() — nome válido → "Nome válido.", inválido → caption de erro.
     """
 
     def teste_1_nome_valido_nao_levanta_excecao(self) -> None:
-        """AC2: _sanitizar_nome_colecao('fornecedores') retorna nome sem erro."""
-        result = _sanitizar_nome_colecao("fornecedores")
+        """AC2: sanitizar_nome_colecao('fornecedores') retorna nome sem erro."""
+        result = sanitizar_nome_colecao("fornecedores")
         self.assertEqual(result, "fornecedores")
 
     def teste_2_nome_invalido_levanta_rag_security_error(self) -> None:
-        """AC2: _sanitizar_nome_colecao('ab') lança RAGSecurityError — UI exibe caption de erro."""
+        """AC2: sanitizar_nome_colecao('ab') lança RAGSecurityError — UI exibe caption de erro."""
         with self.assertRaises(RAGSecurityError):
-            _sanitizar_nome_colecao("ab")
+            sanitizar_nome_colecao("ab")
 
     def teste_3_nome_com_espaco_invalido(self) -> None:
-        """AC2: _sanitizar_nome_colecao('nome com espaço') lança RAGSecurityError."""
+        """AC2: sanitizar_nome_colecao('nome com espaço') lança RAGSecurityError."""
         with self.assertRaises(RAGSecurityError):
-            _sanitizar_nome_colecao("nome com espaço")
+            sanitizar_nome_colecao("nome com espaço")
 
 
 # ---------------------------------------------------------------------------
@@ -580,21 +580,21 @@ class TestAC07NomeMuitoCurto(unittest.TestCase):
     def teste_1_nome_vazio_levanta_security_error(self) -> None:
         """AC7: string vazia → RAGSecurityError."""
         with self.assertRaises(RAGSecurityError):
-            _sanitizar_nome_colecao("")
+            sanitizar_nome_colecao("")
 
     def teste_2_nome_um_char_levanta_security_error(self) -> None:
         """AC7: 1 caractere → RAGSecurityError."""
         with self.assertRaises(RAGSecurityError):
-            _sanitizar_nome_colecao("a")
+            sanitizar_nome_colecao("a")
 
     def teste_3_nome_dois_chars_levanta_security_error(self) -> None:
         """AC7: 2 caracteres → RAGSecurityError."""
         with self.assertRaises(RAGSecurityError):
-            _sanitizar_nome_colecao("ab")
+            sanitizar_nome_colecao("ab")
 
     def teste_4_nome_tres_chars_aceito(self) -> None:
         """AC7 limite válido: exatamente 3 chars → aceito sem erro."""
-        result = _sanitizar_nome_colecao("abc")
+        result = sanitizar_nome_colecao("abc")
         self.assertEqual(result, "abc")
 
     def teste_5_adicionar_com_nome_muito_curto_levanta_antes_de_chroma(self) -> None:
@@ -633,18 +633,18 @@ class TestAC08NomeMuitoLongo(unittest.TestCase):
         """AC8: 64 caracteres → RAGSecurityError."""
         nome_64 = "a" * 64
         with self.assertRaises(RAGSecurityError):
-            _sanitizar_nome_colecao(nome_64)
+            sanitizar_nome_colecao(nome_64)
 
     def teste_2_nome_63_chars_aceito(self) -> None:
         """AC8 limite válido: exatamente 63 chars → aceito."""
         nome_63 = "a" * 63
-        result = _sanitizar_nome_colecao(nome_63)
+        result = sanitizar_nome_colecao(nome_63)
         self.assertEqual(result, nome_63)
 
     def teste_3_nome_100_chars_levanta_security_error(self) -> None:
         """AC8: 100 caracteres → RAGSecurityError."""
         with self.assertRaises(RAGSecurityError):
-            _sanitizar_nome_colecao("a" * 100)
+            sanitizar_nome_colecao("a" * 100)
 
     def teste_4_adicionar_com_nome_muito_longo_levanta_antes_de_chroma(self) -> None:
         """AC8: adicionar_documento_incrementalmente com nome > 63 chars → RAGSecurityError."""
@@ -671,34 +671,34 @@ class TestAC09CharsInvalidos(unittest.TestCase):
     def teste_1_espaco_invalido(self) -> None:
         """AC9: espaço → RAGSecurityError."""
         with self.assertRaises(RAGSecurityError):
-            _sanitizar_nome_colecao("nome invalido")
+            sanitizar_nome_colecao("nome invalido")
 
     def teste_2_ponto_invalido(self) -> None:
         """AC9: ponto → RAGSecurityError."""
         with self.assertRaises(RAGSecurityError):
-            _sanitizar_nome_colecao("nome.colecao")
+            sanitizar_nome_colecao("nome.colecao")
 
     def teste_3_arroba_invalido(self) -> None:
         """AC9: @ → RAGSecurityError."""
         with self.assertRaises(RAGSecurityError):
-            _sanitizar_nome_colecao("nome@colecao")
+            sanitizar_nome_colecao("nome@colecao")
 
     def teste_4_slash_invalido(self) -> None:
         """AC9: / → RAGSecurityError."""
         with self.assertRaises(RAGSecurityError):
-            _sanitizar_nome_colecao("nome/colecao")
+            sanitizar_nome_colecao("nome/colecao")
 
     def teste_5_caracter_unicode_invalido(self) -> None:
         """AC9: caractere acentuado → RAGSecurityError."""
         with self.assertRaises(RAGSecurityError):
-            _sanitizar_nome_colecao("coleção")
+            sanitizar_nome_colecao("coleção")
 
     def teste_6_hifen_e_underscore_validos_no_meio(self) -> None:
         """AC9: hífen e underscore no meio → válidos."""
-        result_hifen = _sanitizar_nome_colecao("nome-colecao")
+        result_hifen = sanitizar_nome_colecao("nome-colecao")
         self.assertEqual(result_hifen, "nome-colecao")
 
-        result_underscore = _sanitizar_nome_colecao("nome_colecao")
+        result_underscore = sanitizar_nome_colecao("nome_colecao")
         self.assertEqual(result_underscore, "nome_colecao")
 
 
@@ -716,37 +716,37 @@ class TestAC10InicioFimNaoAlfanumerico(unittest.TestCase):
     def teste_1_comeca_com_hifen(self) -> None:
         """AC10: nome começando com hífen → RAGSecurityError."""
         with self.assertRaises(RAGSecurityError):
-            _sanitizar_nome_colecao("-nome-colecao")
+            sanitizar_nome_colecao("-nome-colecao")
 
     def teste_2_termina_com_hifen(self) -> None:
         """AC10: nome terminando com hífen → RAGSecurityError."""
         with self.assertRaises(RAGSecurityError):
-            _sanitizar_nome_colecao("nome-colecao-")
+            sanitizar_nome_colecao("nome-colecao-")
 
     def teste_3_comeca_com_underscore(self) -> None:
         """AC10: nome começando com underscore → RAGSecurityError."""
         with self.assertRaises(RAGSecurityError):
-            _sanitizar_nome_colecao("_nome_colecao")
+            sanitizar_nome_colecao("_nome_colecao")
 
     def teste_4_termina_com_underscore(self) -> None:
         """AC10: nome terminando com underscore → RAGSecurityError."""
         with self.assertRaises(RAGSecurityError):
-            _sanitizar_nome_colecao("nome_colecao_")
+            sanitizar_nome_colecao("nome_colecao_")
 
     def teste_5_nome_valido_alfanumerico_inicio_fim(self) -> None:
         """AC10: nome começando e terminando com alfanumérico → válido."""
-        result = _sanitizar_nome_colecao("a-valido-z")
+        result = sanitizar_nome_colecao("a-valido-z")
         self.assertEqual(result, "a-valido-z")
 
 
 # ---------------------------------------------------------------------------
-# AC12: _sanitizar_nome_colecao antes de toda escrita
+# AC12: sanitizar_nome_colecao antes de toda escrita
 # ---------------------------------------------------------------------------
 
 
 class TestAC12SanitizacaoAntesDeEscrita(unittest.TestCase):
     """
-    AC12: _sanitizar_nome_colecao() SHALL ser chamado antes de qualquer write
+    AC12: sanitizar_nome_colecao() SHALL ser chamado antes de qualquer write
     em todas as funções: adicionar_documento_incrementalmente, salvar_documento_enviado,
     salvar_pdf_enviado, reconstruir_vectordb.
     """
@@ -898,37 +898,37 @@ class TestAC15LimitesVemDoConfig(unittest.TestCase):
         """AC15: nome com len(MIN_LEN - 1) → RAGSecurityError."""
         nome_curto = "a" * (COLLECTION_NAME_MIN_LEN - 1)
         with self.assertRaises(RAGSecurityError):
-            _sanitizar_nome_colecao(nome_curto)
+            sanitizar_nome_colecao(nome_curto)
 
     def teste_4_nome_com_min_len_aceito(self) -> None:
         """AC15: nome com len(MIN_LEN) exato → aceito."""
         nome = "a" * COLLECTION_NAME_MIN_LEN
-        result = _sanitizar_nome_colecao(nome)
+        result = sanitizar_nome_colecao(nome)
         self.assertEqual(result, nome)
 
     def teste_5_nome_com_max_len_aceito(self) -> None:
         """AC15: nome com len(MAX_LEN) exato → aceito."""
         nome = "a" * COLLECTION_NAME_MAX_LEN
-        result = _sanitizar_nome_colecao(nome)
+        result = sanitizar_nome_colecao(nome)
         self.assertEqual(result, nome)
 
     def teste_6_nome_com_max_len_mais_um_rejeitado(self) -> None:
         """AC15: nome com len(MAX_LEN + 1) → RAGSecurityError."""
         nome_longo = "a" * (COLLECTION_NAME_MAX_LEN + 1)
         with self.assertRaises(RAGSecurityError):
-            _sanitizar_nome_colecao(nome_longo)
+            sanitizar_nome_colecao(nome_longo)
 
     def teste_7_mensagem_de_erro_cita_limite_minimo(self) -> None:
         """AC15: mensagem de erro de nome curto cita COLLECTION_NAME_MIN_LEN."""
         with self.assertRaises(RAGSecurityError) as ctx:
-            _sanitizar_nome_colecao("ab")
+            sanitizar_nome_colecao("ab")
 
         self.assertIn(str(COLLECTION_NAME_MIN_LEN), str(ctx.exception))
 
     def teste_8_mensagem_de_erro_cita_limite_maximo(self) -> None:
         """AC15: mensagem de erro de nome longo cita COLLECTION_NAME_MAX_LEN."""
         with self.assertRaises(RAGSecurityError) as ctx:
-            _sanitizar_nome_colecao("a" * 64)
+            sanitizar_nome_colecao("a" * 64)
 
         self.assertIn(str(COLLECTION_NAME_MAX_LEN), str(ctx.exception))
 

@@ -879,20 +879,20 @@ class TestColecaoSeletor(unittest.TestCase):
         """MCC-16: nome 'ab' (muito curto) → _sanitizar_nome_colecao levanta
         RAGSecurityError na UI → st.caption exibe mensagem de erro,
         adicionar_documento_incrementalmente NÃO é chamado."""
-        from agenticlog.rag import _sanitizar_nome_colecao
+        from agenticlog.rag import sanitizar_nome_colecao
 
         # Confirma que "ab" levanta RAGSecurityError (pré-condição do teste)
         with self.assertRaises(RAGSecurityError):
-            _sanitizar_nome_colecao("ab")
+            sanitizar_nome_colecao("ab")
 
         # Simula o fluxo da UI: RAGSecurityError capturada antes de chegar a
         # _ingerir_documento — o widget mostra st.caption e collection_name
         # permanece como DEFAULT_COLLECTION_NAME, mas o botão de ingerir
         # não é clicado com um nome inválido resolvido.
-        # Aqui verificamos diretamente que _sanitizar_nome_colecao rejeita "ab"
+        # Aqui verificamos diretamente que sanitizar_nome_colecao rejeita "ab"
         # e que _ingerir_documento NÃO é chamado nesse cenário.
         try:
-            _sanitizar_nome_colecao("ab")
+            sanitizar_nome_colecao("ab")
             colecao_resolvida = "ab"
         except RAGSecurityError as e:
             colecao_resolvida = None

@@ -16,7 +16,7 @@ from agenticlog.config import (
 )
 from agenticlog.rag import (
     RAGSecurityError,
-    _sanitizar_nome_colecao,
+    sanitizar_nome_colecao,
     adicionar_documento_incrementalmente,
     reconstruir_vectordb,
     salvar_pdf_enviado,
@@ -168,7 +168,7 @@ with st.sidebar.expander("Adicionar Documento"):
             colecao_valida = False
         else:
             try:
-                _sanitizar_nome_colecao(nome_input)
+                sanitizar_nome_colecao(nome_input)
                 st.caption("Nome válido.")
                 collection_name = nome_input
             except RAGSecurityError as e:

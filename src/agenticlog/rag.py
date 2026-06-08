@@ -205,6 +205,11 @@ def _sanitizar_nome_colecao(name: str) -> str:
     return name
 
 
+def sanitizar_nome_colecao(name: str) -> str:
+    """Valida nome de coleção ChromaDB. Levanta RAGSecurityError se inválido."""
+    return _sanitizar_nome_colecao(name)
+
+
 def salvar_documento_enviado(
     filename: str,
     conteudo: bytes,
