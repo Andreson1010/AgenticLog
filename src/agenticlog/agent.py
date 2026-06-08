@@ -145,18 +145,16 @@ def _listar_colecoes() -> list[str]:
         if not names:
             return [DEFAULT_COLLECTION_NAME]
         return names
-    except Exception:
-        logger.warning("Falha ao listar coleções ChromaDB; usando coleção padrão.")
+    except Exception as exc:
+        logger.warning("Falha ao listar coleções ChromaDB; usando coleção padrão. Detalhe: %s", exc)
         return [DEFAULT_COLLECTION_NAME]
 
 
 def _get_retriever(query: str) -> list[Document]:
-    """Executa fan-out retrieval em todas as coleções ChromaDB e retorna os top-3 documentos únicos.
+    """Executa fan-out em todas as coleções ChromaDB e retorna até 3 documentos únicos.
 
-    Entrada: query — consulta do usuário.
-    Saída: lista de até 3 documentos únicos (deduplicados por hash MD5 do page_content).
-    Propaga imediatamente qualquer exceção lançada pelo ChromaDB durante o retrieval.
-    Coleções vazias contribuem 0 documentos silenciosamente.
+    Coleção vazia contribui 0 documentos (skip silencioso).
+    Erro ChromaDB em qualquer coleção propaga imediatamente (fail-fast).
     """
     collection_names = _listar_colecoes()
     all_docs: list[Document] = []
