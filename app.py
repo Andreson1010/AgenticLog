@@ -29,6 +29,13 @@ MSG_ERRO_VALIDACAO = "Erro de validação na consulta. Verifique o texto enviado
 MSG_ERRO_INTERNO = "Erro interno do servidor."
 
 
+def _safe_detail(response: httpx.Response) -> str:
+    try:
+        return response.json().get("detail", "")
+    except Exception:
+        return ""
+
+
 def _consultar_api(query: str) -> dict:
     """Envia consulta ao endpoint POST /query e retorna o JSON de resposta.
 
@@ -175,7 +182,7 @@ if st.button("Enviar"):
         except httpx.HTTPStatusError as e:
             status_code = e.response.status_code
             if status_code == 503:
-                detail = e.response.json().get("detail", "")
+                detail = _safe_detail(e.response)
                 if "LMStudio" in detail:
                     st.error(MSG_LMSTUDIO_DOWN)
                 elif "vetorial" in detail or "agenticlog.rag" in detail:
@@ -183,14 +190,14 @@ if st.button("Enviar"):
                 else:
                     st.error(f"Serviço indisponível: {detail}" if detail else MSG_ERRO_INTERNO)
             elif status_code == 500:
-                detail = e.response.json().get("detail", "")
+                detail = _safe_detail(e.response)
                 st.error(MSG_ERRO_INTERNO)
                 with st.expander("Detalhes do erro"):
                     st.write(detail)
             elif status_code == 422:
                 st.error(MSG_ERRO_VALIDACAO)
             else:
-                detail = e.response.json().get("detail", str(e))
+                detail = _safe_detail(e.response) or str(e)
                 st.error(detail)
 
         except httpx.ConnectError:

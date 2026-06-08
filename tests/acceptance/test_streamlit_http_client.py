@@ -64,22 +64,14 @@ def _error_mock(status_code: int, detail: str) -> MagicMock:
     return mock
 
 
-def _run_query(mock_target: object, query: str = "pergunta de teste") -> AppTest:
+def _run_query(mock_post: MagicMock, query: str = "pergunta de teste") -> AppTest:
     """Run the Streamlit app with a query click and return the AppTest instance.
 
-    Mirrors the builder's pattern from test_app_error_handler.py exactly:
-    - If mock_target is already a callable MagicMock with a side_effect, use it directly.
-    - Otherwise wrap it as the return_value of a new MagicMock so that
-      httpx.post(...) returns the configured response object.
-    - The `with patch(...)` block covers all three .run() calls so every
-      rerun inside AppTest sees the same mock.
+    mock_post must be a fully configured callable — either MagicMock(return_value=response)
+    for HTTP response cases or MagicMock(side_effect=exception) for network-error cases.
+    The patch covers all three .run() calls so every rerun sees the same mock.
     """
-    callable_mock = (
-        mock_target
-        if isinstance(mock_target, MagicMock) and mock_target.side_effect is not None
-        else MagicMock(return_value=mock_target)
-    )
-    with patch("app.httpx.post", callable_mock):
+    with patch("app.httpx.post", mock_post):
         at = AppTest.from_file(_APP_PATH)
         at.run()
         at.text_input[0].set_value(query).run()
@@ -113,7 +105,7 @@ class TestAC01SuccessPath(unittest.TestCase):
             confidence_score=0.9,
             next_step="retrieve",
         )
-        at = _run_query(mock, "Qual o prazo de entrega?")
+        at = _run_query(MagicMock(return_value=mock), "Qual o prazo de entrega?")
 
         self.assertFalse(at.exception, msg=f"Unexpected exception: {at.exception}")
         self.assertEqual(at.session_state["ranked_response"], "Prazo de entrega é 5 dias úteis.")
@@ -156,7 +148,7 @@ class TestAC02DictAccess(unittest.TestCase):
             {"page_content": "conteúdo A", "metadata": {"source": "frete.json"}},
             {"page_content": "conteúdo B", "metadata": {"source": "estoque.json"}},
         ]
-        at = _run_query(_success_mock(retrieved_info=docs, ranked_response="resp"))
+        at = _run_query(MagicMock(return_value=_success_mock(retrieved_info=docs, ranked_response="resp")))
 
         self.assertFalse(at.exception, msg=f"Unexpected exception: {at.exception}")
         expander_labels = [e.label for e in at.expander]
@@ -171,7 +163,7 @@ class TestAC02DictAccess(unittest.TestCase):
 
     def teste_2_missing_source_key_falls_back_to_desconhecida(self) -> None:
         docs = [{"page_content": "sem source", "metadata": {}}]
-        at = _run_query(_success_mock(retrieved_info=docs, ranked_response="resp"))
+        at = _run_query(MagicMock(return_value=_success_mock(retrieved_info=docs, ranked_response="resp")))
 
         self.assertFalse(at.exception, msg=f"Unexpected exception: {at.exception}")
         expander_labels = [e.label for e in at.expander]
@@ -205,7 +197,7 @@ class TestAC03Http503LMStudio(unittest.TestCase):
         import app as app_module  # noqa: PLC0415
 
         mock = _error_mock(503, "LMStudio indisponível. Inicie o servidor e carregue o modelo.")
-        at = _run_query(mock)
+        at = _run_query(MagicMock(return_value=mock))
 
         self.assertFalse(at.exception, msg=f"Unexpected exception: {at.exception}")
         errors = _error_texts(at)
@@ -216,7 +208,7 @@ class TestAC03Http503LMStudio(unittest.TestCase):
 
     def teste_2_503_lmstudio_does_not_mutate_session_state(self) -> None:
         mock = _error_mock(503, "LMStudio indisponível. Inicie o servidor e carregue o modelo.")
-        at = _run_query(mock)
+        at = _run_query(MagicMock(return_value=mock))
 
         self.assertIsNone(at.session_state.ranked_response)
         self.assertIsNone(at.session_state.confidence_score)
@@ -239,7 +231,7 @@ class TestAC04Http503Vectordb(unittest.TestCase):
         import app as app_module  # noqa: PLC0415
 
         mock = _error_mock(503, "Base vetorial não encontrada. Execute: python -m agenticlog.rag")
-        at = _run_query(mock)
+        at = _run_query(MagicMock(return_value=mock))
 
         self.assertFalse(at.exception, msg=f"Unexpected exception: {at.exception}")
         errors = _error_texts(at)
@@ -250,7 +242,7 @@ class TestAC04Http503Vectordb(unittest.TestCase):
 
     def teste_2_503_vectordb_does_not_mutate_session_state(self) -> None:
         mock = _error_mock(503, "Base vetorial não encontrada. Execute: python -m agenticlog.rag")
-        at = _run_query(mock)
+        at = _run_query(MagicMock(return_value=mock))
 
         self.assertIsNone(at.session_state.ranked_response)
 
@@ -270,7 +262,7 @@ class TestAC05Http500(unittest.TestCase):
         import app as app_module  # noqa: PLC0415
 
         mock = _error_mock(500, "Internal traceback detail here.")
-        at = _run_query(mock)
+        at = _run_query(MagicMock(return_value=mock))
 
         self.assertFalse(at.exception, msg=f"Unexpected exception: {at.exception}")
         errors = _error_texts(at)
@@ -286,7 +278,7 @@ class TestAC05Http500(unittest.TestCase):
 
     def teste_2_500_does_not_mutate_session_state(self) -> None:
         mock = _error_mock(500, "server error")
-        at = _run_query(mock)
+        at = _run_query(MagicMock(return_value=mock))
 
         self.assertIsNone(at.session_state.ranked_response)
 
@@ -305,7 +297,7 @@ class TestAC06Http422(unittest.TestCase):
         import app as app_module  # noqa: PLC0415
 
         mock = _error_mock(422, "value is not a valid string")
-        at = _run_query(mock)
+        at = _run_query(MagicMock(return_value=mock))
 
         self.assertFalse(at.exception, msg=f"Unexpected exception: {at.exception}")
         errors = _error_texts(at)
@@ -316,7 +308,7 @@ class TestAC06Http422(unittest.TestCase):
 
     def teste_2_422_does_not_mutate_session_state(self) -> None:
         mock = _error_mock(422, "value is not a valid string")
-        at = _run_query(mock)
+        at = _run_query(MagicMock(return_value=mock))
 
         self.assertIsNone(at.session_state.ranked_response)
 
