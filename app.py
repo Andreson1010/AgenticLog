@@ -7,13 +7,22 @@ from typing import Any
 import httpx
 import streamlit as st
 
-from agenticlog.config import API_CLIENT_TIMEOUT_SECONDS, API_HOST, API_PORT
+from agenticlog.agent import _listar_colecoes
+from agenticlog.config import (
+    API_CLIENT_TIMEOUT_SECONDS,
+    API_HOST,
+    API_PORT,
+    DEFAULT_COLLECTION_NAME,
+)
 from agenticlog.rag import (
     RAGSecurityError,
+    _sanitizar_nome_colecao,
     adicionar_documento_incrementalmente,
     reconstruir_vectordb,
     salvar_pdf_enviado,
 )
+
+NOVA_COLECAO_SENTINEL = "Nova coleção…"
 
 # ---------------------------------------------------------------------------
 # Constantes de mensagem de erro
@@ -52,10 +61,14 @@ def _consultar_api(query: str) -> dict:
     return response.json()
 
 
-def _ingerir_documento(uploaded_file: Any) -> None:
+def _ingerir_documento(
+    uploaded_file: Any,
+    collection_name: str = DEFAULT_COLLECTION_NAME,
+) -> None:
     """Processa o arquivo enviado: PDF faz rebuild completo; JSON usa ingestão incremental.
 
     Entrada: uploaded_file — objeto UploadedFile do Streamlit.
+             collection_name — nome da coleção ChromaDB de destino.
     Saída: nenhuma (efeito colateral: exibe feedback na UI, atualiza vectordb).
     """
     conteudo: bytes = uploaded_file.getvalue()
@@ -68,23 +81,25 @@ def _ingerir_documento(uploaded_file: Any) -> None:
 
     if suffix == ".pdf":
         try:
-            saved_path = salvar_pdf_enviado(filename, conteudo)
+            saved_path = salvar_pdf_enviado(filename, conteudo, collection_name)
         except RAGSecurityError as e:
             st.error(str(e))
             return
         try:
             with st.spinner("Reconstruindo base vetorial..."):
-                reconstruir_vectordb()
+                reconstruir_vectordb(collection_name)
         except Exception as e:
             saved_path.unlink(missing_ok=True)
             st.error(f"Erro ao reconstruir base vetorial. Arquivo removido. Detalhe: {e}")
             return
-        st.success("Documento ingerido com sucesso.")
+        st.success(f"Documento ingerido com sucesso na coleção '{collection_name}'.")
         st.rerun()
     else:
         try:
             with st.spinner("Adicionando documento à base vetorial..."):
-                resultado = adicionar_documento_incrementalmente(filename, conteudo)
+                resultado = adicionar_documento_incrementalmente(
+                    filename, conteudo, collection_name
+                )
         except RAGSecurityError as e:
             st.error(str(e))
             return
@@ -140,12 +155,34 @@ if st.sidebar.button("Suporte"):
 
 # Expander para ingestão de novos documentos JSON no banco vetorial
 with st.sidebar.expander("Adicionar Documento"):
+    colecoes_existentes = _listar_colecoes()
+    opcoes = colecoes_existentes + [NOVA_COLECAO_SENTINEL]
+    selecao = st.selectbox("Coleção", opcoes, key="selecao_colecao")
+
+    collection_name = DEFAULT_COLLECTION_NAME
+    colecao_valida = True
+    if selecao == NOVA_COLECAO_SENTINEL:
+        nome_input = st.text_input("Nome da nova coleção", key="nome_nova_colecao")
+        if not nome_input:
+            st.warning("Digite o nome da nova coleção antes de ingerir.")
+            colecao_valida = False
+        else:
+            try:
+                _sanitizar_nome_colecao(nome_input)
+                st.caption("Nome válido.")
+                collection_name = nome_input
+            except RAGSecurityError as e:
+                st.caption(f"Nome inválido: {e}")
+                colecao_valida = False
+    else:
+        collection_name = selecao
+
     uploaded_file = st.file_uploader("Selecione um arquivo JSON ou PDF", type=None)
-    if st.button("Ingerir Documento"):
+    if st.button("Ingerir Documento", disabled=not colecao_valida):
         if uploaded_file is None:
             st.warning("Selecione um arquivo antes de ingerir.")
         else:
-            _ingerir_documento(uploaded_file)
+            _ingerir_documento(uploaded_file, collection_name)
 
 # Exibe título principal
 st.title("AVK - Agência de IA")
