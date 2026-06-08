@@ -58,6 +58,7 @@ WINDOWS_RESERVED_NAMES: frozenset[str] = frozenset(
 # API Server
 API_HOST: str = os.environ.get("API_HOST", "127.0.0.1")
 API_PORT: int = int(os.environ.get("API_PORT", "8000"))
+API_CLIENT_TIMEOUT_SECONDS: int = 120  # worst-case: 3 LLM retries × ~24s each = ~73s; client must not time out before server
 
 # Logging
 _VALID_LOG_LEVELS: frozenset[str] = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
