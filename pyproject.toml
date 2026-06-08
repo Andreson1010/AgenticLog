@@ -39,3 +39,32 @@ exclude_lines = [
     "if TYPE_CHECKING:",
 ]
 show_missing = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "T20", "PGH"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"src/agenticlog/__init__.py" = ["E501"]
+"src/agenticlog/rag.py" = ["E501", "I001", "B904"]
+"src/agenticlog/agent.py" = ["E501"]
+"src/agenticlog/config.py" = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+disallow_untyped_defs = false
+warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
+module = ["agenticlog.rag", "agenticlog.api"]
+ignore_errors = true
+
+[tool.bandit]
+targets = ["src/agenticlog"]
+severity = "medium"
+confidence = "medium"

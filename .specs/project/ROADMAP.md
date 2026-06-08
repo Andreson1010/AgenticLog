@@ -22,17 +22,23 @@
 - [x] Structured log output with log level config in config.py (PR #12)
 
 ### Configuration
-- [ ] Load LLM credentials from .env (remove hardcoded values in config.py)
-- [ ] Move routing keyword lists to config.py constants
+- [x] Move routing keyword lists to config.py constants (PR #15)
+- [ ] ~~Load LLM credentials from .env~~ — descartado (LMStudio local, hardcoded aceitável)
 
 ### Quality
-- [ ] Integration test for agent_workflow.invoke() (HTTP-level LMStudio mock)
-- [ ] Streamlit UI test (streamlit.testing)
-- [ ] GitHub Actions CI with coverage gate (--cov-fail-under=80)
+- [x] Integration test for agent_workflow.invoke() (PR #14)
+- [x] Streamlit UI test (streamlit.testing) (PR #14)
+- [x] GitHub Actions CI with coverage gate (PR #14)
 
-### Features (future)
-- [ ] Document ingestion via Streamlit UI
-- [ ] REST API via FastAPI (already installed)
+### Features
+- [x] Document ingestion via Streamlit UI — JSON (PR #17)
+- [x] Windows reserved name validation (PR #19)
+- [x] PDF upload + ingestion via PyMuPDF (PR #21)
+- [x] Incremental ChromaDB ingestion without full rebuild (PR #22)
+- [x] REST API via FastAPI — POST /query (PR #23)
+
+### Features (backlog)
+- [ ] Migração app.py para cliente HTTP da API (REST API client story)
 - [ ] Multi-document collection support in ChromaDB
 - [ ] Query history and audit logging
 
@@ -45,3 +51,7 @@
 | Health check LMStudio | .specs/features/health-check-lmstudio/spec.md | Done |
 | Logging module | .specs/features/logging-module/spec.md | Done |
 | Structured log config | .specs/features/structured-log-config/spec.md | Done |
+| Document ingestion UI | .specs/features/document-ingestion-ui/spec.md | Done |
+| PDF upload ingestion | .specs/features/pdf-upload-ingestion/spec.md | Done |
+| Incremental ChromaDB ingestion | .specs/features/incremental-chroma-ingestion/spec.md | Done |
+| FastAPI REST API | .specs/features/fastapi-rest-api/spec.md | Done |
