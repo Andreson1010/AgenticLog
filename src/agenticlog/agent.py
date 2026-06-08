@@ -8,6 +8,7 @@ O grafo de estados roteia cada consulta para um de três caminhos:
 - usar_web  → delega a um agente DuckDuckGo para consultas que exigem informações recentes.
 """
 
+import hashlib
 import logging
 import os
 import warnings
@@ -17,6 +18,7 @@ import httpx
 import numpy as np  # type: ignore[import-untyped]
 from langchain_chroma import Chroma
 from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
+from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -40,6 +42,7 @@ torch.classes.__path__ = []
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 from agenticlog.config import (  # noqa: E402
+    DEFAULT_COLLECTION_NAME,
     DIR_VECTORDB,
     EMBEDDING_MODEL,
     LLM_API_BASE,
@@ -74,7 +77,7 @@ _llm_retry = retry(
 
 # Singletons lazy — inicializados somente na primeira chamada, não na importação
 _llm = None
-_vector_db = None
+_vector_dbs: dict[str, "Chroma"] = {}
 _embedding_model = None
 
 
@@ -107,28 +110,70 @@ def _get_embedding_model() -> HuggingFaceEmbeddings:
     return _embedding_model
 
 
-def _get_vector_db() -> Chroma:
-    """Retorna o singleton do ChromaDB, criando-o na primeira chamada.
+def _get_vector_db(collection_name: str = DEFAULT_COLLECTION_NAME) -> Chroma:
+    """Retorna o singleton do ChromaDB para a coleção indicada, criando-o na primeira chamada.
 
-    Saída: instância de Chroma conectada ao diretório persistido.
+    Entrada: collection_name — nome da coleção ChromaDB.
+    Saída: instância de Chroma conectada ao diretório persistido para essa coleção.
     """
-    global _vector_db
-    if _vector_db is None:
-        _vector_db = Chroma(
+    if collection_name not in _vector_dbs:
+        _vector_dbs[collection_name] = Chroma(
             persist_directory=str(DIR_VECTORDB),
+            collection_name=collection_name,
             embedding_function=_get_embedding_model(),
         )
-    return _vector_db
+    return _vector_dbs[collection_name]
 
 
-def _get_retriever():
-    """Retorna um retriever de similaridade a partir do vector_db lazy.
+def _listar_colecoes() -> list[str]:
+    """Retorna os nomes de todas as coleções presentes no ChromaDB persistido em disco.
 
-    Saída: retriever configurado com search_type='similarity' e k=3.
+    Usa lazy import de chromadb para evitar efeitos colaterais na importação do módulo.
+    Saída: lista de nomes de coleção (strings). Retorna [DEFAULT_COLLECTION_NAME] em caso de
+    erro ou resultado vazio para garantir que o agente sempre consulte ao menos uma coleção.
     """
-    return _get_vector_db().as_retriever(
-        search_type="similarity", search_kwargs={"k": 3}
-    )
+    try:
+        import chromadb  # lazy — evita side-effects na importação do módulo
+        client = chromadb.PersistentClient(path=str(DIR_VECTORDB))
+        collections = client.list_collections()
+        # chromadb 0.4.x returns Collection objects with .name attribute
+        # chromadb >= 0.6 may return strings — handle both
+        names = [
+            col.name if hasattr(col, "name") else str(col)
+            for col in collections
+        ]
+        if not names:
+            return [DEFAULT_COLLECTION_NAME]
+        return names
+    except Exception as exc:
+        logger.warning("Falha ao listar coleções ChromaDB; usando coleção padrão. Detalhe: %s", exc)
+        return [DEFAULT_COLLECTION_NAME]
+
+
+def _get_retriever(query: str) -> list[Document]:
+    """Executa fan-out em todas as coleções ChromaDB e retorna até 3 documentos únicos.
+
+    Coleção vazia contribui 0 documentos (skip silencioso).
+    Erro ChromaDB em qualquer coleção propaga imediatamente (fail-fast).
+    """
+    collection_names = _listar_colecoes()
+    all_docs: list[Document] = []
+
+    for name in collection_names:
+        db = _get_vector_db(name)
+        retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": 3})
+        docs = retriever.invoke(query)
+        all_docs.extend(docs)
+
+    seen: set[str] = set()
+    unique: list[Document] = []
+    for doc in all_docs:
+        key = hashlib.md5(doc.page_content.encode()).hexdigest()  # nosec B324
+        if key not in seen:
+            seen.add(key)
+            unique.append(doc)
+
+    return unique[:3]
 
 
 def inicializar_recursos() -> None:
@@ -141,19 +186,18 @@ def inicializar_recursos() -> None:
     Chamada única a partir do lifespan do FastAPI; elimina race condition em requisições concorrentes.
     """
     _get_embedding_model()
-    _get_vector_db()
+    _get_vector_db(DEFAULT_COLLECTION_NAME)
     _get_llm()
 
 
 def invalidar_vector_db() -> None:
-    """Invalida o singleton _vector_db para que a próxima chamada a _get_vector_db() reconecte ao ChromaDB.
+    """Invalida todos os singletons de ChromaDB para que a próxima chamada reconecte ao disco.
 
     Entrada: nenhuma.
     Saída: nenhuma.
-    Efeito colateral: atribui None a _vector_db global.
+    Efeito colateral: limpa o dicionário _vector_dbs global.
     """
-    global _vector_db
-    _vector_db = None
+    _vector_dbs.clear()
 
 
 # Prompts — inicializados na importação do módulo
@@ -262,12 +306,12 @@ def usar_ferramenta_web(state: AgentState) -> AgentState:
 
 
 def retrieve_info(state: AgentState) -> AgentState:
-    """Nó de recuperação: busca documentos relevantes no ChromaDB via retriever vetorial.
+    """Nó de recuperação: busca documentos relevantes no ChromaDB via fan-out multi-coleção.
 
     Entrada: state.query.
     Saída:   state.retrieved_info — lista de Document retornados pelo retriever.
     """
-    retrieved_docs = _get_retriever().invoke(state.query)
+    retrieved_docs = _get_retriever(state.query)
     return state.model_copy(update={"retrieved_info": retrieved_docs})
 
 

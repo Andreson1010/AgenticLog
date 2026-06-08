@@ -54,7 +54,8 @@ class TestIngerirDocumento(unittest.TestCase):
 
             _ingerir_documento(uploaded_file)
 
-        mock_add.assert_called_once_with("doc.json", b"{}")
+        from agenticlog.config import DEFAULT_COLLECTION_NAME
+        mock_add.assert_called_once_with("doc.json", b"{}", DEFAULT_COLLECTION_NAME)
         mock_st.success.assert_called_once_with(resultado["mensagem"])
         mock_st.rerun.assert_called_once()
         mock_st.error.assert_not_called()

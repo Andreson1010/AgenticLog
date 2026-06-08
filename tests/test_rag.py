@@ -32,6 +32,7 @@ from agenticlog.rag import (
     cria_vectordb,
     _executar_main,
     _sanitizar_nome_arquivo,
+    _sanitizar_nome_colecao,
     _computar_hash_conteudo,
     adicionar_documento_incrementalmente,
     salvar_documento_enviado,
@@ -570,6 +571,69 @@ class TestSanitizarNomeArquivo(unittest.TestCase):
             with self.subTest(name=name):
                 with self.assertRaises(rag.RAGSecurityError):
                     _sanitizar_nome_arquivo(name)
+
+
+class TestSanitizarNomeColecao(unittest.TestCase):
+    """Testes para _sanitizar_nome_colecao (MCC-06 a MCC-11)."""
+
+    def _sanitizar(self, name: str) -> str:
+        """Chama _sanitizar_nome_colecao via módulo para garantir identidade de classe após reload."""
+        return rag._sanitizar_nome_colecao(name)
+
+    def teste_1_nome_vazio_levanta_erro(self) -> None:
+        """String vazia levanta RAGSecurityError."""
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
+            self._sanitizar("")
+        self.assertIn("vazio", str(ctx.exception))
+
+    def teste_2_nome_muito_curto_dois_chars_levanta_erro(self) -> None:
+        """Nome com 2 caracteres levanta RAGSecurityError (mínimo é 3)."""
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
+            self._sanitizar("ab")
+        self.assertIn("curto", str(ctx.exception))
+
+    def teste_3_nome_exatamente_3_chars_valido(self) -> None:
+        """Nome com exatamente 3 caracteres é aceito (fronteira válida)."""
+        resultado = self._sanitizar("abc")
+        self.assertEqual(resultado, "abc")
+
+    def teste_4_nome_exatamente_63_chars_valido(self) -> None:
+        """Nome com exatamente 63 caracteres é aceito (fronteira válida)."""
+        nome = "a" * 63
+        resultado = self._sanitizar(nome)
+        self.assertEqual(resultado, nome)
+
+    def teste_5_nome_64_chars_levanta_erro(self) -> None:
+        """Nome com 64 caracteres levanta RAGSecurityError (máximo é 63)."""
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
+            self._sanitizar("a" * 64)
+        self.assertIn("longo", str(ctx.exception))
+
+    def teste_6_nome_com_espaco_levanta_erro(self) -> None:
+        """Nome com espaço levanta RAGSecurityError."""
+        with self.assertRaises(rag.RAGSecurityError):
+            self._sanitizar("nome colecao")
+
+    def teste_7_nome_comecando_com_hifen_levanta_erro(self) -> None:
+        """Nome iniciando com hífen levanta RAGSecurityError."""
+        with self.assertRaises(rag.RAGSecurityError):
+            self._sanitizar("-inicio")
+
+    def teste_8_nome_terminando_com_hifen_levanta_erro(self) -> None:
+        """Nome terminando com hífen levanta RAGSecurityError."""
+        with self.assertRaises(rag.RAGSecurityError):
+            self._sanitizar("fim-")
+
+    def teste_9_nome_valido_com_hifen_e_underscore(self) -> None:
+        """Nome com hífen e underscore internos é aceito."""
+        resultado = self._sanitizar("valido-nome_1")
+        self.assertEqual(resultado, "valido-nome_1")
+
+    def teste_10_nome_logistica_default_valido(self) -> None:
+        """DEFAULT_COLLECTION_NAME='logistica' passa validação."""
+        from agenticlog.config import DEFAULT_COLLECTION_NAME
+        resultado = self._sanitizar(DEFAULT_COLLECTION_NAME)
+        self.assertEqual(resultado, DEFAULT_COLLECTION_NAME)
 
 
 class TestSalvarDocumentoEnviado(unittest.TestCase):

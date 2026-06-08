@@ -5,6 +5,7 @@ import datetime
 import json
 import logging
 import os
+import re
 from pathlib import Path
 
 # Raiz do projeto (pasta que contém src/, data/, etc.)
@@ -41,6 +42,14 @@ ROUTING_KEYWORDS_GERAR: tuple[str, ...] = (
 ROUTING_KEYWORDS_WEB: tuple[str, ...] = (
     "search the web", "news", "updated", "recent", "latest information",
     "busque na web", "notícias", "atualizado", "recente", "últimas informações",
+)
+
+# ChromaDB — nomes de coleção
+DEFAULT_COLLECTION_NAME: str = "logistica"
+COLLECTION_NAME_MIN_LEN: int = 3
+COLLECTION_NAME_MAX_LEN: int = 63
+COLLECTION_NAME_PATTERN: re.Pattern[str] = re.compile(
+    r"^[a-zA-Z0-9][a-zA-Z0-9_-]{1,61}[a-zA-Z0-9]$"
 )
 
 # Segurança - limites para carregamento de documentos
