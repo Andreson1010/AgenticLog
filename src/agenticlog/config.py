@@ -49,7 +49,7 @@ DEFAULT_COLLECTION_NAME: str = "logistica"
 COLLECTION_NAME_MIN_LEN: int = 3
 COLLECTION_NAME_MAX_LEN: int = 63
 COLLECTION_NAME_PATTERN: re.Pattern[str] = re.compile(
-    r"^[a-zA-Z0-9][a-zA-Z0-9_-]*[a-zA-Z0-9]$"
+    r"^[a-zA-Z0-9][a-zA-Z0-9_-]{1,61}[a-zA-Z0-9]$"
 )
 
 # Segurança - limites para carregamento de documentos
