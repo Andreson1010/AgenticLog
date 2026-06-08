@@ -8,48 +8,49 @@ O grafo de estados roteia cada consulta para um de três caminhos:
 - usar_web  → delega a um agente DuckDuckGo para consultas que exigem informações recentes.
 """
 
-import os
 import logging
-import numpy as np  # type: ignore
-import httpx
+import os
+import warnings
+
 import anthropic
+import httpx
+import numpy as np  # type: ignore[import-untyped]
+from langchain_chroma import Chroma
+from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import PromptTemplate
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_openai import ChatOpenAI
+from langgraph.graph import StateGraph  # type: ignore[import-untyped]
+from pydantic import BaseModel
+from sklearn.metrics.pairwise import cosine_similarity
 from tenacity import (
+    before_sleep_log,
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
-    before_sleep_log,
 )
-from langgraph.graph import StateGraph  # type: ignore[reportMissingImports]
-from pydantic import BaseModel
-from langchain_openai import ChatOpenAI
-from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
-from langchain_core.prompts import PromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-from sklearn.metrics.pairwise import cosine_similarity
-import warnings
 
 warnings.filterwarnings("ignore")
 
-import torch
+import torch  # noqa: E402
 
 torch.classes.__path__ = []
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-from agenticlog.config import (
+from agenticlog.config import (  # noqa: E402
     DIR_VECTORDB,
     EMBEDDING_MODEL,
-    LLM_MODEL,
     LLM_API_BASE,
     LLM_API_KEY,
-    LLM_TEMPERATURE,
-    LLM_MAX_TOKENS,
-    LLM_TIMEOUT_SECONDS,
     LLM_MAX_RETRY_ATTEMPTS,
+    LLM_MAX_TOKENS,
+    LLM_MODEL,
     LLM_RETRY_WAIT_INITIAL_SECONDS,
     LLM_RETRY_WAIT_MAX_SECONDS,
+    LLM_TEMPERATURE,
+    LLM_TIMEOUT_SECONDS,
     ROUTING_KEYWORDS_GERAR,
     ROUTING_KEYWORDS_WEB,
 )
@@ -84,7 +85,7 @@ def _get_llm() -> ChatOpenAI:
     """
     global _llm
     if _llm is None:
-        _llm = ChatOpenAI(
+        _llm = ChatOpenAI(  # type: ignore[call-arg]
             model_name=LLM_MODEL,
             openai_api_base=LLM_API_BASE,
             openai_api_key=LLM_API_KEY,
@@ -351,7 +352,7 @@ def rank_respostas(state: AgentState) -> AgentState:
     Entrada: state.possible_responses, state.similarity_scores.
     Saída:   state.ranked_response — melhor resposta (str ou dict); state.confidence_score — score vencedor.
     """
-    response_with_scores = list(zip(state.possible_responses, state.similarity_scores))
+    response_with_scores = list(zip(state.possible_responses, state.similarity_scores, strict=False))
     if response_with_scores:
         ranked = sorted(response_with_scores, key=lambda x: x[1], reverse=True)
         return state.model_copy(update={

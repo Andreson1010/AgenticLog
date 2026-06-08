@@ -33,3 +33,29 @@ jobs:
 
       - name: Run tests with coverage gate (80%)
         run: pytest --cov=agenticlog --cov-report=term-missing --cov-fail-under=80 -v
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dependencies
+        run: |
+          uv pip install -r requirements-dev.txt --system
+          uv pip install -e . --system
+
+      - name: Run lint tools
+        run: |
+          ruff check src/agenticlog/
+          mypy src/agenticlog/
+          bandit -r src/agenticlog/ -ll -ii

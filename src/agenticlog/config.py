@@ -20,7 +20,7 @@ EMBEDDING_MODEL = "BAAI/bge-base-en"  # modelo HuggingFace usado para gerar e co
 # LLM (LMStudio)
 LLM_MODEL = "hermes-3-llama-3.2-3b"          # identificador do modelo carregado no LMStudio
 LLM_API_BASE = "http://127.0.0.1:1234/v1"    # endpoint local do LMStudio (compatível com OpenAI API)
-LLM_API_KEY = "hermes"                        # chave fictícia exigida pelo cliente OpenAI
+LLM_API_KEY = "hermes"  # nosec B105 — chave fictícia exigida pelo cliente OpenAI (LMStudio local)
 LLM_TEMPERATURE = 0                           # temperatura 0 para respostas determinísticas
 LLM_MAX_TOKENS = 2048                         # limite de tokens gerados por resposta
 LLM_TIMEOUT_SECONDS: float = 60.0            # timeout por chamada ao LLM em segundos
@@ -82,7 +82,7 @@ class _JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         return json.dumps({
             "timestamp": datetime.datetime.fromtimestamp(
-                record.created, tz=datetime.timezone.utc
+                record.created, tz=datetime.UTC
             ).isoformat(),
             "level": record.levelname,
             "logger": record.name,
