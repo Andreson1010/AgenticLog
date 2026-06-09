@@ -252,15 +252,20 @@ div[data-testid="stTextInput"] input {
     border-radius: 10px;
     border: 1.5px solid #e5e5e3;
     background: #ffffff;
+    color: #1a1a1a !important;
     font-size: 0.97rem;
     padding: 0.65rem 1rem;
     box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     transition: border-color 0.15s;
 }
+div[data-testid="stTextInput"] input::placeholder {
+    color: #aaaaaa !important;
+}
 div[data-testid="stTextInput"] input:focus {
     border-color: #b5a8f0;
     box-shadow: 0 0 0 3px rgba(181,168,240,0.15);
     outline: none;
+    color: #1a1a1a !important;
 }
 
 /* ---- Botão Enviar ---- */
