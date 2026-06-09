@@ -21,6 +21,13 @@ from agenticlog.api import (
 )
 from agenticlog.health import LMStudioUnavailableError
 
+# Injeta mock do history_store antes de qualquer TestClient ser criado,
+# para que o lifespan não tente criar o HistoryStore real em disco.
+_mock_history_store = MagicMock()
+_mock_history_store.append.return_value = None
+_mock_history_store.read_all.return_value = []
+app.state.history_store = _mock_history_store
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -51,7 +58,9 @@ def _client(estado: AgentState | None = None, *, vectordb_ok: bool = True):
         "agenticlog.api._verificar_vectordb", side_effect=verificar_side_effect
     ), patch(
         "agenticlog.api.agent_workflow.invoke", return_value=estado_ret
-    ) as mock_invoke:
+    ) as mock_invoke, patch(
+        "agenticlog.api.HistoryStore", return_value=_mock_history_store
+    ):
         with TestClient(app) as client:
             yield client, mock_invoke, mock_init
 

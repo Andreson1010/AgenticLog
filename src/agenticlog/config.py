@@ -69,6 +69,15 @@ API_HOST: str = os.environ.get("API_HOST", "127.0.0.1")
 API_PORT: int = int(os.environ.get("API_PORT", "8000"))
 API_CLIENT_TIMEOUT_SECONDS: int = 120  # worst-case: 3 LLM retries × ~24s each = ~73s; client must not time out before server
 
+# History Audit Log
+DIR_HISTORY: Path = PROJECT_ROOT / "data" / "history"   # diretório onde o SQLite é persistido
+HISTORY_FILE: Path = DIR_HISTORY / "history.db"          # arquivo SQLite do audit log
+HISTORY_MAX_ENTRIES: int = int(os.environ.get("HISTORY_MAX_ENTRIES", "1000"))  # máximo de registros; evicta o mais antigo se atingido
+if HISTORY_MAX_ENTRIES <= 0:
+    raise ValueError(
+        f"HISTORY_MAX_ENTRIES={HISTORY_MAX_ENTRIES!r} must be > 0."
+    )
+
 # Logging
 _VALID_LOG_LEVELS: frozenset[str] = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 _VALID_LOG_FORMATS: frozenset[str] = frozenset({"text", "json"})
