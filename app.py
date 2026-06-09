@@ -23,7 +23,7 @@ NOVA_COLECAO_SENTINEL = "Nova coleção…"
 
 MSG_LMSTUDIO_DOWN = "LMStudio indisponível. Inicie o servidor e carregue o modelo."
 MSG_VECTORDB_AUSENTE = "Base vetorial não encontrada. Execute: python -m agenticlog.rag"
-MSG_CONNECT_ERROR = "Não foi possível conectar ao servidor. Inicie com: uvicorn agenticlog.api:app"
+MSG_CONNECT_ERROR = "Não foi possível conectar ao servidor FastAPI. Inicie com: uvicorn agenticlog.api:app"
 MSG_TIMEOUT = "Tempo limite excedido. O servidor pode estar sobrecarregado."
 MSG_ERRO_VALIDACAO = "Erro de validação na consulta. Verifique o texto enviado."
 MSG_ERRO_INTERNO = "Erro interno do servidor."
@@ -72,13 +72,13 @@ def _ingerir_documento(uploaded_file: Any, collection_name: str = DEFAULT_COLLEC
                 reconstruir_vectordb(collection_name)
         except Exception as e:
             saved_path.unlink(missing_ok=True)
-            st.error(f"Erro ao reconstruir base vetorial. Detalhe: {e}")
+            st.error(f"Erro ao reconstruir base vetorial. Arquivo removido. Detalhe: {e}")
             return
-        st.success(f"Documento ingerido na coleção '{collection_name}'.")
+        st.success(f"Documento ingerido com sucesso na coleção '{collection_name}'.")
         st.rerun()
     else:
         try:
-            with st.spinner("Adicionando documento..."):
+            with st.spinner("Adicionando documento à base vetorial..."):
                 resultado = adicionar_documento_incrementalmente(filename, conteudo, collection_name)
         except RAGSecurityError as e:
             st.error(str(e))
@@ -450,7 +450,10 @@ if enviar and query.strip():
             elif code == 422:
                 st.error(MSG_ERRO_VALIDACAO)
             else:
-                st.error(detail or MSG_ERRO_INTERNO)
+                st.error(MSG_ERRO_INTERNO)
+                if detail:
+                    with st.expander("Detalhes do erro"):
+                        st.code(detail)
         except httpx.ConnectError:
             st.error(MSG_CONNECT_ERROR)
         except httpx.TimeoutException:
@@ -521,3 +524,12 @@ elif st.session_state.ranked_response is not None:
     """
 
     st.markdown(html, unsafe_allow_html=True)
+
+    retrieved = st.session_state.retrieved_info or []
+    if retrieved:
+        for i, doc in enumerate(retrieved):
+            source = doc["metadata"].get("source", "Desconhecida") if isinstance(doc.get("metadata"), dict) else "Desconhecida"
+            with st.expander(source):
+                st.text_area("", value=doc["page_content"], disabled=True, key=f"doc_content_{i}")
+    else:
+        st.write("Nenhum documento relacionado encontrado.")
