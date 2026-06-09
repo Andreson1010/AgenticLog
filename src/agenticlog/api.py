@@ -189,19 +189,33 @@ def _serializar_documentos(docs: list) -> list[DocumentInfo]:
     return resultado
 
 
-def _normalizar_estado(estado: AgentState) -> QueryResponse:
-    """Normaliza AgentState para QueryResponse com tipos estáveis.
+def _normalizar_estado(estado: AgentState | dict) -> QueryResponse:
+    """Normaliza AgentState (ou dict retornado pelo LangGraph) para QueryResponse.
 
-    Entrada: estado retornado por agent_workflow.invoke().
+    Entrada: estado retornado por agent_workflow.invoke() — AgentState ou dict.
     Saída: QueryResponse com ranked_response str, confidence_score float >= 0.0,
            retrieved_info list[DocumentInfo].
 
     Normalizações:
+      - dict → AgentState (LangGraph serializa o estado como dict em algumas versões).
       - ranked_response dict {"answer": str} → str (extrai valor).
       - ranked_response dict sem "answer" → json.dumps seguro como fallback.
       - confidence_score None → 0.0.
       - retrieved_info None → [].
     """
+    if isinstance(estado, dict):
+        ranked_raw = estado.get("ranked_response", "")
+        score = estado.get("confidence_score") or 0.0
+        docs = _serializar_documentos(estado.get("retrieved_info") or [])
+        next_step = estado.get("next_step", "")
+        if isinstance(ranked_raw, dict):
+            ranked_raw = ranked_raw.get("answer", json.dumps(ranked_raw, ensure_ascii=False))
+        return QueryResponse(
+            ranked_response=ranked_raw,
+            confidence_score=score,
+            next_step=next_step,
+            retrieved_info=docs,
+        )
     ranked = estado.ranked_response
     if isinstance(ranked, dict):
         ranked = ranked.get("answer", json.dumps(ranked, ensure_ascii=False))
