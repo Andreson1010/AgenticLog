@@ -110,13 +110,13 @@ st.markdown("""
 
 /* ---- Fundo e fonte base ---- */
 html, body, [data-testid="stAppViewContainer"] {
-    background-color: #f9f9f8;
+    background-color: #f4f3fb;
     font-family: "Söhne", ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
 
 /* ---- Sidebar ---- */
 [data-testid="stSidebar"] {
-    background-color: #1a1a1a;
+    background-color: #1c1b2e;
     border-right: none;
 }
 [data-testid="stSidebar"] * {
@@ -137,21 +137,56 @@ html, body, [data-testid="stAppViewContainer"] {
 [data-testid="stSidebar"] input,
 [data-testid="stSidebar"] select,
 [data-testid="stSidebar"] [data-baseweb="select"] {
-    background-color: #2a2a2a !important;
+    background-color: #2a2937 !important;
     color: #d4d4d4 !important;
-    border-color: #3a3a3a !important;
+    border-color: #3a3850 !important;
 }
+/* Botões sidebar (Ingerir) — estilo unificado */
 [data-testid="stSidebar"] [data-testid="stButton"] > button {
-    background-color: #2a2a2a !important;
-    color: #d4d4d4 !important;
-    border: 1px solid #3a3a3a !important;
+    background: rgba(124, 111, 247, 0.15) !important;
+    color: #b5a8f0 !important;
+    border: 1px solid rgba(124, 111, 247, 0.35) !important;
+    border-radius: 8px !important;
+    width: 100%;
 }
 [data-testid="stSidebar"] [data-testid="stButton"] > button:hover {
-    background-color: #3a3a3a !important;
+    background: rgba(124, 111, 247, 0.28) !important;
     color: #ffffff !important;
 }
 [data-testid="stSidebar"] hr {
-    border-color: #2a2a2a !important;
+    border-color: #2a2937 !important;
+}
+
+/* ---- File uploader na sidebar ---- */
+[data-testid="stFileUploaderDropzone"] {
+    background-color: #2a2937 !important;
+    border: 1px dashed rgba(124, 111, 247, 0.35) !important;
+    border-radius: 8px !important;
+}
+/* "Browse files" — mesmo estilo de Ingerir */
+[data-testid="stFileUploaderDropzone"] button {
+    background: rgba(124, 111, 247, 0.15) !important;
+    color: #b5a8f0 !important;
+    border: 1px solid rgba(124, 111, 247, 0.35) !important;
+    border-radius: 8px !important;
+}
+[data-testid="stFileUploaderDropzone"] button:hover {
+    background: rgba(124, 111, 247, 0.28) !important;
+    color: #ffffff !important;
+}
+/* Traduzir "Drag and drop file here" */
+[data-testid="stFileUploaderDropzoneInstructions"] span:first-child {
+    visibility: hidden;
+    display: block;
+    height: 0;
+    overflow: hidden;
+}
+[data-testid="stFileUploaderDropzoneInstructions"] div::before {
+    content: "Arraste e solte o arquivo aqui";
+    display: block;
+    font-size: 0.82rem;
+    color: #aaaaaa;
+    margin-bottom: 4px;
 }
 
 /* ---- Título principal ---- */
@@ -170,14 +205,45 @@ html, body, [data-testid="stAppViewContainer"] {
     margin-bottom: 2rem;
 }
 
+/* ---- Estado vazio ---- */
+.cl-empty-state {
+    text-align: center;
+    padding: 3.5rem 1rem 2rem 1rem;
+    color: #c0bce0;
+    font-size: 0.88rem;
+    line-height: 1.8;
+}
+.cl-empty-icon {
+    font-size: 2.8rem;
+    display: block;
+    margin-bottom: 0.75rem;
+    opacity: 0.6;
+}
+.cl-empty-hints {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    margin-top: 1.25rem;
+}
+.cl-hint-chip {
+    background: #ffffff;
+    border: 1px solid #dddcf0;
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 0.82rem;
+    color: #7c6ff7;
+    cursor: default;
+}
+
 /* ---- Caixa de resposta ---- */
 .cl-response-box {
     background: #ffffff;
-    border: 1px solid #e5e5e3;
+    border: 1px solid #dddcf0;
     border-radius: 12px;
     padding: 1.25rem 1.5rem 1rem 1.5rem;
     margin-top: 1.5rem;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    box-shadow: 0 2px 8px rgba(124,111,247,0.07);
     font-size: 0.97rem;
     color: #1a1a1a;
     line-height: 1.7;
@@ -250,28 +316,28 @@ html, body, [data-testid="stAppViewContainer"] {
 /* ---- Campo de entrada ---- */
 div[data-testid="stTextInput"] input {
     border-radius: 10px;
-    border: 1.5px solid #e5e5e3;
+    border: 1.5px solid #dddcf0;
     background: #ffffff;
     color: #1a1a1a !important;
     font-size: 0.97rem;
     padding: 0.65rem 1rem;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    box-shadow: 0 1px 4px rgba(124,111,247,0.06);
     transition: border-color 0.15s;
 }
 div[data-testid="stTextInput"] input::placeholder {
     color: #aaaaaa !important;
 }
 div[data-testid="stTextInput"] input:focus {
-    border-color: #b5a8f0;
-    box-shadow: 0 0 0 3px rgba(181,168,240,0.15);
+    border-color: #7c6ff7;
+    box-shadow: 0 0 0 3px rgba(124,111,247,0.12);
     outline: none;
     color: #1a1a1a !important;
 }
 
-/* ---- Botão Enviar ---- */
+/* ---- Botão Enviar (área principal) ---- */
 div[data-testid="stButton"] > button {
     border-radius: 10px;
-    background: #1a1a1a;
+    background: #7c6ff7;
     color: #fff;
     font-weight: 600;
     font-size: 0.9rem;
@@ -281,7 +347,7 @@ div[data-testid="stButton"] > button {
     transition: background 0.15s;
 }
 div[data-testid="stButton"] > button:hover {
-    background: #3d3d3d;
+    background: #6458d4;
 }
 
 /* ---- Spinner ---- */
@@ -397,7 +463,20 @@ elif enviar and not query.strip():
 # Resposta
 # ---------------------------------------------------------------------------
 
-if st.session_state.ranked_response is not None:
+if st.session_state.ranked_response is None:
+    st.markdown("""
+    <div class="cl-empty-state">
+        <span class="cl-empty-icon">🚚</span>
+        Faça uma pergunta para começar
+        <div class="cl-empty-hints">
+            <span class="cl-hint-chip">Qual o prazo médio de entrega?</span>
+            <span class="cl-hint-chip">Como calcular custo de frete?</span>
+            <span class="cl-hint-chip">O que é lead time?</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+elif st.session_state.ranked_response is not None:
     resposta = st.session_state.ranked_response
     if isinstance(resposta, dict) and "answer" in resposta:
         resposta = resposta["answer"]
