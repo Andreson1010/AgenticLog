@@ -8,20 +8,22 @@ executa em thread-pool via asyncio.to_thread (nunca bloqueia o event loop).
 
 import asyncio
 import contextlib
+import datetime
 import json
 import logging
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
 from langchain_chroma import Chroma
 
 from agenticlog.agent import AgentState, agent_workflow, inicializar_recursos
-from agenticlog.config import DEFAULT_COLLECTION_NAME, DIR_VECTORDB
+from agenticlog.config import DEFAULT_COLLECTION_NAME, DIR_VECTORDB, HISTORY_FILE, HISTORY_MAX_ENTRIES
 from agenticlog.health import LMStudioUnavailableError
+from agenticlog.history import HistoryStore
 from agenticlog.rag import _get_rag_embedding_model
 
 logger = logging.getLogger(__name__)
@@ -71,6 +73,17 @@ class QueryResponse(BaseModel):
     confidence_score: float
     next_step: str
     retrieved_info: list[DocumentInfo]
+
+
+class HistoryEntry(BaseModel):
+    """Entrada individual do histórico de queries."""
+
+    id: int
+    timestamp: str
+    query: str
+    next_step: str
+    confidence_score: float
+    ranked_response: str
 
 
 # ---------------------------------------------------------------------------
@@ -124,6 +137,12 @@ async def lifespan(app: FastAPI):
             "Erro inesperado na inicialização: %s. Requisições retornarão 503.", exc
         )
         app.state.vectordb_pronto = False
+    try:
+        app.state.history_store = HistoryStore(db_path=HISTORY_FILE, max_entries=HISTORY_MAX_ENTRIES)
+        logger.info("HistoryStore inicializado em %s", HISTORY_FILE)
+    except Exception as exc:
+        logger.critical("Falha ao inicializar HistoryStore: %s. Histórico indisponível.", exc)
+        app.state.history_store = None
     yield
     # Shutdown — sem recursos para liberar
 
@@ -198,6 +217,21 @@ def _normalizar_estado(estado: AgentState) -> QueryResponse:
     )
 
 
+def _construir_registro(query: str, response: QueryResponse) -> dict:
+    """Constrói o dict de registro para persistência no histórico.
+
+    Entrada: query original (str), response normalizada (QueryResponse).
+    Saída: dict com chaves timestamp, query, next_step, confidence_score, ranked_response.
+    """
+    return {
+        "timestamp": datetime.datetime.now(tz=datetime.UTC).isoformat(),
+        "query": query,
+        "next_step": response.next_step,
+        "confidence_score": response.confidence_score,
+        "ranked_response": response.ranked_response,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Endpoint
 # ---------------------------------------------------------------------------
@@ -222,7 +256,40 @@ async def consultar(body: QueryRequest, req: Request) -> QueryResponse:
         agent_workflow.invoke,
         AgentState(query=body.query),
     )
-    return _normalizar_estado(estado)
+    response = _normalizar_estado(estado)
+
+    # Audit write — falha nunca propaga para o cliente
+    registro = _construir_registro(body.query, response)
+    try:
+        await asyncio.to_thread(req.app.state.history_store.append, registro)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Falha ao gravar histórico: %s", exc)
+
+    return response
+
+
+@app.get("/history", response_model=list[HistoryEntry])
+async def listar_historico(
+    req: Request,
+    limit: int | None = Query(default=None, ge=1, description="Número máximo de registros a retornar"),
+) -> list[HistoryEntry]:
+    """Retorna o histórico de queries em ordem decrescente de timestamp.
+
+    Entrada: limit (opcional, >= 1) — limita número de registros.
+    Saída: lista de HistoryEntry ordenada por timestamp DESC.
+
+    Errors:
+      422 — limit <= 0 (Pydantic/FastAPI Query validation).
+      503 — store indisponível.
+    """
+    try:
+        registros = await asyncio.to_thread(
+            req.app.state.history_store.read_all, limit
+        )
+    except Exception as exc:
+        logger.error("Falha ao ler histórico: %s", exc)
+        raise HTTPException(status_code=503, detail="Histórico indisponível.") from exc
+    return [HistoryEntry(**r) for r in registros]
 
 
 # ---------------------------------------------------------------------------

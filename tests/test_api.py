@@ -25,6 +25,13 @@ from agenticlog.api import (
 )
 from agenticlog.health import LMStudioUnavailableError
 
+# Injeta mock do history_store antes de qualquer TestClient ser criado,
+# para que o lifespan não tente criar o HistoryStore real em disco.
+_mock_history_store = MagicMock()
+_mock_history_store.append.return_value = None
+_mock_history_store.read_all.return_value = []
+app.state.history_store = _mock_history_store
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -54,7 +61,9 @@ def _client_vectordb_pronto(estado: AgentState | None = None):
         "agenticlog.api._verificar_vectordb"
     ), patch(
         "agenticlog.api.agent_workflow.invoke", return_value=estado_retornado
-    ) as mock_invoke:
+    ) as mock_invoke, patch(
+        "agenticlog.api.HistoryStore", return_value=_mock_history_store
+    ):
         with TestClient(app) as client:
             yield client, mock_invoke
 
@@ -65,6 +74,8 @@ def _client_vectordb_ausente():
     with patch("agenticlog.api.inicializar_recursos"), patch(
         "agenticlog.api._verificar_vectordb",
         side_effect=RuntimeError(MSG_VECTORDB_AUSENTE),
+    ), patch(
+        "agenticlog.api.HistoryStore", return_value=_mock_history_store
     ):
         with TestClient(app) as client:
             yield client
@@ -97,7 +108,9 @@ def teste_2_ranked_response_dict_normalizado():
     mock_estado.retrieved_info = []
     with patch("agenticlog.api.inicializar_recursos"), patch(
         "agenticlog.api._verificar_vectordb"
-    ), patch("agenticlog.api.agent_workflow.invoke", return_value=mock_estado):
+    ), patch("agenticlog.api.agent_workflow.invoke", return_value=mock_estado), patch(
+        "agenticlog.api.HistoryStore", return_value=_mock_history_store
+    ):
         with TestClient(app) as client:
             response = client.post("/query", json={"query": "prazo"})
     assert response.status_code == 200
@@ -113,7 +126,9 @@ def teste_3_confidence_score_none_normalizado():
     mock_estado.retrieved_info = []
     with patch("agenticlog.api.inicializar_recursos"), patch(
         "agenticlog.api._verificar_vectordb"
-    ), patch("agenticlog.api.agent_workflow.invoke", return_value=mock_estado):
+    ), patch("agenticlog.api.agent_workflow.invoke", return_value=mock_estado), patch(
+        "agenticlog.api.HistoryStore", return_value=_mock_history_store
+    ):
         with TestClient(app) as client:
             response = client.post("/query", json={"query": "prazo"})
     assert response.status_code == 200
@@ -172,6 +187,8 @@ def teste_9_lmstudio_indisponivel_retorna_503():
     ), patch(
         "agenticlog.api.agent_workflow.invoke",
         side_effect=LMStudioUnavailableError("LMStudio offline"),
+    ), patch(
+        "agenticlog.api.HistoryStore", return_value=_mock_history_store
     ):
         with TestClient(app) as client:
             response = client.post("/query", json={"query": "prazo"})
@@ -186,6 +203,8 @@ def teste_10_connect_error_retorna_503():
     ), patch(
         "agenticlog.api.agent_workflow.invoke",
         side_effect=httpx.ConnectError("Connection refused"),
+    ), patch(
+        "agenticlog.api.HistoryStore", return_value=_mock_history_store
     ):
         with TestClient(app) as client:
             response = client.post("/query", json={"query": "prazo"})
@@ -200,6 +219,8 @@ def teste_11_excecao_generica_retorna_500():
     ), patch(
         "agenticlog.api.agent_workflow.invoke",
         side_effect=RuntimeError("boom interno"),
+    ), patch(
+        "agenticlog.api.HistoryStore", return_value=_mock_history_store
     ):
         with TestClient(app, raise_server_exceptions=False) as client:
             response = client.post("/query", json={"query": "prazo"})
@@ -227,7 +248,9 @@ def teste_13_workflow_executa_em_thread():
         "agenticlog.api.agent_workflow.invoke", return_value=estado
     ) as mock_invoke, patch(
         "agenticlog.api.asyncio.to_thread", wraps=asyncio.to_thread
-    ) as mock_to_thread:
+    ) as mock_to_thread, patch(
+        "agenticlog.api.HistoryStore", return_value=_mock_history_store
+    ):
         with TestClient(app) as client:
             response = client.post("/query", json={"query": "prazo"})
     assert response.status_code == 200
