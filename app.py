@@ -359,7 +359,7 @@ st.markdown('<div class="cl-subtitle">Especialista em logística e supply chain<
 
 col_input, col_btn = st.columns([5, 1])
 with col_input:
-    query = st.text_input("", placeholder="Faça uma pergunta sobre logística…", label_visibility="collapsed")
+    query = st.text_input("Pergunta", placeholder="Faça uma pergunta sobre logística…", label_visibility="collapsed")
 with col_btn:
     enviar = st.button("Enviar")
 
