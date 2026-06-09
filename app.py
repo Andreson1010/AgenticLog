@@ -1,6 +1,3 @@
-# Projeto 8 - Pipeline de Automação de Testes Para Agentes de IA
-
-# Importa a biblioteca Streamlit para criação da interface web
 from pathlib import Path
 from typing import Any
 
@@ -24,18 +21,18 @@ from agenticlog.rag import (
 
 NOVA_COLECAO_SENTINEL = "Nova coleção…"
 
-# ---------------------------------------------------------------------------
-# Constantes de mensagem de erro
-# ---------------------------------------------------------------------------
 MSG_LMSTUDIO_DOWN = "LMStudio indisponível. Inicie o servidor e carregue o modelo."
 MSG_VECTORDB_AUSENTE = "Base vetorial não encontrada. Execute: python -m agenticlog.rag"
-MSG_CONNECT_ERROR = (
-    "Não foi possível conectar ao servidor FastAPI. "
-    "Inicie com: uvicorn agenticlog.api:app"
-)
-MSG_TIMEOUT = "Tempo limite de resposta excedido. O servidor pode estar sobrecarregado."
+MSG_CONNECT_ERROR = "Não foi possível conectar ao servidor. Inicie com: uvicorn agenticlog.api:app"
+MSG_TIMEOUT = "Tempo limite excedido. O servidor pode estar sobrecarregado."
 MSG_ERRO_VALIDACAO = "Erro de validação na consulta. Verifique o texto enviado."
 MSG_ERRO_INTERNO = "Erro interno do servidor."
+
+_ROTAS = {
+    "retrieve": ("Banco de Dados", "🗄️"),
+    "gerar": ("Geração Direta", "✨"),
+    "usar_web": ("Busca na Web", "🌐"),
+}
 
 
 def _safe_detail(response: httpx.Response) -> str:
@@ -46,12 +43,6 @@ def _safe_detail(response: httpx.Response) -> str:
 
 
 def _consultar_api(query: str) -> dict:
-    """Envia consulta ao endpoint POST /query e retorna o JSON de resposta.
-
-    Lança httpx.HTTPStatusError para respostas com status >= 400.
-    Lança httpx.ConnectError ou httpx.TimeoutException para falhas de rede.
-    Não captura exceções — o chamador é responsável pelo tratamento.
-    """
     response = httpx.post(  # nosec B113
         f"http://{API_HOST}:{API_PORT}/query",
         json={"query": query},
@@ -61,16 +52,7 @@ def _consultar_api(query: str) -> dict:
     return response.json()
 
 
-def _ingerir_documento(
-    uploaded_file: Any,
-    collection_name: str = DEFAULT_COLLECTION_NAME,
-) -> None:
-    """Processa o arquivo enviado: PDF faz rebuild completo; JSON usa ingestão incremental.
-
-    Entrada: uploaded_file — objeto UploadedFile do Streamlit.
-             collection_name — nome da coleção ChromaDB de destino.
-    Saída: nenhuma (efeito colateral: exibe feedback na UI, atualiza vectordb).
-    """
+def _ingerir_documento(uploaded_file: Any, collection_name: str = DEFAULT_COLLECTION_NAME) -> None:
     conteudo: bytes = uploaded_file.getvalue()
     filename: str = uploaded_file.name
     suffix = Path(filename).suffix.lower()
@@ -90,16 +72,14 @@ def _ingerir_documento(
                 reconstruir_vectordb(collection_name)
         except Exception as e:
             saved_path.unlink(missing_ok=True)
-            st.error(f"Erro ao reconstruir base vetorial. Arquivo removido. Detalhe: {e}")
+            st.error(f"Erro ao reconstruir base vetorial. Detalhe: {e}")
             return
-        st.success(f"Documento ingerido com sucesso na coleção '{collection_name}'.")
+        st.success(f"Documento ingerido na coleção '{collection_name}'.")
         st.rerun()
     else:
         try:
-            with st.spinner("Adicionando documento à base vetorial..."):
-                resultado = adicionar_documento_incrementalmente(
-                    filename, conteudo, collection_name
-                )
+            with st.spinner("Adicionando documento..."):
+                resultado = adicionar_documento_incrementalmente(filename, conteudo, collection_name)
         except RAGSecurityError as e:
             st.error(str(e))
             return
@@ -117,44 +97,215 @@ def _ingerir_documento(
             st.warning(mensagem)
 
 
-# Define o título, ícone e layout inicial da página Streamlit
-st.set_page_config(page_title="Aivorak", page_icon="🚚", layout="centered")
+# ---------------------------------------------------------------------------
+# Page config + CSS
+# ---------------------------------------------------------------------------
 
-# Chaves de session_state inicializadas uma vez por sessão Streamlit.
-# Persistem entre reruns enquanto a aba do navegador permanecer aberta.
-# ranked_response: resposta ranqueada retornada pelo agente
-# confidence_score: score de confiança da resposta (0.0–1.0)
-# retrieved_info: documentos recuperados do vectordb
-# next_step: rota usada pelo agente ("retrieve", "gerar", "usar_web")
-if "ranked_response" not in st.session_state:
-    st.session_state.ranked_response = None
-if "confidence_score" not in st.session_state:
-    st.session_state.confidence_score = None
-if "retrieved_info" not in st.session_state:
-    st.session_state.retrieved_info = []
-if "next_step" not in st.session_state:
-    st.session_state.next_step = None
+st.set_page_config(page_title="Assistente Logístico", page_icon="🚚", layout="centered")
 
-# Adiciona o título "Instruções" na barra lateral
-st.sidebar.title("Instruções")
+st.markdown("""
+<style>
+/* ---- Reset geral ---- */
+#MainMenu, footer, header { visibility: hidden; }
 
-# Exibe instruções detalhadas ao usuário na barra lateral
-st.sidebar.write("""
-- Digite perguntas específicas sobre logística e supply chain para obter respostas detalhadas.
-- O assistente de IA vai utilizar a base de dados do RAG para gerar respostas customizadas.
-- Documentos, contratos e procedimentos complementares podem ser usados para
-  aperfeiçoar o sistema de RAG.
-- IA Generativa comete erros. SEMPRE valide as respostas.
-""")
+/* ---- Fundo e fonte base ---- */
+html, body, [data-testid="stAppViewContainer"] {
+    background-color: #f9f9f8;
+    font-family: "Söhne", ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
 
-# Cria botão "Suporte" na barra lateral e verifica se foi clicado
-if st.sidebar.button("Suporte"):
+/* ---- Sidebar ---- */
+[data-testid="stSidebar"] {
+    background-color: #1a1a1a;
+    border-right: none;
+}
+[data-testid="stSidebar"] * {
+    font-size: 0.85rem;
+    color: #d4d4d4 !important;
+}
+[data-testid="stSidebar"] h1,
+[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3,
+[data-testid="stSidebar"] strong {
+    color: #ffffff !important;
+}
+[data-testid="stSidebar"] .stSelectbox label,
+[data-testid="stSidebar"] .stTextInput label,
+[data-testid="stSidebar"] .stFileUploader label {
+    color: #aaaaaa !important;
+}
+[data-testid="stSidebar"] input,
+[data-testid="stSidebar"] select,
+[data-testid="stSidebar"] [data-baseweb="select"] {
+    background-color: #2a2a2a !important;
+    color: #d4d4d4 !important;
+    border-color: #3a3a3a !important;
+}
+[data-testid="stSidebar"] [data-testid="stButton"] > button {
+    background-color: #2a2a2a !important;
+    color: #d4d4d4 !important;
+    border: 1px solid #3a3a3a !important;
+}
+[data-testid="stSidebar"] [data-testid="stButton"] > button:hover {
+    background-color: #3a3a3a !important;
+    color: #ffffff !important;
+}
+[data-testid="stSidebar"] hr {
+    border-color: #2a2a2a !important;
+}
 
-    # Exibe informações de contato caso o botão seja clicado
-    st.sidebar.write("Dúvidas? Envie um e-mail para: suporte@aivoraq.com.br")
+/* ---- Título principal ---- */
+.cl-title {
+    text-align: center;
+    font-size: 2rem;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin: 2.5rem 0 0.25rem 0;
+    letter-spacing: -0.5px;
+}
+.cl-subtitle {
+    text-align: center;
+    font-size: 0.95rem;
+    color: #888;
+    margin-bottom: 2rem;
+}
 
-# Expander para ingestão de novos documentos JSON no banco vetorial
-with st.sidebar.expander("Adicionar Documento"):
+/* ---- Caixa de resposta ---- */
+.cl-response-box {
+    background: #ffffff;
+    border: 1px solid #e5e5e3;
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem 1rem 1.5rem;
+    margin-top: 1.5rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    font-size: 0.97rem;
+    color: #1a1a1a;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* ---- Linha de metadados no rodapé da resposta ---- */
+.cl-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 0.9rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid #f0f0ee;
+}
+.cl-badge {
+    font-size: 0.72rem;
+    color: #999;
+    background: #f4f4f2;
+    border-radius: 20px;
+    padding: 2px 8px;
+    border: 1px solid #e5e5e3;
+}
+
+/* ---- Ícone de confiança com tooltip ---- */
+.cl-conf {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    cursor: help;
+    font-size: 0.72rem;
+    color: #aaa;
+    background: #f4f4f2;
+    border-radius: 20px;
+    padding: 2px 7px;
+    border: 1px solid #e5e5e3;
+    gap: 3px;
+    transition: background 0.15s;
+}
+.cl-conf:hover {
+    background: #ececea;
+    color: #555;
+}
+.cl-conf .cl-tooltip {
+    visibility: hidden;
+    opacity: 0;
+    width: 200px;
+    background: #1a1a1a;
+    color: #fff;
+    text-align: left;
+    border-radius: 8px;
+    padding: 8px 10px;
+    position: absolute;
+    bottom: 130%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 999;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    transition: opacity 0.15s;
+    pointer-events: none;
+    white-space: normal;
+}
+.cl-conf:hover .cl-tooltip {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* ---- Campo de entrada ---- */
+div[data-testid="stTextInput"] input {
+    border-radius: 10px;
+    border: 1.5px solid #e5e5e3;
+    background: #ffffff;
+    font-size: 0.97rem;
+    padding: 0.65rem 1rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    transition: border-color 0.15s;
+}
+div[data-testid="stTextInput"] input:focus {
+    border-color: #b5a8f0;
+    box-shadow: 0 0 0 3px rgba(181,168,240,0.15);
+    outline: none;
+}
+
+/* ---- Botão Enviar ---- */
+div[data-testid="stButton"] > button {
+    border-radius: 10px;
+    background: #1a1a1a;
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.9rem;
+    padding: 0.55rem 1.5rem;
+    border: none;
+    width: 100%;
+    transition: background 0.15s;
+}
+div[data-testid="stButton"] > button:hover {
+    background: #3d3d3d;
+}
+
+/* ---- Spinner ---- */
+div[data-testid="stSpinner"] p {
+    color: #888;
+    font-size: 0.85rem;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# Session state
+# ---------------------------------------------------------------------------
+
+for key, default in [
+    ("ranked_response", None),
+    ("confidence_score", None),
+    ("retrieved_info", []),
+    ("next_step", None),
+]:
+    if key not in st.session_state:
+        st.session_state[key] = default
+
+# ---------------------------------------------------------------------------
+# Sidebar — ingestão de documentos
+# ---------------------------------------------------------------------------
+
+with st.sidebar:
+    st.markdown("### 📂 Adicionar Documento")
     colecoes_existentes = _listar_colecoes()
     opcoes = colecoes_existentes + [NOVA_COLECAO_SENTINEL]
     selecao = st.selectbox("Coleção", opcoes, key="selecao_colecao")
@@ -164,148 +315,125 @@ with st.sidebar.expander("Adicionar Documento"):
     if selecao == NOVA_COLECAO_SENTINEL:
         nome_input = st.text_input("Nome da nova coleção", key="nome_nova_colecao")
         if not nome_input:
-            st.warning("Digite o nome da nova coleção antes de ingerir.")
+            st.warning("Digite o nome antes de ingerir.")
             colecao_valida = False
         else:
             try:
                 sanitizar_nome_colecao(nome_input)
-                st.caption("Nome válido.")
+                st.caption("✓ Nome válido.")
                 collection_name = nome_input
             except RAGSecurityError as e:
-                st.caption(f"Nome inválido: {e}")
+                st.caption(f"✗ Nome inválido: {e}")
                 colecao_valida = False
     else:
         collection_name = selecao
 
-    uploaded_file = st.file_uploader("Selecione um arquivo JSON ou PDF", type=None)
-    if st.button("Ingerir Documento", disabled=not colecao_valida):
+    uploaded_file = st.file_uploader("Arquivo (.json ou .pdf)", type=None)
+    if st.button("Ingerir", disabled=not colecao_valida):
         if uploaded_file is None:
-            st.warning("Selecione um arquivo antes de ingerir.")
+            st.warning("Selecione um arquivo.")
         else:
             _ingerir_documento(uploaded_file, collection_name)
 
-# Exibe título principal
-st.title("AVK - Agência de IA")
+    st.divider()
+    st.markdown(
+        "<small style='color:#aaa;'>IA Generativa comete erros.<br>Sempre valide as respostas.</small>",
+        unsafe_allow_html=True,
+    )
 
-# Exibe subtítulo secundário (substituindo o segundo st.title por st.subheader)
-st.subheader("IA Generativa e Agentic RAG Para a Área de Logística")
+# ---------------------------------------------------------------------------
+# Main — título
+# ---------------------------------------------------------------------------
 
-# Solicita ao usuário que digite uma pergunta através de um campo de texto
-query = st.text_input("Digite sua pergunta:")
+st.markdown('<div class="cl-title">Assistente Logístico</div>', unsafe_allow_html=True)
+st.markdown('<div class="cl-subtitle">Especialista em logística e supply chain</div>', unsafe_allow_html=True)
 
-# Mapeia next_step para rótulos legíveis em português exibidos na UI
-_ROTAS = {
-    "retrieve": "Rota: Busca no Banco de Dados",
-    "gerar": "Rota: Geração Direta",
-    "usar_web": "Rota: Busca na Web",
-}
+# ---------------------------------------------------------------------------
+# Input
+# ---------------------------------------------------------------------------
 
-# Verifica se o usuário clicou no botão "Enviar"
-if st.button("Enviar"):
+col_input, col_btn = st.columns([5, 1])
+with col_input:
+    query = st.text_input("", placeholder="Faça uma pergunta sobre logística…", label_visibility="collapsed")
+with col_btn:
+    enviar = st.button("Enviar")
 
-    # Exibe um spinner indicando que a consulta está sendo processada
-    with st.spinner("Processando consulta... Aguarde."):
+# ---------------------------------------------------------------------------
+# Envio
+# ---------------------------------------------------------------------------
 
+if enviar and query.strip():
+    with st.spinner("Processando…"):
         try:
             output = _consultar_api(query)
-
-            # _consultar_api() retorna dict com as chaves do JSON de resposta;
-            # lemos cada chave com .get() para garantir valor padrão seguro
             st.session_state.ranked_response = output.get("ranked_response", "Nenhuma resposta.")
             st.session_state.confidence_score = output.get("confidence_score", 0.0)
             st.session_state.retrieved_info = output.get("retrieved_info", [])
             st.session_state.next_step = output.get("next_step", None)
 
         except httpx.HTTPStatusError as e:
-            status_code = e.response.status_code
-            if status_code == 503:
-                detail = _safe_detail(e.response)
-                if "LMStudio" in detail:
-                    st.error(MSG_LMSTUDIO_DOWN)
-                elif "vetorial" in detail or "agenticlog.rag" in detail:
-                    st.error(MSG_VECTORDB_AUSENTE)
-                else:
-                    st.error(f"Serviço indisponível: {detail}" if detail else MSG_ERRO_INTERNO)
-            elif status_code == 500:
-                detail = _safe_detail(e.response)
-                st.error(MSG_ERRO_INTERNO)
-                with st.expander("Detalhes do erro"):
-                    st.write(detail)
-            elif status_code == 422:
+            code = e.response.status_code
+            detail = _safe_detail(e.response)
+            if code == 503:
+                st.error(MSG_LMSTUDIO_DOWN if "LMStudio" in detail else MSG_VECTORDB_AUSENTE if "vetorial" in detail else MSG_ERRO_INTERNO)
+            elif code == 422:
                 st.error(MSG_ERRO_VALIDACAO)
             else:
-                detail = _safe_detail(e.response) or str(e)
-                st.error(detail)
-
+                st.error(detail or MSG_ERRO_INTERNO)
         except httpx.ConnectError:
             st.error(MSG_CONNECT_ERROR)
-
         except httpx.TimeoutException:
             st.error(MSG_TIMEOUT)
 
-# Exibe os resultados armazenados no session_state (persistem entre reruns)
+elif enviar and not query.strip():
+    st.warning("Digite uma pergunta antes de enviar.")
+
+# ---------------------------------------------------------------------------
+# Resposta
+# ---------------------------------------------------------------------------
+
 if st.session_state.ranked_response is not None:
-
-    # Exibe a rota utilizada pelo agente como badge informativo
-    rota = st.session_state.next_step
-    if rota in _ROTAS:
-        st.info(_ROTAS[rota])
-
-    # Exibe subtítulo "Resposta:"
-    st.subheader("Resposta:")
-
-    # Obtém a resposta ranqueada do session_state
     resposta = st.session_state.ranked_response
-
-    # Verifica se a resposta está em formato dicionário contendo chave "answer"
     if isinstance(resposta, dict) and "answer" in resposta:
-
-        # Se sim, extrai o valor da chave "answer"
         resposta = resposta["answer"]
 
-    # Exibe a resposta formatada como Markdown
-    st.markdown(resposta)
+    confidence = float(st.session_state.confidence_score or 0.0)
+    next_step = st.session_state.next_step or ""
+    rota_label, rota_icon = _ROTAS.get(next_step, ("Desconhecida", "❓"))
 
-    # Exibe subtítulo indicando o nível de confiança da resposta
-    st.subheader("Confiança da Resposta com Base no RAG:")
-
-    # Obtém o score de confiança do session_state; usa 0.0 se None ou não-numérico (ex.: após erro)
-    raw_confidence = st.session_state.confidence_score
-    confidence = float(raw_confidence) if isinstance(raw_confidence, (int, float)) else 0.0
-
-    # Exibe barra de progresso visual com o valor de confiança (0.0 a 1.0)
-    st.progress(confidence)
-
-    # Exibe badge colorido de acordo com o nível de confiança
+    # Nível de confiança
     if confidence >= 0.7:
-        st.success(f"Confiança alta: {confidence:.2f}")
+        conf_label, conf_color, conf_icon = "Alta", "#22c55e", "●"
     elif confidence >= 0.4:
-        st.warning(f"Confiança média: {confidence:.2f}")
+        conf_label, conf_color, conf_icon = "Média", "#f59e0b", "●"
     else:
-        st.error(f"Confiança baixa: {confidence:.2f}")
+        conf_label, conf_color, conf_icon = "Baixa", "#ef4444", "●"
 
-    # Obtém os documentos relacionados que foram recuperados pela consulta
-    documentos_relacionados = st.session_state.retrieved_info
+    tooltip_text = (
+        f"Confiança: {confidence:.2%}<br>"
+        f"Nível: {conf_label}<br>"
+        f"Rota: {rota_label}<br>"
+        f"Fonte: {'RAG' if next_step == 'retrieve' else 'Web' if next_step == 'usar_web' else 'LLM'}"
+    )
 
-    # Verifica se existem documentos relacionados recuperados
-    if documentos_relacionados:
+    conf_html = f"""
+    <span class="cl-conf">
+        <span style="color:{conf_color};">{conf_icon}</span>
+        {confidence:.0%}
+        <span class="cl-tooltip">{tooltip_text}</span>
+    </span>
+    """
 
-        # Exibe subtítulo "Documentos Relacionados:"
-        st.subheader("Documentos Relacionados:")
+    route_html = f'<span class="cl-badge">{rota_icon} {rota_label}</span>'
 
-        # Itera sobre cada documento recuperado
-        for i, doc in enumerate(documentos_relacionados):
+    html = f"""
+    <div class="cl-response-box">
+        {resposta}
+        <div class="cl-meta">
+            {route_html}
+            {conf_html}
+        </div>
+    </div>
+    """
 
-            # Obtém a fonte do documento para usar no título do expander
-            source = doc["metadata"].get("source", "Desconhecida")
-
-            # Exibe cada documento em um expander colapsável para melhor legibilidade
-            with st.expander(f"Documento {i + 1} — {source}"):
-
-                # Exibe o conteúdo do documento numa caixa de texto com altura definida
-                # key único evita StreamlitDuplicateElementId quando há múltiplos documentos
-                st.text_area("Conteúdo", doc["page_content"], height=80, key=f"doc_content_{i}")
-    else:
-
-        # Caso não haja documentos, exibe mensagem informando ao usuário
-        st.write("Nenhum documento relacionado encontrado.")
+    st.markdown(html, unsafe_allow_html=True)
