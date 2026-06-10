@@ -101,78 +101,92 @@ def _ingerir_documento(uploaded_file: Any, collection_name: str = DEFAULT_COLLEC
 # Page config + CSS
 # ---------------------------------------------------------------------------
 
-st.set_page_config(page_title="Assistente Logístico", page_icon="🚚", layout="centered")
+st.set_page_config(page_title="Assistente Logístico", page_icon="📦", layout="centered")
 
 st.markdown("""
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+    --cl-bg: #0F1117;
+    --cl-sidebar-bg: #1C1F26;
+    --cl-card-bg: #1C1F26;
+    --cl-border: #2D3139;
+    --cl-accent: #F59E0B;
+    --cl-text: #E5E7EB;
+    --cl-text-secondary: #9CA3AF;
+    --cl-mono: ui-monospace, "SF Mono", "Cascadia Code", "Courier New", monospace;
+}
+
 /* ---- Reset geral ---- */
 #MainMenu, footer, header { visibility: hidden; }
 
 /* ---- Fundo e fonte base ---- */
-html, body, [data-testid="stAppViewContainer"] {
-    background-color: #f4f3fb;
-    font-family: "Söhne", ui-sans-serif, system-ui, -apple-system, sans-serif;
+html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
+    background-color: var(--cl-bg);
+    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    color: var(--cl-text);
+}
+h1, h2, h3, h4, h5, h6 {
+    font-family: "Inter", sans-serif;
+    font-weight: 600;
+    color: var(--cl-text);
+}
+p, span, div, label, li {
+    font-family: "Inter", sans-serif;
+    font-weight: 400;
 }
 
 /* ---- Sidebar ---- */
 [data-testid="stSidebar"] {
-    background-color: #1c1b2e;
-    border-right: none;
+    background-color: var(--cl-sidebar-bg);
+    border-right: 1px solid var(--cl-border);
 }
 [data-testid="stSidebar"] * {
     font-size: 0.85rem;
-    color: #d4d4d4 !important;
+    color: var(--cl-text) !important;
 }
 [data-testid="stSidebar"] h1,
 [data-testid="stSidebar"] h2,
 [data-testid="stSidebar"] h3,
 [data-testid="stSidebar"] strong {
-    color: #ffffff !important;
+    color: var(--cl-text) !important;
+    font-weight: 600;
 }
-[data-testid="stSidebar"] .stSelectbox label,
-[data-testid="stSidebar"] .stTextInput label,
-[data-testid="stSidebar"] .stFileUploader label {
-    color: #aaaaaa !important;
+/* Labels dos campos da sidebar (ex.: "Coleção") */
+[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    color: var(--cl-text-secondary) !important;
 }
 [data-testid="stSidebar"] input,
 [data-testid="stSidebar"] select,
-[data-testid="stSidebar"] [data-baseweb="select"] {
-    background-color: #2a2937 !important;
-    color: #d4d4d4 !important;
-    border-color: #3a3850 !important;
-}
-/* Botões sidebar (Ingerir) — estilo unificado */
-[data-testid="stSidebar"] [data-testid="stButton"] > button {
-    background: rgba(124, 111, 247, 0.15) !important;
-    color: #b5a8f0 !important;
-    border: 1px solid rgba(124, 111, 247, 0.35) !important;
-    border-radius: 8px !important;
-    width: 100%;
-}
-[data-testid="stSidebar"] [data-testid="stButton"] > button:hover {
-    background: rgba(124, 111, 247, 0.28) !important;
-    color: #ffffff !important;
+[data-testid="stSidebar"] [data-baseweb="select"] > div {
+    background-color: var(--cl-bg) !important;
+    color: var(--cl-text) !important;
+    border-color: var(--cl-border) !important;
 }
 [data-testid="stSidebar"] hr {
-    border-color: #2a2937 !important;
+    border-color: var(--cl-border) !important;
 }
 
 /* ---- File uploader na sidebar ---- */
 [data-testid="stFileUploaderDropzone"] {
-    background-color: #2a2937 !important;
-    border: 1px dashed rgba(124, 111, 247, 0.35) !important;
-    border-radius: 8px !important;
+    background-color: var(--cl-bg) !important;
+    border: 1px dashed var(--cl-border) !important;
+    border-radius: 6px !important;
 }
-/* "Browse files" — mesmo estilo de Ingerir */
 [data-testid="stFileUploaderDropzone"] button {
-    background: rgba(124, 111, 247, 0.15) !important;
-    color: #b5a8f0 !important;
-    border: 1px solid rgba(124, 111, 247, 0.35) !important;
-    border-radius: 8px !important;
+    background-color: var(--cl-card-bg) !important;
+    color: var(--cl-text) !important;
+    border: 1px solid var(--cl-border) !important;
+    border-radius: 6px !important;
 }
 [data-testid="stFileUploaderDropzone"] button:hover {
-    background: rgba(124, 111, 247, 0.28) !important;
-    color: #ffffff !important;
+    border-color: var(--cl-accent) !important;
+    color: var(--cl-accent) !important;
 }
 /* Traduzir "Drag and drop file here" */
 [data-testid="stFileUploaderDropzoneInstructions"] span:first-child {
@@ -185,7 +199,7 @@ html, body, [data-testid="stAppViewContainer"] {
     content: "Arraste e solte o arquivo aqui";
     display: block;
     font-size: 0.82rem;
-    color: #aaaaaa;
+    color: var(--cl-text-secondary);
     margin-bottom: 4px;
 }
 
@@ -194,14 +208,16 @@ html, body, [data-testid="stAppViewContainer"] {
     text-align: center;
     font-size: 2rem;
     font-weight: 700;
-    color: #1a1a1a;
+    font-family: "Inter", sans-serif;
+    color: var(--cl-accent);
     margin: 2.5rem 0 0.25rem 0;
     letter-spacing: -0.5px;
 }
 .cl-subtitle {
     text-align: center;
     font-size: 0.95rem;
-    color: #888;
+    font-weight: 400;
+    color: var(--cl-text-secondary);
     margin-bottom: 2rem;
 }
 
@@ -209,7 +225,7 @@ html, body, [data-testid="stAppViewContainer"] {
 .cl-empty-state {
     text-align: center;
     padding: 3.5rem 1rem 2rem 1rem;
-    color: #c0bce0;
+    color: var(--cl-text-secondary);
     font-size: 0.88rem;
     line-height: 1.8;
 }
@@ -227,132 +243,144 @@ html, body, [data-testid="stAppViewContainer"] {
     margin-top: 1.25rem;
 }
 .cl-hint-chip {
-    background: #ffffff;
-    border: 1px solid #dddcf0;
+    background: var(--cl-card-bg);
+    border: 1px solid var(--cl-border);
     border-radius: 20px;
     padding: 5px 14px;
     font-size: 0.82rem;
-    color: #7c6ff7;
+    color: var(--cl-accent);
     cursor: default;
 }
 
-/* ---- Caixa de resposta ---- */
-.cl-response-box {
-    background: #ffffff;
-    border: 1px solid #dddcf0;
-    border-radius: 12px;
-    padding: 1.25rem 1.5rem 1rem 1.5rem;
-    margin-top: 1.5rem;
-    box-shadow: 0 2px 8px rgba(124,111,247,0.07);
-    font-size: 0.97rem;
-    color: #1a1a1a;
+/* ---- Bolhas de chat ---- */
+.cl-chat-row {
+    display: flex;
+    margin: 0.6rem 0;
+}
+.cl-chat-row.cl-user {
+    justify-content: flex-end;
+}
+.cl-chat-row.cl-assistant {
+    justify-content: flex-start;
+}
+.cl-bubble {
+    max-width: 80%;
+    padding: 0.85rem 1.1rem;
+    font-size: 0.95rem;
     line-height: 1.7;
     white-space: pre-wrap;
     word-break: break-word;
 }
+.cl-bubble-user {
+    background-color: var(--cl-accent);
+    color: var(--cl-bg);
+    border-radius: 12px 12px 2px 12px;
+}
+.cl-bubble-assistant {
+    background-color: var(--cl-card-bg);
+    color: var(--cl-text);
+    border: 1px solid var(--cl-border);
+    border-radius: 12px 12px 12px 2px;
+}
 
-/* ---- Linha de metadados no rodapé da resposta ---- */
+/* ---- Linha de metadados ---- */
 .cl-meta {
     display: flex;
     align-items: center;
     gap: 8px;
     margin-top: 0.9rem;
     padding-top: 0.6rem;
-    border-top: 1px solid #f0f0ee;
+    border-top: 1px solid var(--cl-border);
+    flex-wrap: wrap;
 }
 .cl-badge {
     font-size: 0.72rem;
-    color: #999;
-    background: #f4f4f2;
+    color: var(--cl-text-secondary);
+    background: var(--cl-bg);
     border-radius: 20px;
-    padding: 2px 8px;
-    border: 1px solid #e5e5e3;
+    padding: 2px 10px;
+    border: 1px solid var(--cl-border);
 }
 
-/* ---- Ícone de confiança com tooltip ---- */
-.cl-conf {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    cursor: help;
-    font-size: 0.72rem;
-    color: #aaa;
-    background: #f4f4f2;
-    border-radius: 20px;
-    padding: 2px 7px;
-    border: 1px solid #e5e5e3;
-    gap: 3px;
-    transition: background 0.15s;
-}
-.cl-conf:hover {
-    background: #ececea;
-    color: #555;
-}
-.cl-conf .cl-tooltip {
-    visibility: hidden;
-    opacity: 0;
-    width: 200px;
-    background: #1a1a1a;
-    color: #fff;
-    text-align: left;
-    border-radius: 8px;
-    padding: 8px 10px;
-    position: absolute;
-    bottom: 130%;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 999;
+/* ---- Confiança ---- */
+.cl-conf-label {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--cl-mono);
     font-size: 0.75rem;
-    line-height: 1.5;
-    transition: opacity 0.15s;
-    pointer-events: none;
-    white-space: normal;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--cl-text-secondary);
+    margin-top: 0.75rem;
 }
-.cl-conf:hover .cl-tooltip {
-    visibility: visible;
-    opacity: 1;
+.cl-conf-value {
+    font-family: var(--cl-mono);
+    color: var(--cl-text);
+}
+[data-testid="stProgress"] > div > div {
+    background-color: var(--cl-border) !important;
+}
+[data-testid="stProgress"] > div > div > div {
+    background-color: var(--cl-accent) !important;
 }
 
 /* ---- Campo de entrada ---- */
 div[data-testid="stTextInput"] input {
-    border-radius: 10px;
-    border: 1.5px solid #dddcf0;
-    background: #ffffff;
-    color: #1a1a1a !important;
-    font-size: 0.97rem;
+    border-radius: 6px;
+    border: 1px solid var(--cl-border);
+    background: var(--cl-card-bg);
+    color: var(--cl-text) !important;
+    font-size: 0.95rem;
     padding: 0.65rem 1rem;
-    box-shadow: 0 1px 4px rgba(124,111,247,0.06);
     transition: border-color 0.15s;
 }
 div[data-testid="stTextInput"] input::placeholder {
-    color: #aaaaaa !important;
+    color: var(--cl-text-secondary) !important;
 }
 div[data-testid="stTextInput"] input:focus {
-    border-color: #7c6ff7;
-    box-shadow: 0 0 0 3px rgba(124,111,247,0.12);
+    border-color: var(--cl-accent);
+    box-shadow: 0 0 0 1px var(--cl-accent);
     outline: none;
-    color: #1a1a1a !important;
 }
 
-/* ---- Botão Enviar (área principal) ---- */
+/* ---- Botões primários ---- */
 div[data-testid="stButton"] > button {
-    border-radius: 10px;
-    background: #7c6ff7;
-    color: #fff;
+    border-radius: 6px;
+    background-color: var(--cl-accent);
+    color: var(--cl-bg);
     font-weight: 600;
+    font-family: "Inter", sans-serif;
     font-size: 0.9rem;
     padding: 0.55rem 1.5rem;
     border: none;
     width: 100%;
-    transition: background 0.15s;
+    transition: opacity 0.15s;
 }
 div[data-testid="stButton"] > button:hover {
-    background: #6458d4;
+    opacity: 0.85;
+}
+div[data-testid="stButton"] > button:disabled {
+    background-color: var(--cl-border);
+    color: var(--cl-text-secondary);
+    opacity: 1;
+}
+
+/* ---- Documentos recuperados ---- */
+[data-testid="stExpander"] {
+    background-color: var(--cl-card-bg);
+    border: 1px solid var(--cl-border);
+    border-radius: 6px;
+}
+[data-testid="stTextArea"] textarea {
+    background-color: var(--cl-bg) !important;
+    color: var(--cl-text) !important;
+    border-color: var(--cl-border) !important;
+    font-family: var(--cl-mono);
 }
 
 /* ---- Spinner ---- */
 div[data-testid="stSpinner"] p {
-    color: #888;
+    color: var(--cl-text-secondary);
     font-size: 0.85rem;
 }
 </style>
@@ -367,6 +395,7 @@ for key, default in [
     ("confidence_score", None),
     ("retrieved_info", []),
     ("next_step", None),
+    ("last_query", ""),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -441,6 +470,7 @@ if enviar and query.strip():
             st.session_state.confidence_score = output.get("confidence_score", 0.0)
             st.session_state.retrieved_info = output.get("retrieved_info", [])
             st.session_state.next_step = output.get("next_step", None)
+            st.session_state.last_query = query
 
         except httpx.HTTPStatusError as e:
             code = e.response.status_code
@@ -469,7 +499,7 @@ elif enviar and not query.strip():
 if st.session_state.ranked_response is None:
     st.markdown("""
     <div class="cl-empty-state">
-        <span class="cl-empty-icon">🚚</span>
+        <span class="cl-empty-icon">📦</span>
         Faça uma pergunta para começar
         <div class="cl-empty-hints">
             <span class="cl-hint-chip">Qual o prazo médio de entrega?</span>
@@ -487,43 +517,30 @@ elif st.session_state.ranked_response is not None:
     confidence = float(st.session_state.confidence_score or 0.0)
     next_step = st.session_state.next_step or ""
     rota_label, rota_icon = _ROTAS.get(next_step, ("Desconhecida", "❓"))
-
-    # Nível de confiança
-    if confidence >= 0.7:
-        conf_label, conf_color, conf_icon = "Alta", "#22c55e", "●"
-    elif confidence >= 0.4:
-        conf_label, conf_color, conf_icon = "Média", "#f59e0b", "●"
-    else:
-        conf_label, conf_color, conf_icon = "Baixa", "#ef4444", "●"
-
-    tooltip_text = (
-        f"Confiança: {confidence:.2%}<br>"
-        f"Nível: {conf_label}<br>"
-        f"Rota: {rota_label}<br>"
-        f"Fonte: {'RAG' if next_step == 'retrieve' else 'Web' if next_step == 'usar_web' else 'LLM'}"
-    )
-
-    conf_html = f"""
-    <span class="cl-conf">
-        <span style="color:{conf_color};">{conf_icon}</span>
-        {confidence:.0%}
-        <span class="cl-tooltip">{tooltip_text}</span>
-    </span>
-    """
-
     route_html = f'<span class="cl-badge">{rota_icon} {rota_label}</span>'
 
-    html = f"""
-    <div class="cl-response-box">
-        {resposta}
-        <div class="cl-meta">
-            {route_html}
-            {conf_html}
+    if st.session_state.last_query:
+        st.markdown(
+            f'<div class="cl-chat-row cl-user"><div class="cl-bubble cl-bubble-user">{st.session_state.last_query}</div></div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(f"""
+    <div class="cl-chat-row cl-assistant">
+        <div class="cl-bubble cl-bubble-assistant">
+            {resposta}
+            <div class="cl-meta">
+                {route_html}
+            </div>
         </div>
     </div>
-    """
+    """, unsafe_allow_html=True)
 
-    st.markdown(html, unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="cl-conf-label"><span>Confiança</span><span class="cl-conf-value">{confidence:.0%}</span></div>',
+        unsafe_allow_html=True,
+    )
+    st.progress(min(max(confidence, 0.0), 1.0))
 
     retrieved = st.session_state.retrieved_info or []
     if retrieved:
