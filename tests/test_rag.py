@@ -274,7 +274,7 @@ class TestCriaVectordb(unittest.TestCase):
         self.assertEqual(len(call_args[0][0]), 1)
         self.assertEqual(call_args[0][0][0].page_content, "Chunk 1")
 
-        mock_emb.assert_called_with(
+        mock_emb.assert_called_once_with(
             model_name=config.EMBEDDING_MODEL,
             model_kwargs={"device": ANY},
             encode_kwargs={"normalize_embeddings": True},
