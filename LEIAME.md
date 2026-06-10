@@ -6,7 +6,7 @@
 |------------|----------------|
 | **LMStudio** | API local do modelo de linguagem Hermes (hermes-3-llama-3.2-3b). Deve estar rodando em `http://127.0.0.1:1234` antes de executar a aplicação. |
 | **ChromaDB** | Banco de dados vetorial para armazenar e buscar embeddings dos documentos (RAG). Dados persistidos em `data/vectordb/`. |
-| **HuggingFace** | Modelo BAAI/bge-base-en para gerar embeddings de texto na busca semântica. |
+| **HuggingFace** | Modelo sentence-transformers/paraphrase-multilingual-mpnet-base-v2 (multilíngue, otimizado para português entre outros idiomas) para gerar embeddings de texto na busca semântica. |
 | **DuckDuckGo** | Busca web para o agente obter informações atualizadas quando necessário. |
 | **LangGraph** | Framework para orquestrar o workflow do agente (grafos de estado). |
 | **Streamlit** | Interface web da aplicação. |

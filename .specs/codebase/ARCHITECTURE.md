@@ -57,7 +57,7 @@ decision → usar_web → END
 3. `_valida_arquivos_json()` — file count (≤1000) and size (≤10MB) limits
 4. DirectoryLoader + JSONLoader with jq_schema flattening
 5. RecursiveCharacterTextSplitter (chunk_size=500, overlap=50)
-6. HuggingFaceEmbeddings (BAAI/bge-base-en) → Chroma.from_documents()
+6. HuggingFaceEmbeddings (sentence-transformers/paraphrase-multilingual-mpnet-base-v2) → Chroma.from_documents()
 
 ### Centralized Config
 

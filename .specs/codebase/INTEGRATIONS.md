@@ -26,10 +26,10 @@
 
 **Service:** sentence-transformers + FlagEmbedding (local inference)  
 **Purpose:** Generate embeddings for documents and queries  
-**Model:** BAAI/bge-base-en (downloaded on first run, cached locally)  
+**Model:** sentence-transformers/paraphrase-multilingual-mpnet-base-v2 (multilingual, 768-dim, downloaded on first run, cached locally)  
 **Implementation:** `src/agenticlog/rag.py` via `HuggingFaceEmbeddings`  
 **Authentication:** None (local model)  
-**Risk:** First run requires internet + disk space for model download  
+**Risk:** First run requires internet + disk space for model download (~1.0–1.1 GB)  
 
 ## Web Search — DuckDuckGo
 

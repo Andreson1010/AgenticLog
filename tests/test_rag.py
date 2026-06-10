@@ -11,7 +11,7 @@ import logging
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, ANY
 
 _root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_root / "src"))
@@ -43,6 +43,17 @@ from agenticlog.rag import (
 from agenticlog.config import MAX_JSON_FILES, MAX_JSON_FILE_SIZE_MB
 import agenticlog.rag as rag
 import agenticlog.config as config
+
+
+class TestEmbeddingModelConfig(unittest.TestCase):
+    """Testes para a constante EMBEDDING_MODEL (PORTPT-01 / AC1)."""
+
+    def test_embedding_model_e_multilingue(self):
+        """EMBEDDING_MODEL aponta para o modelo multilíngue (paraphrase-multilingual-mpnet)."""
+        self.assertEqual(
+            config.EMBEDDING_MODEL,
+            "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+        )
 
 
 class TestRAGSecurityError(unittest.TestCase):
@@ -262,6 +273,40 @@ class TestCriaVectordb(unittest.TestCase):
         call_args = mock_chroma.from_documents.call_args
         self.assertEqual(len(call_args[0][0]), 1)
         self.assertEqual(call_args[0][0][0].page_content, "Chunk 1")
+
+        mock_emb.assert_called_with(
+            model_name=config.EMBEDDING_MODEL,
+            model_kwargs={"device": ANY},
+            encode_kwargs={"normalize_embeddings": True},
+        )
+
+
+class TestGetRagEmbeddingModel(unittest.TestCase):
+    """Testes para _get_rag_embedding_model (PORTPT-02 / AC2)."""
+
+    def setUp(self) -> None:
+        """Reseta o singleton antes de cada teste para garantir isolamento."""
+        rag._rag_embedding_model = None
+
+    def tearDown(self) -> None:
+        """Reseta o singleton após cada teste."""
+        rag._rag_embedding_model = None
+
+    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    def test_get_rag_embedding_model_usa_embedding_model_do_config(self, mock_emb):
+        """_get_rag_embedding_model() constrói HuggingFaceEmbeddings com model_name=config.EMBEDDING_MODEL."""
+        rag._get_rag_embedding_model()
+
+        mock_emb.assert_called_once_with(model_name=config.EMBEDDING_MODEL)
+
+    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    def test_get_rag_embedding_model_singleton_reusa_instancia(self, mock_emb):
+        """Chamadas subsequentes retornam a mesma instância sem recriar HuggingFaceEmbeddings."""
+        primeira = rag._get_rag_embedding_model()
+        segunda = rag._get_rag_embedding_model()
+
+        self.assertIs(primeira, segunda)
+        mock_emb.assert_called_once_with(model_name=config.EMBEDDING_MODEL)
 
 
 class TestLogging(unittest.TestCase):
