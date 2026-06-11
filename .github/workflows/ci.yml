@@ -31,6 +31,9 @@ jobs:
           uv pip install -r requirements-dev.txt --system
           uv pip install -e . --system
 
+      - name: Create .env for tests
+        run: cp .env.example .env
+
       - name: Run tests with coverage gate (80%)
         run: pytest --cov=agenticlog --cov-report=term-missing --cov-fail-under=80 -v
 

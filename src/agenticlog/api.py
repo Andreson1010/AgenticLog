@@ -16,12 +16,16 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from langchain_chroma import Chroma
 from pydantic import BaseModel, Field, field_validator
 
-from langchain_chroma import Chroma
-
 from agenticlog.agent import AgentState, agent_workflow, inicializar_recursos
-from agenticlog.config import DEFAULT_COLLECTION_NAME, DIR_VECTORDB, HISTORY_FILE, HISTORY_MAX_ENTRIES
+from agenticlog.config import (
+    DEFAULT_COLLECTION_NAME,
+    DIR_VECTORDB,
+    HISTORY_FILE,
+    HISTORY_MAX_ENTRIES,
+)
 from agenticlog.health import LMStudioUnavailableError
 from agenticlog.history import HistoryStore
 from agenticlog.rag import _get_rag_embedding_model
@@ -138,7 +142,9 @@ async def lifespan(app: FastAPI):
         )
         app.state.vectordb_pronto = False
     try:
-        app.state.history_store = HistoryStore(db_path=HISTORY_FILE, max_entries=HISTORY_MAX_ENTRIES)
+        app.state.history_store = HistoryStore(
+            db_path=HISTORY_FILE, max_entries=HISTORY_MAX_ENTRIES
+        )
         logger.info("HistoryStore inicializado em %s", HISTORY_FILE)
     except Exception as exc:
         logger.critical("Falha ao inicializar HistoryStore: %s. Histórico indisponível.", exc)
@@ -285,7 +291,9 @@ async def consultar(body: QueryRequest, req: Request) -> QueryResponse:
 @app.get("/history", response_model=list[HistoryEntry])
 async def listar_historico(
     req: Request,
-    limit: int | None = Query(default=None, ge=1, description="Número máximo de registros a retornar"),
+    limit: int | None = Query(
+        default=None, ge=1, description="Número máximo de registros a retornar"
+    ),
 ) -> list[HistoryEntry]:
     """Retorna o histórico de queries em ordem decrescente de timestamp.
 
