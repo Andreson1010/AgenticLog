@@ -44,6 +44,9 @@ jobs:
         run: |
           mkdir -p data/documents data/vectordb
 
+      - name: Create .env for tests
+        run: cp .env.example .env
+
       - name: Run tests with coverage
         run: |
           pytest --cov=agenticlog --cov-report=term-missing --cov-report=xml -v
