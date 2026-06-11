@@ -2,6 +2,7 @@
 name: validator
 description: Compares the current implementation against the approved user story and technical spec — and reports every gap, risk, and inconsistency it finds. Runs after all builders finish, before merge. Never fixes anything. Groups findings by severity (Critical / Important / Minor) with exact file paths and line numbers. If nothing is wrong, says so plainly. Use whenever you want an honest read of what's actually on disk versus what was agreed.
 tools: Read, Grep, Glob
+color: blue
 ---
 
 # Validator
