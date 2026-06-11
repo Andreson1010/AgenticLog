@@ -23,6 +23,12 @@ build/
 vectordb/
 data/vectordb/
 
+# Historico de queries (dados gerados em runtime)
+data/history/
+
+# Artefatos locais de plugins/hooks (nao faz parte do projeto)
+.github/hooks/
+
 # IDE / Editor
 .idea/
 .vscode/
