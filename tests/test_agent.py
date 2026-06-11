@@ -10,8 +10,37 @@ _root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_root / "src"))
 
 import agenticlog.agent as agent_mod
+import agenticlog.config as config
 from agenticlog.agent import invalidar_vector_db
 from langchain_core.documents import Document as LCDocument
+
+
+class TestGetEmbeddingModel(unittest.TestCase):
+    """Testes para _get_embedding_model (PORTPT-02 / AC2)."""
+
+    def setUp(self) -> None:
+        """Reseta o singleton antes de cada teste para garantir isolamento."""
+        agent_mod._embedding_model = None
+
+    def tearDown(self) -> None:
+        """Reseta o singleton após cada teste."""
+        agent_mod._embedding_model = None
+
+    @patch("agenticlog.agent.HuggingFaceEmbeddings")
+    def test_get_embedding_model_usa_embedding_model_do_config(self, mock_emb):
+        """_get_embedding_model() constrói HuggingFaceEmbeddings com model_name=EMBEDDING_MODEL."""
+        agent_mod._get_embedding_model()
+
+        mock_emb.assert_called_once_with(model_name=config.EMBEDDING_MODEL)
+
+    @patch("agenticlog.agent.HuggingFaceEmbeddings")
+    def test_get_embedding_model_singleton_reusa_instancia(self, mock_emb):
+        """Chamadas subsequentes retornam a mesma instância sem recriar HuggingFaceEmbeddings."""
+        primeira = agent_mod._get_embedding_model()
+        segunda = agent_mod._get_embedding_model()
+
+        self.assertIs(primeira, segunda)
+        mock_emb.assert_called_once_with(model_name=config.EMBEDDING_MODEL)
 
 
 class TestInvalidarVectorDb(unittest.TestCase):

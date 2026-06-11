@@ -20,7 +20,9 @@ DIR_DOCUMENTS = PROJECT_ROOT / "data" / "documents"  # JSONs de origem dos docum
 DIR_VECTORDB = PROJECT_ROOT / "data" / "vectordb"    # banco ChromaDB persistido em disco
 
 # Modelo de embeddings (deve ser o mesmo em rag e agent)
-EMBEDDING_MODEL = "BAAI/bge-base-en"  # modelo HuggingFace usado para gerar e consultar embeddings
+# Multilíngue (otimizado para português, entre outros idiomas), 768 dimensões — drop-in
+# compatível com o modelo anterior (BAAI/bge-base-en, também 768-dim).
+EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"  # modelo HuggingFace usado para gerar e consultar embeddings
 
 # LLM (LMStudio)
 LLM_MODEL = "hermes-3-llama-3.2-3b"

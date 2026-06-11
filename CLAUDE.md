@@ -17,10 +17,20 @@ uv pip install -r requirements-dev.txt
 uv pip install -e .
 ```
 
-### Build VectorDB (first time or after changing documents)
+### Build VectorDB (first time, after changing documents, or after changing `EMBEDDING_MODEL`)
 ```bash
 python -m agenticlog.rag
 ```
+
+**After changing `EMBEDDING_MODEL` in `config.py`** (e.g., switching embedding models), rebuild the vector DB from scratch:
+1. Stop the running app (if any).
+2. Delete `data/vectordb/` (gitignored, fully regenerable).
+3. Rerun `python -m agenticlog.rag`.
+4. Resume queries with `streamlit run app.py`.
+
+The current model is `sentence-transformers/paraphrase-multilingual-mpnet-base-v2` (multilingual, 768-dim, optimized for Portuguese among other languages). On first run with this model, expect a larger download (~1.0–1.1 GB, vs ~440 MB for the previous `BAAI/bge-base-en`), so initial setup takes longer.
+
+**Silent-degradation risk:** if `data/vectordb/` is **not** rebuilt after an `EMBEDDING_MODEL` change, the system will **not** raise an error — both the old and new models produce 768-dimensional vectors, so dimensions still match. However, the existing vectors were computed in a different (incompatible) embedding space than new query vectors, so similarity scores and retrieval results become unreliable, with no warning in logs or the UI. Always rebuild `data/vectordb/` after changing `EMBEDDING_MODEL`.
 
 ### Run Application
 ```bash

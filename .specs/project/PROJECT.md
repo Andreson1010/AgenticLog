@@ -14,7 +14,7 @@ Agentic RAG system for logistics and supply chain domain. Users ask natural lang
 ## Tech Constraints
 
 - LLM runs locally via LMStudio (hermes-3-llama-3.2-3b) — no external API costs
-- Embeddings run locally (BAAI/bge-base-en) — no external embedding service
+- Embeddings run locally (sentence-transformers/paraphrase-multilingual-mpnet-base-v2, multilingual) — no external embedding service
 - ChromaDB persists locally — no cloud vector DB dependency
 - UI is Streamlit — no separate frontend build step
 
