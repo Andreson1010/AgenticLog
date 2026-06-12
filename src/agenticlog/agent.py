@@ -12,7 +12,7 @@ import hashlib
 import logging
 import os
 import warnings
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import httpx
 import numpy as np  # type: ignore[import-untyped]
@@ -91,11 +91,11 @@ class LLMClient(Protocol):
     este Protocol estruturalmente — nenhum wrapper/adapter/subclasse é necessário.
     """
 
-    def __or__(self, other): ...
+    def __or__(self, other: Any) -> Any: ...
 
-    def __ror__(self, other): ...
+    def __ror__(self, other: Any) -> Any: ...
 
-    def invoke(self, input, config=None, **kwargs): ...
+    def invoke(self, input: Any, config: Any = None, **kwargs: Any) -> Any: ...
 
 
 def _get_llm() -> LLMClient:
