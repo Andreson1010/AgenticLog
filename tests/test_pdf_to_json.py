@@ -1,5 +1,6 @@
 """Testes para scripts/pdf_to_json.py (wrapper fino sobre agenticlog.rag.extrair_texto_pdf)."""
 
+import io
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -41,3 +42,29 @@ class TestConverter:
         assert "PÁGINA_1" in conteudo
         assert "ção" in conteudo  # ensure_ascii=False preserva acentuação
         assert "\\u" not in conteudo  # nao deve haver escapes unicode
+
+
+class TestMain:
+    @patch("pdf_to_json.extrair_texto_pdf")
+    def teste_4_main_imprime_ok_em_console_cp1252_sem_unicodeencodeerror(
+        self, mock_extrair, tmp_path, monkeypatch
+    ):
+        """main() nao deve lancar UnicodeEncodeError/SystemExit quando stdout e cp1252 (console Windows)."""
+        mock_extrair.return_value = {"PÁGINA_1": "conteudo"}
+
+        pdf_file = tmp_path / "doc.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4")
+        output_dir = tmp_path / "out"
+
+        stdout_cp1252 = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", write_through=True)
+        monkeypatch.setattr(sys, "stdout", stdout_cp1252)
+        monkeypatch.setattr(
+            sys, "argv", ["pdf_to_json.py", str(pdf_file), "--output", str(output_dir)]
+        )
+
+        pdf_to_json.main()
+
+        stdout_cp1252.seek(0)
+        saida = stdout_cp1252.buffer.getvalue().decode("cp1252")
+        assert "OK" in saida
+        assert (output_dir / "doc.json").exists()

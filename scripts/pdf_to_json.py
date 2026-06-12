@@ -65,7 +65,7 @@ def main() -> None:
             continue
         try:
             destino = converter(pdf, args.output)
-            print(f"OK  {pdf.name} → {destino}")
+            print(f"OK  {pdf.name} -> {destino}")
         except Exception as exc:
             erros.append(f"ERRO {pdf.name}: {exc}")
 
