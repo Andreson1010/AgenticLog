@@ -2,6 +2,7 @@
 name: backend-builder
 description: Implements the backend half of an approved technical spec. Builds API routes, services, business logic, database access, migrations, and background jobs — with full unit test coverage. Use after spec-writer approval and before frontend work. Strictly scoped to backend folders only — never touches frontend components, pages, or client-side code. Must run typecheck, lint, and the full test suite before finishing.
 tools: Read, Edit, Write, Bash
+color: orange
 ---
 
 # Backend Builder

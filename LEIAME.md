@@ -112,12 +112,26 @@ Após ativar, o prompt mostrará `(.venv)` indicando que o ambiente está ativo.
 python -m agenticlog.rag
 ```
 
+## Commands
 
+### Setup
+```bash
+uv venv --python 3.12
+source .venv/bin/activate        # Linux/macOS
+# .venv\Scripts\Activate.ps1    # Windows PowerShell
+uv pip install -r requirements-dev.txt
+uv pip install -e .
+```
 
+## Environment
 
+Requires `.env` file with:
+```
+OPENAI_API_KEY=hermes
+OPENAI_API_BASE=http://127.0.0.1:1234/v1
+```
 
-
-
+LMStudio must be running with the Hermes 3B model loaded before invoking the agent or running integration tests.
 
 
 **Rodar a interface Streamlit:**
