@@ -55,6 +55,9 @@ from agenticlog.config import (  # noqa: E402
     LLM_RETRY_WAIT_MAX_SECONDS,
     LLM_TEMPERATURE,
     LLM_TIMEOUT_SECONDS,
+    RETRIEVAL_K_DEFAULT,
+    RETRIEVAL_K_PER_COLLECTION,
+    RETRIEVAL_K_TOTAL,
     ROUTING_KEYWORDS_GERAR,
     ROUTING_KEYWORDS_WEB,
 )
@@ -168,8 +171,10 @@ def _listar_colecoes() -> list[str]:
 
 
 def _get_retriever(query: str) -> list[Document]:
-    """Executa fan-out em todas as coleções ChromaDB e retorna até 3 documentos únicos.
+    """Executa fan-out em todas as coleções ChromaDB e retorna até RETRIEVAL_K_TOTAL documentos únicos.
 
+    Cada coleção usa seu próprio k de busca (RETRIEVAL_K_PER_COLLECTION, com fallback
+    RETRIEVAL_K_DEFAULT) antes da deduplicação e do corte final.
     Coleção vazia contribui 0 documentos (skip silencioso).
     Erro ChromaDB em qualquer coleção propaga imediatamente (fail-fast).
     """
@@ -178,7 +183,8 @@ def _get_retriever(query: str) -> list[Document]:
 
     for name in collection_names:
         db = _get_vector_db(name)
-        retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": 3})
+        k = RETRIEVAL_K_PER_COLLECTION.get(name, RETRIEVAL_K_DEFAULT)
+        retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": k})
         docs = retriever.invoke(query)
         all_docs.extend(docs)
 
@@ -190,7 +196,7 @@ def _get_retriever(query: str) -> list[Document]:
             seen.add(key)
             unique.append(doc)
 
-    return unique[:3]
+    return unique[:RETRIEVAL_K_TOTAL]
 
 
 def inicializar_recursos() -> None:

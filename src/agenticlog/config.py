@@ -66,6 +66,16 @@ COLLECTION_NAME_PATTERN: re.Pattern[str] = re.compile(
     r"^[a-zA-Z0-9][a-zA-Z0-9_-]{1,61}[a-zA-Z0-9]$"
 )
 
+# Retrieval — k (nº de documentos) por coleção no fan-out de _get_retriever.
+# Preparação para multi-collection: cada coleção pode ter seu próprio k de busca
+# (ex.: coleções menores/mais específicas podem usar k menor). Coleções não listadas
+# em RETRIEVAL_K_PER_COLLECTION usam RETRIEVAL_K_DEFAULT.
+RETRIEVAL_K_DEFAULT: int = 3
+RETRIEVAL_K_PER_COLLECTION: dict[str, int] = {
+    DEFAULT_COLLECTION_NAME: 3,
+}
+RETRIEVAL_K_TOTAL: int = 3  # limite final de docs únicos após mesclar todas as coleções
+
 # Segurança - limites para carregamento de documentos
 MAX_JSON_FILES = 1000          # impede carregamento irrestrito de arquivos maliciosos
 MAX_JSON_FILE_SIZE_MB = 10     # bloqueia arquivos excessivamente grandes (proteção contra DoS)
