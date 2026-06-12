@@ -33,6 +33,7 @@ from agenticlog.config import (
     EMBEDDING_MODEL,
     CHUNK_SIZE,
     CHUNK_OVERLAP,
+    JQ_SCHEMA_CAMPOS_JSON,
     MAX_JSON_FILES,
     MAX_JSON_FILE_SIZE_MB,
     MAX_DOCUMENT_FILE_SIZE_MB,
@@ -350,12 +351,14 @@ def adicionar_documento_incrementalmente(
         if tmp_path is not None:
             tmp_path.unlink(missing_ok=True)
 
-    jq_schema = 'to_entries | map(.key + ": " + (.value | tostring)) | join("\\n")'
-    loader = JSONLoader(str(saved_path), jq_schema=jq_schema)
+    loader = JSONLoader(str(saved_path), jq_schema=JQ_SCHEMA_CAMPOS_JSON)
     docs = loader.load()
+    # Descarta Documents com page_content vazio (chave JSON com valor "", [] ou {}) — ADR-011
+    docs = [d for d in docs if d.page_content.strip()]
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,
         chunk_overlap=CHUNK_OVERLAP,
+        separators=["\n\n", "\n", ". ", "! ", "? ", " ", ""],
     )
     chunks = text_splitter.split_documents(docs)
 
@@ -399,15 +402,16 @@ def adicionar_documento_incrementalmente(
     }
 
 
-def extrair_texto_pdf(path: Path) -> str:
-    """Extrai texto de um arquivo PDF usando PyMuPDF (fitz).
+def extrair_texto_pdf(path: Path) -> dict[str, str]:
+    """Extrai texto de um arquivo PDF usando PyMuPDF (fitz), por página.
 
     Entrada: path — Path para um arquivo PDF já salvo em disco.
-    Saída: string com todo o texto extraível (páginas concatenadas).
+    Saída: dict {"PÁGINA_1": "texto da página 1", "PÁGINA_2": "...", ...} —
+      apenas páginas com texto não-vazio após .strip() são incluídas.
     Lança RAGSecurityError se:
       - fitz.open() lança qualquer Exception (arquivo corrompido).
       - doc.needs_pass == True (PDF protegido por senha).
-      - Texto extraído tem zero caracteres não-brancos (PDF somente-imagem).
+      - dict resultante está vazio (nenhuma página com texto extraível — somente imagem).
     """
     try:
         doc_handle = fitz.open(str(path))
@@ -419,12 +423,16 @@ def extrair_texto_pdf(path: Path) -> str:
     with doc_handle:
         if doc_handle.needs_pass:
             raise RAGSecurityError("PDF protegido por senha.")
-        texto = "".join(page.get_text() for page in doc_handle)
+        pages: dict[str, str] = {}
+        for i, page in enumerate(doc_handle):
+            texto = page.get_text().strip()
+            if texto:
+                pages[f"PÁGINA_{i + 1}"] = texto
 
-    if not texto.strip():
+    if not pages:
         raise RAGSecurityError("PDF não contém texto extraível (somente imagem).")
 
-    return texto
+    return pages
 
 
 def salvar_pdf_enviado(
@@ -471,7 +479,7 @@ def salvar_pdf_enviado(
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             tmp.write(conteudo)
             tmp_path = Path(tmp.name)
-        extrair_texto_pdf(tmp_path)
+        extrair_texto_pdf(tmp_path)  # validação por efeito colateral: levanta RAGSecurityError se sem texto
         shutil.move(str(tmp_path), DIR_DOCUMENTS / safe_name)
         tmp_path = None  # moved — no cleanup needed
     except RAGSecurityError:
@@ -517,23 +525,30 @@ def cria_vectordb(collection_name: str = DEFAULT_COLLECTION_NAME) -> None:
 
     logger.info("Gerando as Embeddings. Aguarde...")
 
-    # jq_schema: achata o JSON em "chave: valor\nchave: valor" para facilitar chunking e busca semântica
-    jq_schema = 'to_entries | map(.key + ": " + (.value | tostring)) | join("\\n")'
+    # jq_schema compartilhado (config.py): 1 Document por chave top-level (ADR-008)
     loader = DirectoryLoader(
         str(DIR_DOCUMENTS),
         glob="*.json",
         loader_cls=JSONLoader,
-        loader_kwargs={"jq_schema": jq_schema},
+        loader_kwargs={"jq_schema": JQ_SCHEMA_CAMPOS_JSON},
     )
     json_docs = loader.load()
+    # Descarta Documents com page_content vazio (chave JSON com valor "", [] ou {}) — ADR-011
+    json_docs = [d for d in json_docs if d.page_content.strip()]
 
     pdf_docs = []
     for pdf_path in DIR_DOCUMENTS.glob("*.pdf"):
         try:
-            texto = extrair_texto_pdf(pdf_path)
-            pdf_docs.append(Document(page_content=texto, metadata={"source": str(pdf_path)}))
+            paginas = extrair_texto_pdf(pdf_path)
+            for chave, texto in paginas.items():
+                pdf_docs.append(
+                    Document(page_content=f"{chave}: {texto}", metadata={"source": str(pdf_path)})
+                )
         except RAGSecurityError as e:
             logger.error("PDF corrompido ignorado durante reconstrução: %s — %s", pdf_path.name, e)
+
+    # Descarta Documents com page_content vazio — defensivo, simetria com o filtro JSON (ADR-011)
+    pdf_docs = [d for d in pdf_docs if d.page_content.strip()]
 
     documents = json_docs + pdf_docs
 
@@ -544,6 +559,7 @@ def cria_vectordb(collection_name: str = DEFAULT_COLLECTION_NAME) -> None:
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,
         chunk_overlap=CHUNK_OVERLAP,
+        separators=["\n\n", "\n", ". ", "! ", "? ", " ", ""],
     )
     chunks = text_splitter.split_documents(documents)
 
