@@ -232,7 +232,7 @@ class TestCriaVectordb(unittest.TestCase):
         mock_loader_instance = MagicMock()
         mock_loader_instance.load.return_value = []
         mock_loader.return_value = mock_loader_instance
-        mock_dir.glob.return_value = []
+        mock_dir.glob.return_value = []  # nenhum PDF
 
         cria_vectordb()
 
@@ -248,37 +248,172 @@ class TestCriaVectordb(unittest.TestCase):
     @patch("agenticlog.rag.DirectoryLoader")
     @patch("agenticlog.rag._valida_arquivos_json")
     @patch("agenticlog.rag._valida_path_documentos")
-    def test_cria_vectordb_com_documentos_cria_chroma(
+    def test_cria_vectordb_com_documentos_json_usa_jq_schema_e_separators(
         self, mock_valida_path, mock_valida_json, mock_loader, mock_dir, mock_splitter, mock_emb, mock_chroma
     ):
-        """Com documentos válidos, cria_vectordb chama Chroma.from_documents."""
+        """Com documentos JSON válidos: usa JQ_SCHEMA_CAMPOS_JSON e separators de ADR-007."""
         from langchain_core.documents import Document
 
         mock_loader_instance = MagicMock()
         mock_loader_instance.load.return_value = [
-            Document(page_content="Conteúdo de teste"),
+            Document(page_content="DESCRIÇÃO: texto da descrição"),
+            Document(page_content="CRITÉRIOS: texto dos critérios"),
         ]
         mock_loader.return_value = mock_loader_instance
         mock_dir.glob.return_value = []  # nenhum PDF
 
         mock_splitter_instance = MagicMock()
-        mock_splitter_instance.split_documents.return_value = [
-            Document(page_content="Chunk 1"),
-        ]
+        mock_splitter_instance.split_documents.side_effect = lambda docs: docs  # passthrough
         mock_splitter.return_value = mock_splitter_instance
 
         cria_vectordb()
 
+        # jq_schema compartilhado usado
+        _, loader_kwargs = mock_loader.call_args
+        self.assertEqual(
+            loader_kwargs["loader_kwargs"]["jq_schema"],
+            config.JQ_SCHEMA_CAMPOS_JSON,
+        )
+
+        # separators de ADR-007 passados ao splitter
+        mock_splitter.assert_called_once_with(
+            chunk_size=config.CHUNK_SIZE,
+            chunk_overlap=config.CHUNK_OVERLAP,
+            separators=["\n\n", "\n", ". ", "! ", "? ", " ", ""],
+        )
+
         mock_chroma.from_documents.assert_called_once()
         call_args = mock_chroma.from_documents.call_args
-        self.assertEqual(len(call_args[0][0]), 1)
-        self.assertEqual(call_args[0][0][0].page_content, "Chunk 1")
+        self.assertEqual(len(call_args[0][0]), 2)
+        self.assertTrue(call_args[0][0][0].page_content.startswith("DESCRIÇÃO: "))
+        self.assertTrue(call_args[0][0][1].page_content.startswith("CRITÉRIOS: "))
 
         mock_emb.assert_called_once_with(
             model_name=config.EMBEDDING_MODEL,
             model_kwargs={"device": ANY},
             encode_kwargs={"normalize_embeddings": True},
         )
+
+    @patch("agenticlog.rag.Chroma")
+    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.rag.DirectoryLoader")
+    @patch("agenticlog.rag._valida_arquivos_json")
+    @patch("agenticlog.rag._valida_path_documentos")
+    def test_cria_vectordb_filtra_documento_json_com_valor_vazio(
+        self, mock_valida_path, mock_valida_json, mock_loader, mock_dir,
+        mock_splitter, mock_emb, mock_chroma
+    ):
+        """Document JSON com page_content vazio (chave com valor "") é descartado."""
+        from langchain_core.documents import Document
+
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load.return_value = [
+            Document(page_content="DESCRIÇÃO: texto válido"),
+            Document(page_content="CAMPO_VAZIO: "),  # .strip() == "CAMPO_VAZIO:" -- nao vazio!
+            Document(page_content=""),  # totalmente vazio
+            Document(page_content="   "),  # só whitespace
+        ]
+        mock_loader.return_value = mock_loader_instance
+        mock_dir.glob.return_value = []
+
+        mock_splitter_instance = MagicMock()
+        mock_splitter_instance.split_documents.side_effect = lambda docs: docs
+        mock_splitter.return_value = mock_splitter_instance
+
+        cria_vectordb()
+
+        call_args = mock_chroma.from_documents.call_args
+        passed_docs = call_args[0][0]
+        contents = [d.page_content for d in passed_docs]
+        self.assertIn("DESCRIÇÃO: texto válido", contents)
+        self.assertNotIn("", contents)
+        self.assertNotIn("   ", contents)
+        # "CAMPO_VAZIO: " com .strip() == "CAMPO_VAZIO:" é NAO vazio -> permanece
+        self.assertIn("CAMPO_VAZIO: ", contents)
+
+    @patch("agenticlog.rag.Chroma")
+    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.extrair_texto_pdf")
+    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.rag.DirectoryLoader")
+    @patch("agenticlog.rag._valida_arquivos_json")
+    @patch("agenticlog.rag._valida_path_documentos")
+    def test_cria_vectordb_pdf_multipagina_um_document_por_pagina(
+        self, mock_valida_path, mock_valida_json, mock_loader, mock_dir,
+        mock_extrair, mock_splitter, mock_emb, mock_chroma
+    ):
+        """PDF multi-página: 1 Document por página, prefixo PÁGINA_N: ."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load.return_value = []
+        mock_loader.return_value = mock_loader_instance
+
+        pdf_path = MagicMock()
+        pdf_path.name = "materiais_logistica.pdf"
+        mock_dir.glob.return_value = [pdf_path]
+
+        mock_extrair.return_value = {
+            "PÁGINA_1": "conteúdo da primeira página",
+            "PÁGINA_2": "conteúdo da segunda página",
+        }
+
+        mock_splitter_instance = MagicMock()
+        mock_splitter_instance.split_documents.side_effect = lambda docs: docs
+        mock_splitter.return_value = mock_splitter_instance
+
+        cria_vectordb()
+
+        call_args = mock_chroma.from_documents.call_args
+        passed_docs = call_args[0][0]
+        self.assertEqual(len(passed_docs), 2)
+        self.assertEqual(passed_docs[0].page_content, "PÁGINA_1: conteúdo da primeira página")
+        self.assertEqual(passed_docs[1].page_content, "PÁGINA_2: conteúdo da segunda página")
+
+    @patch("agenticlog.rag.Chroma")
+    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.extrair_texto_pdf")
+    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.rag.DirectoryLoader")
+    @patch("agenticlog.rag._valida_arquivos_json")
+    @patch("agenticlog.rag._valida_path_documentos")
+    def test_cria_vectordb_pdf_todas_paginas_em_branco_loga_erro_sem_levantar(
+        self, mock_valida_path, mock_valida_json, mock_loader, mock_dir,
+        mock_extrair, mock_splitter, mock_emb, mock_chroma
+    ):
+        """PDF totalmente em branco: RAGSecurityError é capturada e logada, zero Documents."""
+        from langchain_core.documents import Document
+
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load.return_value = [Document(page_content="DESCRIÇÃO: texto válido")]
+        mock_loader.return_value = mock_loader_instance
+
+        pdf_path = MagicMock()
+        pdf_path.name = "vazio.pdf"
+        mock_dir.glob.return_value = [pdf_path]
+
+        # Usa rag.RAGSecurityError (não o import top-level RAGSecurityError) porque
+        # tests/acceptance/test_structured_log_config.py faz importlib.reload(rag_module)
+        # quando a suíte completa roda; o `except RAGSecurityError` em cria_vectordb
+        # passa a referenciar a classe pós-reload, e a comparação `isinstance` só
+        # bate se o side_effect também usar a classe atual de agenticlog.rag.
+        mock_extrair.side_effect = rag.RAGSecurityError(
+            "PDF não contém texto extraível (somente imagem)."
+        )
+
+        mock_splitter_instance = MagicMock()
+        mock_splitter_instance.split_documents.side_effect = lambda docs: docs
+        mock_splitter.return_value = mock_splitter_instance
+
+        with self.assertLogs("agenticlog.rag", level="ERROR") as log_ctx:
+            cria_vectordb()
+
+        call_args = mock_chroma.from_documents.call_args
+        passed_docs = call_args[0][0]
+        self.assertEqual(len(passed_docs), 1)  # só o Document JSON
+        self.assertTrue(any("PDF corrompido ignorado" in m for m in log_ctx.output))
 
 
 class TestGetRagEmbeddingModel(unittest.TestCase):
@@ -766,8 +901,8 @@ class TestExtrairTextoPdf(unittest.TestCase):
     """Testes para extrair_texto_pdf."""
 
     @patch("agenticlog.rag.fitz.open")
-    def teste_1_extrair_pdf_valido_retorna_texto(self, mock_fitz_open):
-        """PDF com texto retorna string não-vazia."""
+    def teste_1_extrair_pdf_valido_retorna_dict(self, mock_fitz_open):
+        """PDF com texto retorna dict {"PÁGINA_1": texto}."""
         mock_page = MagicMock()
         mock_page.get_text.return_value = "texto do contrato"
         mock_doc = MagicMock()
@@ -777,7 +912,7 @@ class TestExtrairTextoPdf(unittest.TestCase):
 
         resultado = extrair_texto_pdf(Path("qualquer.pdf"))
 
-        self.assertIn("texto do contrato", resultado)
+        self.assertEqual(resultado, {"PÁGINA_1": "texto do contrato"})
 
     @patch("agenticlog.rag.fitz.open")
     def teste_2_extrair_pdf_com_senha_lanca_erro(self, mock_fitz_open):
@@ -805,8 +940,8 @@ class TestExtrairTextoPdf(unittest.TestCase):
         self.assertIn("somente imagem", str(ctx.exception))
 
     @patch("agenticlog.rag.fitz.open")
-    def teste_4_extrair_pdf_mix_texto_imagem_aceita(self, mock_fitz_open):
-        """PDF com mix de páginas texto e imagem retorna texto sem erro."""
+    def teste_4_extrair_pdf_mix_texto_imagem_filtra_pagina_vazia(self, mock_fitz_open):
+        """PDF com mix de páginas texto e imagem: só a página com texto aparece no dict."""
         mock_page_texto = MagicMock()
         mock_page_texto.get_text.return_value = "conteúdo real"
         mock_page_imagem = MagicMock()
@@ -818,7 +953,8 @@ class TestExtrairTextoPdf(unittest.TestCase):
 
         resultado = extrair_texto_pdf(Path("qualquer.pdf"))
 
-        self.assertIn("conteúdo real", resultado)
+        self.assertEqual(resultado, {"PÁGINA_1": "conteúdo real"})
+        self.assertNotIn("PÁGINA_2", resultado)
 
     @patch("agenticlog.rag.fitz.open")
     def teste_5_extrair_exception_generica_lanca_erro(self, mock_fitz_open):
@@ -828,6 +964,31 @@ class TestExtrairTextoPdf(unittest.TestCase):
         with self.assertRaises(rag.RAGSecurityError) as ctx:
             extrair_texto_pdf(Path("qualquer.pdf"))
         self.assertIn("corrompido", str(ctx.exception))
+
+    @patch("agenticlog.rag.fitz.open")
+    def teste_6_extrair_pdf_multipagina_retorna_dict_ordenado(self, mock_fitz_open):
+        """PDF com 3 páginas de texto retorna dict com 3 chaves PÁGINA_1..3 na ordem."""
+        mock_pages = []
+        for i in range(3):
+            p = MagicMock()
+            p.get_text.return_value = f"texto da pagina {i + 1}"
+            mock_pages.append(p)
+        mock_doc = MagicMock()
+        mock_doc.needs_pass = False
+        mock_doc.__iter__ = MagicMock(return_value=iter(mock_pages))
+        mock_fitz_open.return_value = mock_doc
+
+        resultado = extrair_texto_pdf(Path("qualquer.pdf"))
+
+        self.assertEqual(
+            resultado,
+            {
+                "PÁGINA_1": "texto da pagina 1",
+                "PÁGINA_2": "texto da pagina 2",
+                "PÁGINA_3": "texto da pagina 3",
+            },
+        )
+        self.assertEqual(list(resultado.keys()), ["PÁGINA_1", "PÁGINA_2", "PÁGINA_3"])
 
 
 class TestSalvarPdfEnviado(unittest.TestCase):
@@ -839,7 +1000,7 @@ class TestSalvarPdfEnviado(unittest.TestCase):
     @patch("agenticlog.rag.extrair_texto_pdf")
     def teste_1_salvar_pdf_valido_sucesso(self, mock_extrair):
         """PDF válido é salvo em DIR_DOCUMENTS."""
-        mock_extrair.return_value = "texto extraído"
+        mock_extrair.return_value = {"PÁGINA_1": "texto extraído"}
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
             with patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path):
@@ -862,7 +1023,7 @@ class TestSalvarPdfEnviado(unittest.TestCase):
     @patch("agenticlog.rag.extrair_texto_pdf")
     def teste_3_salvar_aceita_extensao_maiuscula(self, mock_extrair):
         """Extensão .PDF (maiúscula) é aceita (case-insensitive)."""
-        mock_extrair.return_value = "texto extraído"
+        mock_extrair.return_value = {"PÁGINA_1": "texto extraído"}
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
             with patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path):
@@ -1153,6 +1314,158 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
         self.assertIn("0 chunks", result["mensagem"])
         mock_vdb.add_documents.assert_not_called()
         self.assertTrue(any("zero chunks" in m for m in log_ctx.output))
+
+    def teste_10_usa_jq_schema_compartilhado(self) -> None:
+        """JSONLoader é construído com JQ_SCHEMA_CAMPOS_JSON (constante compartilhada)."""
+        conteudo = b'{"campo": "valor"}'
+        mock_vdb = self._setup_vectordb_mock([], [])
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            with (
+                patch("agenticlog.rag.Chroma", return_value=mock_vdb),
+                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
+                patch("agenticlog.rag.RecursiveCharacterTextSplitter") as mock_splitter_cls,
+                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
+                patch("agenticlog.agent.invalidar_vector_db"),
+            ):
+                mock_loader_cls.return_value.load.return_value = [
+                    LCDocument(page_content="campo: valor", metadata={})
+                ]
+                mock_splitter_cls.return_value.split_documents.return_value = [self._chunk()]
+
+                adicionar_documento_incrementalmente("doc.json", conteudo)
+
+        _, kwargs = mock_loader_cls.call_args
+        self.assertEqual(kwargs["jq_schema"], config.JQ_SCHEMA_CAMPOS_JSON)
+
+        mock_splitter_cls.assert_called_once_with(
+            chunk_size=config.CHUNK_SIZE,
+            chunk_overlap=config.CHUNK_OVERLAP,
+            separators=["\n\n", "\n", ". ", "! ", "? ", " ", ""],
+        )
+
+    def teste_11_filtra_documents_com_page_content_vazio(self) -> None:
+        """Documents com page_content vazio (apos strip) sao descartados antes do split."""
+        conteudo = b'{"campo_a": "valor", "campo_b": ""}'
+        mock_vdb = self._setup_vectordb_mock([], [])
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            with (
+                patch("agenticlog.rag.Chroma", return_value=mock_vdb),
+                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
+                patch("agenticlog.rag.RecursiveCharacterTextSplitter") as mock_splitter_cls,
+                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
+                patch("agenticlog.agent.invalidar_vector_db"),
+            ):
+                mock_loader_cls.return_value.load.return_value = [
+                    LCDocument(page_content="campo_a: valor", metadata={}),
+                    LCDocument(page_content="campo_b: ", metadata={}),  # .strip() == "campo_b:"
+                    LCDocument(page_content="", metadata={}),  # totalmente vazio -- filtrado
+                ]
+                mock_splitter = mock_splitter_cls.return_value
+                mock_splitter.split_documents.side_effect = lambda docs: list(docs)
+
+                adicionar_documento_incrementalmente("doc.json", conteudo)
+
+        passed_docs = mock_splitter.split_documents.call_args[0][0]
+        contents = [d.page_content for d in passed_docs]
+        self.assertIn("campo_a: valor", contents)
+        self.assertIn("campo_b: ", contents)  # .strip() == "campo_b:" -- nao vazio, permanece
+        self.assertNotIn("", contents)
+        self.assertEqual(len(passed_docs), 2)
+
+
+class TestResidualSplitBehavior(unittest.TestCase):
+    """Testes de comportamento real do RecursiveCharacterTextSplitter com separators de ADR-007."""
+
+    def _splitter(self):
+        from langchain.text_splitter import RecursiveCharacterTextSplitter
+        return RecursiveCharacterTextSplitter(
+            chunk_size=config.CHUNK_SIZE,
+            chunk_overlap=config.CHUNK_OVERLAP,
+            separators=["\n\n", "\n", ". ", "! ", "? ", " ", ""],
+        )
+
+    def teste_1_campo_no_limite_exato_nao_e_dividido(self) -> None:
+        """page_content com len == CHUNK_SIZE exato nao e dividido (1 chunk)."""
+        valor = "x" * (config.CHUNK_SIZE - len("CAMPO: "))
+        doc = LCDocument(page_content=f"CAMPO: {valor}", metadata={})
+        self.assertEqual(len(doc.page_content), config.CHUNK_SIZE)
+
+        chunks = self._splitter().split_documents([doc])
+
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(chunks[0].page_content, doc.page_content)
+
+    def teste_2_campo_acima_do_limite_e_dividido_so_primeiro_mantem_prefixo(self) -> None:
+        """page_content > CHUNK_SIZE e dividido residualmente; so o 1o pedaco mantem 'CAMPO: '."""
+        # Texto com frases completas para exercitar separadores ". ", "! ", "? "
+        frase = "Esta e uma frase de exemplo sobre logistica e cadeia de suprimentos. "
+        valor = frase * 10  # > CHUNK_SIZE (500)
+        doc = LCDocument(page_content=f"CAMPO: {valor}", metadata={})
+        self.assertGreater(len(doc.page_content), config.CHUNK_SIZE)
+
+        chunks = self._splitter().split_documents([doc])
+
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(chunks[0].page_content.startswith("CAMPO: "))
+        for chunk in chunks[1:]:
+            self.assertFalse(chunk.page_content.startswith("CAMPO: "))
+
+    def teste_3_pagina_pdf_acima_do_limite_prefere_fronteira_de_frase(self) -> None:
+        """Pagina PDF > CHUNK_SIZE: split residual prefere '. '/'! '/'? ' sobre corte bruto."""
+        frase = "Materiais de logistica incluem paletes, embalagens e racks. "
+        texto = frase * 10
+        doc = LCDocument(page_content=f"PÁGINA_1: {texto}", metadata={})
+
+        chunks = self._splitter().split_documents([doc])
+
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(chunks[0].page_content.startswith("PÁGINA_1: "))
+
+        # Pedacos que nao sao o ultimo devem terminar em fronteira de palavra/frase —
+        # separators sentence-aware (". ", "! ", "? ", " ") garantem que o split nunca
+        # ocorre no meio de uma palavra. Verifica isso checando, no texto original, qual
+        # caractere segue imediatamente o final de cada chunk: deve ser espaco/pontuacao,
+        # nunca uma letra (o que indicaria corte no meio de uma palavra).
+        primeiro_conteudo = chunks[0].page_content[len("PÁGINA_1: "):]
+        offset = len(primeiro_conteudo)
+        for chunk in chunks[:-1]:
+            proximo_char = texto[offset] if offset < len(texto) else ""
+            self.assertFalse(
+                proximo_char.isalpha(),
+                f"Chunk terminou no meio de uma palavra (próximo char {proximo_char!r}): "
+                f"{chunk.page_content!r}",
+            )
+
+    def teste_4_doc1_json_seis_chaves_produz_seis_chunks(self) -> None:
+        """Replica AC1/Independent Test: doc1.json (6 chaves, todas <= CHUNK_SIZE) -> 6 chunks."""
+        import json as json_module
+
+        doc1_path = config.DIR_DOCUMENTS / "doc1.json"
+        if not doc1_path.exists():
+            self.skipTest("data/documents/doc1.json nao encontrado neste ambiente")
+
+        dados = json_module.loads(doc1_path.read_text(encoding="utf-8"))
+        docs = [
+            LCDocument(page_content=f"{chave}: {valor}", metadata={})
+            for chave, valor in dados.items()
+        ]
+        # Confirma premissa: todos os campos <= CHUNK_SIZE (sem split)
+        for d in docs:
+            self.assertLessEqual(len(d.page_content), config.CHUNK_SIZE)
+
+        chunks = self._splitter().split_documents(docs)
+
+        self.assertEqual(len(chunks), 6)
+        for chave, chunk in zip(dados.keys(), chunks, strict=True):
+            self.assertTrue(chunk.page_content.startswith(f"{chave}: "))
 
 
 if __name__ == "__main__":

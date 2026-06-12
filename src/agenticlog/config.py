@@ -40,6 +40,13 @@ LLM_HEALTH_CHECK_TIMEOUT_SECONDS: float = 5.0  # timeout do GET /v1/models antes
 CHUNK_SIZE = 500    # tamanho máximo de cada chunk de texto em caracteres
 CHUNK_OVERLAP = 50  # sobreposição entre chunks para preservar contexto nas bordas
 
+# jq_schema compartilhado: 1 valor de saída do jq por chave top-level do JSON -> 1 Document
+# por chave (chunking estrutura-aware, ADR-008). `to_entries[]` (com `[]`, sem `map`) faz o jq
+# emitir um valor de saída por entrada — JSONLoader itera cada saída como um Document
+# separado. Usar `map(...)` (sem `[]`) produziria UMA lista única, e JSONLoader levantaria
+# ValueError ("Expected page_content is string, got <class 'list'>").
+JQ_SCHEMA_CAMPOS_JSON = 'to_entries[] | .key + ": " + (.value | tostring)'
+
 # Roteamento — palavras-chave que determinam o caminho no grafo LangGraph
 ROUTING_KEYWORDS_GERAR: tuple[str, ...] = (
     "explain", "summarize", "define", "concept", "general", "what is",

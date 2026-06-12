@@ -17,20 +17,20 @@ uv pip install -r requirements-dev.txt
 uv pip install -e .
 ```
 
-### Build VectorDB (first time, after changing documents, or after changing `EMBEDDING_MODEL`)
+### Build VectorDB (first time, after changing documents, or after changing chunking/embedding configuration)
 ```bash
 python -m agenticlog.rag
 ```
 
-**After changing `EMBEDDING_MODEL` in `config.py`** (e.g., switching embedding models), rebuild the vector DB from scratch:
+**After changing any of the following in `config.py`** — `EMBEDDING_MODEL`, `CHUNK_SIZE`, `CHUNK_OVERLAP`, `JQ_SCHEMA_CAMPOS_JSON` (jq_schema), or PDF-extraction logic in `extrair_texto_pdf` (`src/agenticlog/rag.py`) — rebuild the vector DB from scratch:
 1. Stop the running app (if any).
 2. Delete `data/vectordb/` (gitignored, fully regenerable).
 3. Rerun `python -m agenticlog.rag`.
 4. Resume queries with `streamlit run app.py`.
 
-The current model is `sentence-transformers/paraphrase-multilingual-mpnet-base-v2` (multilingual, 768-dim, optimized for Portuguese among other languages). On first run with this model, expect a larger download (~1.0–1.1 GB, vs ~440 MB for the previous `BAAI/bge-base-en`), so initial setup takes longer.
+The current embedding model is `sentence-transformers/paraphrase-multilingual-mpnet-base-v2` (multilingual, 768-dim, optimized for Portuguese among other languages). On first run with this model, expect a larger download (~1.0–1.1 GB, vs ~440 MB for the previous `BAAI/bge-base-en`), so initial setup takes longer.
 
-**Silent-degradation risk:** if `data/vectordb/` is **not** rebuilt after an `EMBEDDING_MODEL` change, the system will **not** raise an error — both the old and new models produce 768-dimensional vectors, so dimensions still match. However, the existing vectors were computed in a different (incompatible) embedding space than new query vectors, so similarity scores and retrieval results become unreliable, with no warning in logs or the UI. Always rebuild `data/vectordb/` after changing `EMBEDDING_MODEL`.
+**Silent-degradation risk:** if `data/vectordb/` is **not** rebuilt after changing `EMBEDDING_MODEL`, `CHUNK_SIZE`, `CHUNK_OVERLAP`, the jq_schema, or PDF-extraction logic, the system will **not** raise an error. Existing chunks remain queryable with their original embeddings/dimensions, but they were computed under a different chunking strategy or embedding space than newly ingested content — similarity scores and retrieval results become inconsistent or unreliable, with no warning in logs or the UI. Additionally, incremental ingestion (`adicionar_documento_incrementalmente`) skips files already present in `data/vectordb/` (detected via content-hash dedup), so OLD-strategy chunks for already-ingested files are never replaced without a full rebuild. Always rebuild `data/vectordb/` after any chunking-strategy or embedding-model change.
 
 ### Run Application
 ```bash

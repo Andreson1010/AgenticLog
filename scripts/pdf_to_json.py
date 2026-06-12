@@ -12,20 +12,23 @@ import json
 import sys
 from pathlib import Path
 
-import fitz  # pymupdf
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+
+from agenticlog.rag import RAGSecurityError, extrair_texto_pdf
 
 
 def pdf_para_dict(pdf_path: Path) -> dict[str, str]:
-    doc = fitz.open(str(pdf_path))
-    pages = {}
-    for i, page in enumerate(doc):
-        texto = page.get_text().strip()
-        if texto:
-            pages[f"PÁGINA_{i + 1}"] = texto
-    doc.close()
-    if not pages:
-        raise ValueError(f"Nenhum texto extraível em {pdf_path.name!r}.")
-    return pages
+    """Extrai texto por página de um PDF (wrapper fino sobre agenticlog.rag.extrair_texto_pdf).
+
+    Entrada: pdf_path — Path para o arquivo PDF.
+    Saída: dict {"PÁGINA_1": "...", ...}.
+    Lança ValueError se o PDF não contém texto extraível ou for inválido/protegido —
+    preserva o contrato de exceção original do script CLI.
+    """
+    try:
+        return extrair_texto_pdf(pdf_path)
+    except RAGSecurityError as exc:
+        raise ValueError(str(exc)) from exc
 
 
 def converter(pdf_path: Path, output_dir: Path) -> Path:
