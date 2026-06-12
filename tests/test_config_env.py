@@ -90,3 +90,23 @@ class TestConfigEnv(TestCase):
             import agenticlog.config as cfg
             sys.modules["agenticlog.config"] = cfg
         self.assertEqual(cfg.LLM_API_KEY, "shell-key")
+
+    def teste_7_llm_model_unset_uses_default(self):
+        """LLM_MODEL env var absent falls back to the hardcoded default."""
+        cfg = self._reload({}, remove_keys=("LLM_MODEL",))
+        self.assertEqual(cfg.LLM_MODEL, "hermes-3-llama-3.2-3b")
+
+    def teste_8_llm_model_set_uses_override(self):
+        """LLM_MODEL set to a non-empty value overrides the default."""
+        cfg = self._reload({"LLM_MODEL": "my-custom-model"})
+        self.assertEqual(cfg.LLM_MODEL, "my-custom-model")
+
+    def teste_9_llm_model_empty_string_uses_default(self):
+        """LLM_MODEL set to the empty string is treated as unset (falls back to default)."""
+        cfg = self._reload({"LLM_MODEL": ""})
+        self.assertEqual(cfg.LLM_MODEL, "hermes-3-llama-3.2-3b")
+
+    def teste_10_llm_model_whitespace_is_verbatim(self):
+        """LLM_MODEL set to a whitespace-only value is used verbatim (not treated as unset)."""
+        cfg = self._reload({"LLM_MODEL": " "})
+        self.assertEqual(cfg.LLM_MODEL, " ")

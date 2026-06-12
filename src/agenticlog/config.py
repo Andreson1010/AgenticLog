@@ -25,7 +25,8 @@ DIR_VECTORDB = PROJECT_ROOT / "data" / "vectordb"    # banco ChromaDB persistido
 EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"  # modelo HuggingFace usado para gerar e consultar embeddings
 
 # LLM (LMStudio)
-LLM_MODEL = "hermes-3-llama-3.2-3b"
+DEFAULT_LLM_MODEL = "hermes-3-llama-3.2-3b"
+LLM_MODEL: str = os.environ.get("LLM_MODEL") or DEFAULT_LLM_MODEL
 LLM_API_KEY: str = os.environ.get("OPENAI_API_KEY", "hermes")
 LLM_API_BASE: str = os.environ.get("OPENAI_API_BASE", "http://127.0.0.1:1234/v1")
 LLM_TEMPERATURE = 0                           # temperatura 0 para respostas determinísticas
