@@ -12,8 +12,8 @@ import hashlib
 import logging
 import os
 import warnings
+from typing import Any, Protocol, runtime_checkable
 
-import anthropic
 import httpx
 import numpy as np  # type: ignore[import-untyped]
 from langchain_chroma import Chroma
@@ -24,6 +24,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph  # type: ignore[import-untyped]
+from openai import APIConnectionError
 from pydantic import BaseModel
 from sklearn.metrics.pairwise import cosine_similarity
 from tenacity import (
@@ -68,7 +69,7 @@ _llm_retry = retry(
             httpx.ConnectError,
             httpx.TimeoutException,
             httpx.RemoteProtocolError,
-            anthropic.APIConnectionError,
+            APIConnectionError,
         )
     ),
     reraise=True,
@@ -81,7 +82,23 @@ _vector_dbs: dict[str, "Chroma"] = {}
 _embedding_model = None
 
 
-def _get_llm() -> ChatOpenAI:
+@runtime_checkable
+class LLMClient(Protocol):
+    """Interface estrutural mínima do cliente LLM usada por agent.py.
+
+    Cobre apenas as operações utilizadas nas chains (`prompt | _get_llm() | parser`):
+    composição via pipe (__or__/__ror__) e invocação (invoke). `ChatOpenAI` satisfaz
+    este Protocol estruturalmente — nenhum wrapper/adapter/subclasse é necessário.
+    """
+
+    def __or__(self, other: Any) -> Any: ...
+
+    def __ror__(self, other: Any) -> Any: ...
+
+    def invoke(self, input: Any, config: Any = None, **kwargs: Any) -> Any: ...
+
+
+def _get_llm() -> LLMClient:
     """Retorna o singleton do LLM, criando-o na primeira chamada.
 
     Saída: instância de ChatOpenAI configurada com as constantes do config.

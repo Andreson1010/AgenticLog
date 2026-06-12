@@ -12,7 +12,6 @@ sys.path.insert(0, str(_root / "src"))
 import unittest
 from unittest.mock import patch, MagicMock, call
 import httpx
-import anthropic
 
 from langchain_core.documents import Document
 
@@ -29,7 +28,7 @@ from agenticlog.agent import (
     _get_vector_db,
 )
 import agenticlog.agent as agent_module
-from agenticlog.config import LLM_TIMEOUT_SECONDS
+from agenticlog.config import LLM_MAX_RETRY_ATTEMPTS, LLM_TIMEOUT_SECONDS
 
 
 class TestAgenticRAG(unittest.TestCase):
@@ -214,6 +213,10 @@ class TestAgenticRAG(unittest.TestCase):
         # limpar singleton para não vazar entre testes
         agent_module._vector_db = None
 
+    def teste_12_sem_import_anthropic(self):
+        """LLMPORT-08/09/10: agent.py não referencia mais o pacote `anthropic`."""
+        self.assertNotIn("anthropic", agent_module.__dict__.keys())
+
 
 class TestRetryLogic(unittest.TestCase):
     """Testes de retry com backoff exponencial para chamadas ao LLM (T1-T7)."""
@@ -315,6 +318,40 @@ class TestRetryLogic(unittest.TestCase):
         self.assertEqual(resultado, "resposta após timeout")
         self.assertEqual(mock_chain.invoke.call_count, 2)
         self.assertEqual(LLM_TIMEOUT_SECONDS, 60.0)
+
+    @patch("time.sleep")
+    def teste_8_openai_api_connection_error_e_retryable(self, mock_sleep):
+        """T8: openai.APIConnectionError é retryable — segunda tentativa tem sucesso."""
+        from openai import APIConnectionError
+
+        mock_chain = MagicMock()
+        mock_chain.invoke.side_effect = [
+            APIConnectionError(
+                request=httpx.Request("POST", "http://127.0.0.1:1234/v1/chat/completions")
+            ),
+            "resposta ok",
+        ]
+
+        resultado = _invoke_chain(mock_chain, {"input": "pergunta"})
+
+        self.assertEqual(resultado, "resposta ok")
+        self.assertEqual(mock_chain.invoke.call_count, 2)
+
+    @patch("time.sleep")
+    def teste_9_openai_api_connection_error_exhaust_reraise(self, mock_sleep):
+        """T9: openai.APIConnectionError esgota tentativas e propaga a excecao original
+        (nao tenacity.RetryError), apos exatamente LLM_MAX_RETRY_ATTEMPTS chamadas."""
+        from openai import APIConnectionError
+
+        mock_chain = MagicMock()
+        mock_chain.invoke.side_effect = APIConnectionError(
+            request=httpx.Request("POST", "http://127.0.0.1:1234/v1/chat/completions")
+        )
+
+        with self.assertRaises(APIConnectionError):
+            _invoke_chain(mock_chain, {"input": "pergunta"})
+
+        self.assertEqual(mock_chain.invoke.call_count, LLM_MAX_RETRY_ATTEMPTS)
 
 
 if __name__ == "__main__":
