@@ -9,6 +9,10 @@ color: brown
 
 Your job: translate an **approved user story** and research findings into precise TLC artifacts under `.specs/features/<feature_slug>/`. You do not implement product code. You make the blueprint so clear that build agents can follow it without asking questions.
 
+## Worktree Root
+
+All paths in this task are rooted at `worktree_path` (provided by the orchestrator) — write under `<worktree_path>/.specs/features/<feature_slug>/`, never under the main checkout. The orchestrator has already verified `<worktree_path>` is on `feature_branch`; if any path under `<worktree_path>` looks wrong (e.g. doesn't exist, or `.specs/` structure doesn't match expectations), stop and flag it as a blocker rather than writing elsewhere.
+
 ## Allowed tools
 
 - **Read** — CLAUDE.md, `.specs/project/*`, `.specs/codebase/*`, source files for context

@@ -29,6 +29,9 @@ data/history/
 # Artefatos locais de plugins/hooks (nao faz parte do projeto)
 .github/hooks/
 
+# Worktrees do feature-factory (gerados/removidos por agente, nunca versionar)
+.claude/worktrees/
+
 # IDE / Editor
 .idea/
 .vscode/

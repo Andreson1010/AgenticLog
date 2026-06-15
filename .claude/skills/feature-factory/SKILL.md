@@ -44,18 +44,21 @@ Track this state object as you move through phases. Each phase adds to it. Pass 
 ```
 STATE = {
   feature_request:      [original user description — set at start, never modified]
+  feature_slug:         [kebab-case slug — set in Phase 0, derived from feature_request]
+  feature_branch:       [feature/<slug> or fix/<slug> — set in Phase 0]
+  worktree_path:        [absolute path to the single shared worktree — set in Phase 0]
   researcher_output:    [set after Phase 1]
   story:                [set after Phase 2 — nil in Quick Mode]
   approved_story:       [set after Checkpoint 1 — nil in Quick Mode]
-  feature_slug:         [kebab-case slug — set at start of Phase 3]
   tlc_scope:            [medium | large | complex — set at start of Phase 3]
-  spec_paths:           [set after Phase 3 — paths under .specs/features/<slug>/]
+  spec_paths:           [set after Phase 3 — paths under <worktree_path>/.specs/features/<slug>/]
   spec:                 [set after Phase 3 — summary or pointer; nil in Quick Mode]
   approved_spec:        [set after Checkpoint 2 — approved spec_paths + key contents]
   backend_summary:      [set after Phase 4]
   frontend_summary:     [set after Phase 5]
   test_verifier_report: [set after Phase 6]
   validator_report:     [set after Phase 7]
+  persistence_reports:  [list — appended after each Persistence Gate (Phases 3/4/5/6)]
   pr_url:               [set after Phase 8 — GitHub PR URL]
   review_report:        [set after Phase 8 — structured code review]
 }
@@ -65,6 +68,62 @@ STATE = {
 
 ## Full Pipeline
 
+### Phase 0 — Worktree Setup
+
+**You (the orchestrator) do this yourself — no subagent.** This phase exists to close a recurring failure mode: subagents spawned with per-call `isolation: "worktree"` each get their own throwaway worktree+branch off `main`. Their edits never land in one place, diverge from each other, and vanish when each worktree is cleaned up — "edits not persisting" and orphaned `.claude/worktrees/agent-*` / `worktree-agent-*` branches are symptoms of this (see PR #30 cleanup). **Fix: one worktree, one branch, for the entire pipeline run.** Never pass `isolation: "worktree"` to any subagent in this pipeline — every subagent operates inside `STATE.worktree_path` via the paths and commands the orchestrator gives it.
+
+1. Derive `STATE.feature_slug` (kebab-case) from `STATE.feature_request` — the same name you'd use for a branch.
+2. Derive `STATE.feature_branch`: `feature/<feature_slug>` for new features, `fix/<feature_slug>` for bug fixes (CLAUDE.md naming convention).
+3. Create the worktree:
+   ```bash
+   git fetch origin
+   git worktree add ".claude/worktrees/<feature_slug>" -b "<feature_branch>" origin/main
+   ```
+   If `.claude/worktrees/<feature_slug>` and/or `<feature_branch>` already exist (resuming a prior run), reuse them instead of creating:
+   ```bash
+   git worktree add ".claude/worktrees/<feature_slug>" "<feature_branch>"
+   ```
+4. Set `STATE.worktree_path` to the absolute path of `.claude/worktrees/<feature_slug>`.
+5. Verify:
+   ```bash
+   git -C "<worktree_path>" branch --show-current
+   ```
+   Output must equal `STATE.feature_branch` exactly. If this fails, STOP — do not proceed to Phase 1. Surface the error to the human.
+
+**From here on:** every subagent input includes `worktree_path` and `feature_branch`. Every file path a subagent reads or writes is rooted at `worktree_path`. Every Bash command a subagent runs uses `worktree_path` as cwd (`cd "<worktree_path>" && ...`, or `git -C "<worktree_path>" ...` for git commands).
+
+**Before spawning ANY subagent in Phases 1–8:** re-run the verify command from step 5. If the branch has drifted or the worktree is gone, STOP — do not spawn — surface to the human. Do not silently recreate or guess.
+
+---
+
+## Persistence Gate
+
+Runs after Phases 3, 4, 5, and 6 — before the next checkpoint or phase. A subagent's summary describes what it *intended*; the Persistence Gate confirms what actually landed on disk, in `STATE.worktree_path`, on `STATE.feature_branch`.
+
+**Spawn subagent:** `persistence-checker`
+
+**Input:**
+```
+worktree_path:    STATE.worktree_path
+feature_branch:   STATE.feature_branch
+phase_name:       "Phase 3 (spec)" | "Phase 4 (backend)" | "Phase 5 (frontend)" | "Phase 6 (test-verifier)"
+expected_changes: [
+  one entry per file from the phase's "Files Added"/"Files Modified" (or spec_paths for
+  Phase 3), each with optional must_contain markers pulled from the summary's description
+  of what changed (function/class names, requirement IDs, etc.)
+]
+```
+
+**What it produces:** A PERSISTED / MISSING / INCOMPLETE verdict per file, plus an overall gate verdict.
+
+**On PERSISTED (every file):** Append the report to `STATE.persistence_reports`. Proceed as the phase's "On completion" already says.
+
+**On MISSING / INCOMPLETE:** Do not proceed. This is a failure of the phase that just ran — route back to the same subagent (spec-writer / backend-builder / frontend-builder / test-verifier) with the persistence-checker's report as additional context, and re-run that phase, then re-run the Persistence Gate. After **2 consecutive MISSING/INCOMPLETE results for the same phase**, stop self-correcting and surface the full report to the human as a blocker.
+
+**On a worktree-mismatch finding:** This is an environment problem, not a content problem — STOP immediately and surface to the human. Do not retry the phase.
+
+---
+
 ### Phase 1 — Codebase Researcher
 
 **Spawn subagent:** `codebase-researcher`
@@ -72,6 +131,8 @@ STATE = {
 **Input:**
 ```
 feature_request: STATE.feature_request
+worktree_path:   STATE.worktree_path
+feature_branch:  STATE.feature_branch
 brownfield_docs: [if present, paths under .specs/codebase/*.md — load CONCERNS.md when planning]
 ```
 
@@ -125,13 +186,15 @@ This checkpoint is not skippable. Implementation does not begin until the story 
 
 ### Phase 3 — TLC Planning (`spec-writer` + `tlc-spec-driven`)
 
-**Before spawning:** Read the **`tlc-spec-driven`** skill. Choose `STATE.tlc_scope` using the table in [TLC Spec-Driven Integration](#tlc-spec-driven-integration-phase-3). Derive `STATE.feature_slug` from the feature name (kebab-case, e.g. `health-check-endpoint`). The `spec-writer` creates `.specs/features/<feature_slug>/` when writing artifacts.
+**Before spawning:** Read the **`tlc-spec-driven`** skill. Choose `STATE.tlc_scope` using the table in [TLC Spec-Driven Integration](#tlc-spec-driven-integration-phase-3). `STATE.feature_slug` was already set in Phase 0 — reuse it. The `spec-writer` creates `<worktree_path>/.specs/features/<feature_slug>/` when writing artifacts.
 
 **Spawn subagent:** `spec-writer`
 
 **Input:**
 ```
 feature_slug:      STATE.feature_slug
+worktree_path:     STATE.worktree_path
+feature_branch:    STATE.feature_branch
 tlc_scope:         STATE.tlc_scope
 approved_story:    STATE.approved_story
 researcher_output: STATE.researcher_output
@@ -151,7 +214,7 @@ tlc_skill_refs:    Specify → references/specify.md (technical translation only
 
 Each file follows **`tlc-spec-driven`** templates extended with the technical sections in `spec-writer.md`. Requirement IDs in `spec.md` must trace to `STATE.approved_story` acceptance criteria. `tasks.md` lists atomic work for builders — **not** TLC Execute.
 
-**On completion:** Set `STATE.spec_paths` to the file paths created. Set `STATE.spec` to a short summary (slug, scope, paths, open questions count). Do NOT proceed. Trigger Checkpoint 2.
+**On completion:** Set `STATE.spec_paths` to the file paths created (rooted at `worktree_path`). Set `STATE.spec` to a short summary (slug, scope, paths, open questions count). Run the **Persistence Gate** (expected_changes = `spec_paths`). Only after it returns PERSISTED: trigger Checkpoint 2.
 
 ---
 
@@ -197,6 +260,8 @@ Changes after this point cost 10x more.
 approved_spec:     STATE.approved_spec  (or STATE.researcher_output in Quick Mode)
 spec_paths:        STATE.approved_spec.spec_paths  (Quick Mode: nil — use researcher_output only)
 researcher_output: STATE.researcher_output
+worktree_path:     STATE.worktree_path
+feature_branch:    STATE.feature_branch
 claude_md:         [contents of CLAUDE.md from the project root]
 ```
 
@@ -204,7 +269,7 @@ Builders **must read** `spec_paths.spec` from disk. Use `design.md` and `tasks.m
 
 **What it produces:** All backend files implemented (TDD), gate checks passed (pytest ≥80% coverage, typecheck, lint), backend summary.
 
-**On completion:** Store output as `STATE.backend_summary`. Proceed to Phase 5.
+**On completion:** Store output as `STATE.backend_summary`. Run the **Persistence Gate** (expected_changes = backend_summary's Files Added/Modified). Only after it returns PERSISTED: proceed to Phase 5.
 
 ---
 
@@ -218,11 +283,13 @@ approved_spec:     STATE.approved_spec
 spec_paths:        STATE.approved_spec.spec_paths
 researcher_output: STATE.researcher_output
 backend_summary:   STATE.backend_summary
+worktree_path:     STATE.worktree_path
+feature_branch:    STATE.feature_branch
 ```
 
 **What it produces:** All frontend/UI files implemented (TDD), gate checks passed, frontend summary. API mismatches reported (not silently patched).
 
-**On completion:** Store output as `STATE.frontend_summary`. Proceed to Phase 6.
+**On completion:** Store output as `STATE.frontend_summary`. Run the **Persistence Gate** (expected_changes = frontend_summary's Files Added/Modified). Only after it returns PERSISTED: proceed to Phase 6.
 
 > If frontend-builder reports API mismatches: pause, surface them to the human, and route the fix back to backend-builder before re-running frontend-builder.
 
@@ -239,11 +306,13 @@ approved_spec:     STATE.approved_spec
 spec_paths:        STATE.approved_spec.spec_paths
 backend_summary:   STATE.backend_summary
 frontend_summary:  STATE.frontend_summary
+worktree_path:     STATE.worktree_path
+feature_branch:    STATE.feature_branch
 ```
 
 **What it produces:** Acceptance test file (`tests/acceptance/test_[feature-slug].py`), criterion coverage plan, pass/fail result per acceptance criterion.
 
-**On completion:** Store output as `STATE.test_verifier_report`. Proceed to Phase 7.
+**On completion:** Store output as `STATE.test_verifier_report`. Run the **Persistence Gate** (expected_changes = the acceptance test file). Only after it returns PERSISTED: proceed to Phase 7.
 
 ---
 
@@ -259,6 +328,8 @@ spec_paths:           STATE.approved_spec.spec_paths
 backend_summary:      STATE.backend_summary
 frontend_summary:     STATE.frontend_summary
 test_verifier_report: STATE.test_verifier_report
+worktree_path:        STATE.worktree_path
+feature_branch:       STATE.feature_branch
 ```
 
 **What it produces:** Validation report with findings grouped as Critical / Important / Minor, acceptance criteria coverage table, risk coverage table, and a final verdict (READY FOR MERGE / NOT READY).
@@ -271,16 +342,16 @@ test_verifier_report: STATE.test_verifier_report
 
 **Condition:** Only runs when `STATE.validator_report` verdict is READY FOR MERGE.
 
-**Steps (run in order):**
+**Steps (run in order, from `STATE.worktree_path`):**
 
 1. **Push the branch:**
    ```bash
-   git push origin <current-branch>
+   cd "<worktree_path>" && git push -u origin "<feature_branch>"
    ```
 
 2. **Open the PR** using `gh pr create`:
    ```bash
-   gh pr create \
+   cd "<worktree_path>" && gh pr create \
      --title "<type>(<scope>): <descrição>" \
      --body "..."
    ```
@@ -322,6 +393,31 @@ PR: `STATE.pr_url`
 
 ---
 
+### Phase 9 — Merge & Worktree Cleanup
+
+**Condition:** Runs only after the human confirms `STATE.pr_url` has been merged (e.g. via the `ship-feature` skill's squash-merge step, or manually). Do not run speculatively — verify first:
+
+```bash
+gh pr view <pr_number> --json state -q .state
+```
+
+Proceed only if this returns `MERGED`.
+
+**Steps (run from the main checkout, NOT `STATE.worktree_path`):**
+
+```bash
+git checkout main
+git pull origin main
+git worktree remove "<worktree_path>"
+git branch -d "<feature_branch>"
+```
+
+`git branch -d` (lowercase) refuses to delete a branch that isn't fully merged — if it errors, stop and surface to the human rather than forcing with `-D`.
+
+**On completion:** Clear `STATE.worktree_path` and `STATE.feature_branch`. The pipeline run is fully closed out.
+
+---
+
 ## Failure Routing Table
 
 Use this table whenever a phase reports failures. Do not re-run the validator to fix things — route to the builder.
@@ -338,6 +434,10 @@ Use this table whenever a phase reports failures. Do not re-run the validator to
 | test-verifier | Untestable criterion | Human resolves — may update story or spec |
 | frontend-builder | API mismatch | backend-builder |
 | backend-builder | Blocker requiring spec change | spec-writer → re-approve → backend-builder |
+| persistence-checker | MISSING / INCOMPLETE (1st or 2nd time) | Same subagent that ran the phase (spec-writer / backend-builder / frontend-builder / test-verifier) |
+| persistence-checker | MISSING / INCOMPLETE (3rd time, same phase) | Human — stop self-correcting, surface full report |
+| persistence-checker | Worktree mismatch | Human — STOP immediately, do not retry |
+| any Bash-capable subagent | Pre-flight worktree check failed | Human — STOP immediately, do not retry |
 
 **After routing a fix:** Re-run from the failed phase forward. Do not re-run phases before the failure point unless the fix changes their outputs.
 
@@ -353,3 +453,7 @@ Use this table whenever a phase reports failures. Do not re-run the validator to
 6. **You surface blockers immediately.** If a subagent reports a blocker it can't resolve, stop the pipeline and present it to the human before continuing.
 7. **TLC is for planning artifacts only in this pipeline.** Use `tlc-spec-driven` in Phase 3 for `spec.md` / `design.md` / `tasks.md`. Phases 4–5 remain `backend-builder` and `frontend-builder` — never substitute TLC Execute.
 8. **Checkpoint 2 approves disk artifacts.** `STATE.approved_spec` is paths + metadata, not a paraphrase you wrote.
+9. **Phase 0 runs first, always, exactly once.** No phase before it. `STATE.worktree_path` / `STATE.feature_branch` must be set before Phase 1 spawns.
+10. **Never use per-call `isolation: "worktree"` on Agent spawns in this pipeline.** Phase 0 creates the single worktree for the whole run; per-call isolation creates divergent, throwaway worktrees/branches and is the #1 cause of "wrong worktree" and "edits didn't persist" failures.
+11. **Re-verify the worktree before every spawn from Phase 1 onward.** Run `git -C "<worktree_path>" branch --show-current` and confirm it still equals `STATE.feature_branch` before passing `worktree_path`/`feature_branch` to the next subagent. If it doesn't match, STOP — do not spawn.
+12. **The Persistence Gate is mandatory after Phases 3, 4, 5, and 6 — no exceptions.** A phase is not "complete" until the gate returns PERSISTED. Do not proceed on a subagent's self-reported summary alone.
