@@ -76,14 +76,14 @@ data/documents/*.json → rag.py → data/vectordb/ (ChromaDB)
                               agent.py retriever → LMStudio LLM → ranked answer
 ```
 
-## Testing Conventions (from `.cursor/rules/`)
+## Testing Conventions
 
 - **Always mock LLM calls** — never make real API calls in tests
 - **Always test empty retrieval edge cases** (e.g., no documents returned)
 - **Validate AgentState** contains required keys after each node
 - Test function names use `teste_N_` prefix (e.g., `teste_1_passo_decisao_retrieve`)
 
-## Git Workflow (from `.cursor/rules/`)
+## Git Workflow
 
 - Branch naming: `feature/name` or `fix/name`
 - Commit messages follow **Conventional Commits** in **Portuguese**: `feat:`, `fix:`, `docs:`, `refactor:`
