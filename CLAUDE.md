@@ -88,6 +88,8 @@ data/documents/*.json → rag.py → data/vectordb/ (ChromaDB)
 - Branch naming: `feature/name` or `fix/name`
 - Commit messages follow **Conventional Commits** in **Portuguese**: `feat:`, `fix:`, `docs:`, `refactor:`
 - Run `git pull origin main` after merging PRs
+- ALWAYS create a feature branch before committing — never commit directly to main. Branch first, then commit, then open a PR.
+- After opening a PR, ALWAYS run the code review phase before merging — do not skip it.
 
 ## Environment
 
@@ -98,3 +100,10 @@ OPENAI_API_BASE=http://127.0.0.1:1234/v1
 ```
 
 LMStudio must be running with the Hermes 3B model loaded before invoking the agent or running integration tests.
+
+## Editing Config Files
+When editing JSON or settings files, validate the result (no trailing commas, valid syntax) before finishing; prefer rewriting the whole file over partial edits for config files.
+
+## Working Style
+
+When asked about a specific tool, command, or status line, inspect the ACTUAL script/config in the repo first before giving generic instructions.
