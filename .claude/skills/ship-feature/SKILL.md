@@ -92,7 +92,7 @@ Store the PR URL/number — needed for step 5.
 
 **Not skippable.** This is the step that has been missed before, causing findings to slip into merged code.
 
-Invoke the `code-review` skill against the opened PR (e.g. `code-review:code-review <PR#>`, or `/code-review <PR#>`). Wait for the report before doing anything else.
+Invoke the local `code-review` skill against the opened PR diff (`/code-review <PR#>`). Wait for the report before doing anything else. Don't invoke a plugin/cloud review variant (e.g. "ultra") automatically — that's billed and user-triggered only.
 
 Do not proceed to step 6/7 until the review has actually run and you have its findings in hand.
 
