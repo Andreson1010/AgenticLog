@@ -15,6 +15,7 @@ from agenticlog.rag import (
     RAGSecurityError,
     sanitizar_nome_colecao,
     adicionar_documento_incrementalmente,
+    adicionar_pdf_incrementalmente,
     reconstruir_vectordb,
     salvar_pdf_enviado,
 )
@@ -63,19 +64,22 @@ def _ingerir_documento(uploaded_file: Any, collection_name: str = DEFAULT_COLLEC
 
     if suffix == ".pdf":
         try:
-            saved_path = salvar_pdf_enviado(filename, conteudo, collection_name)
+            with st.spinner("Adicionando documento à base vetorial..."):
+                resultado = adicionar_pdf_incrementalmente(filename, conteudo, collection_name)
         except RAGSecurityError as e:
             st.error(str(e))
             return
-        try:
-            with st.spinner("Reconstruindo base vetorial..."):
-                reconstruir_vectordb(collection_name)
         except Exception as e:
-            saved_path.unlink(missing_ok=True)
-            st.error(f"Erro ao reconstruir base vetorial. Arquivo removido. Detalhe: {e}")
+            st.error(f"Erro ao ingerir documento. Detalhe: {e}")
             return
-        st.success(f"Documento ingerido com sucesso na coleção '{collection_name}'.")
-        st.rerun()
+        if resultado["status"] == "adicionado":
+            st.success(f"Documento ingerido com sucesso na coleção '{collection_name}'.")
+            st.rerun()
+        elif resultado["status"] == "duplicado":
+            st.info(resultado["mensagem"])
+        else:
+            st.warning(resultado["mensagem"])
+        return
     else:
         try:
             with st.spinner("Adicionando documento à base vetorial..."):

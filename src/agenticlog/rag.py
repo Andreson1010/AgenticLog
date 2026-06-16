@@ -430,6 +430,147 @@ def adicionar_documento_incrementalmente(
     }
 
 
+def adicionar_pdf_incrementalmente(
+    filename: str,
+    conteudo: bytes,
+    collection_name: str = DEFAULT_COLLECTION_NAME,
+) -> dict[str, str]:
+    """Adiciona chunks de um PDF ao ChromaDB existente sem reconstrução completa (REC-02).
+
+    Entrada:
+      filename — nome original do arquivo (str).
+      conteudo — conteúdo binário do arquivo PDF (bytes).
+      collection_name — nome da coleção ChromaDB de destino.
+    Saída: dict com chaves "status" e "mensagem":
+      {"status": "adicionado", "mensagem": "Arquivo <nome> adicionado com sucesso. N chunks inseridos."}
+      {"status": "duplicado", "mensagem": "Arquivo <nome> já está presente na base vetorial."}
+      {"status": "hash_diferente", "mensagem": "Arquivo <nome> já existe com conteúdo diferente. ..."}
+    Lança RAGSecurityError em qualquer falha de validação de segurança.
+    Lança Exception se a ingestão falhar após rollback.
+    """
+    _sanitizar_nome_colecao(collection_name)
+
+    if Path(filename).suffix.lower() != ".pdf":
+        raise RAGSecurityError("Apenas arquivos .pdf são aceitos.")
+
+    if conteudo[:4] != b"%PDF":
+        raise RAGSecurityError("Conteúdo não é um arquivo PDF válido.")
+
+    max_bytes = MAX_DOCUMENT_FILE_SIZE_MB * 1024 * 1024
+    if len(conteudo) > max_bytes:
+        raise RAGSecurityError(
+            f"Arquivo excede o limite de {MAX_DOCUMENT_FILE_SIZE_MB} MB."
+        )
+
+    safe_name = _sanitizar_nome_arquivo(filename)
+
+    json_count = len(list(DIR_DOCUMENTS.glob("*.json")))
+    pdf_count = len(list(DIR_DOCUMENTS.glob("*.pdf")))
+    if json_count + pdf_count + 1 > MAX_JSON_FILES:
+        raise RAGSecurityError(
+            f"Limite de {MAX_JSON_FILES} arquivos atingido."
+        )
+
+    hash_str = _computar_hash_conteudo(conteudo)
+    planned_path = DIR_DOCUMENTS / safe_name
+
+    embedding_model = _get_rag_embedding_model()
+    vectordb_instance = Chroma(
+        persist_directory=str(DIR_VECTORDB),
+        collection_name=collection_name,
+        embedding_function=embedding_model,
+    )
+
+    existing = vectordb_instance.get(
+        where={"source": {"$eq": str(planned_path)}}
+    )
+    if existing["ids"]:
+        existing_hash = existing["metadatas"][0].get(METADATA_FILE_HASH)
+        if existing_hash == hash_str:
+            return {
+                "status": "duplicado",
+                "mensagem": f"Arquivo {safe_name} já está presente na base vetorial.",
+            }
+        return {
+            "status": "hash_diferente",
+            "mensagem": (
+                f"Arquivo {safe_name} já existe com conteúdo diferente. "
+                "Remoção e substituição não são suportadas nesta versão."
+            ),
+        }
+
+    saved_path: Path | None = None
+    tmp_path: Path | None = None
+    paginas: dict[str, str] = {}
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            tmp.write(conteudo)
+            tmp_path = Path(tmp.name)
+        paginas = extrair_texto_pdf(tmp_path)
+        shutil.move(str(tmp_path), planned_path)
+        saved_path = planned_path
+        tmp_path = None
+    finally:
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
+
+    pdf_docs = []
+    for chave, texto in paginas.items():
+        page_num = int(chave.split("_")[1])
+        pdf_docs.append(
+            Document(
+                page_content=f"{chave}: {texto}",
+                metadata={"source": str(saved_path), METADATA_PAGE: page_num},
+            )
+        )
+    pdf_docs = [d for d in pdf_docs if d.page_content.strip()]
+
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
+        separators=["\n\n", "\n", ". ", "! ", "? ", " ", ""],
+    )
+    chunks = text_splitter.split_documents(pdf_docs)
+
+    if not chunks:
+        logger.warning("Arquivo %s produziu zero chunks após divisão.", safe_name)
+        saved_path.unlink(missing_ok=True)
+        return {
+            "status": "adicionado",
+            "mensagem": f"Arquivo {safe_name} não pôde ser indexado: 0 chunks gerados.",
+        }
+
+    _enriquecer_metadados_chunks(chunks, hash_str, METADATA_DOC_TYPE_PDF)
+
+    chunk_ids = [uuid.uuid4().hex for _ in chunks]
+
+    try:
+        vectordb_instance.add_documents(chunks, ids=chunk_ids)
+    except Exception as ingestion_exc:
+        try:
+            if chunk_ids:
+                vectordb_instance.delete(ids=chunk_ids)
+        except Exception as rollback_exc:
+            logger.warning(
+                "Rollback falhou após erro de ingestão. IDs órfãos: %s. Erro: %s",
+                chunk_ids,
+                rollback_exc,
+            )
+        saved_path.unlink(missing_ok=True)
+        raise ingestion_exc
+
+    try:
+        from agenticlog.agent import invalidar_vector_db  # lazy — evita importação pesada no CLI
+        invalidar_vector_db()
+    except ImportError as e:
+        logger.warning("Não foi possível invalidar o singleton: %s", e)
+
+    return {
+        "status": "adicionado",
+        "mensagem": f"Arquivo {safe_name} adicionado com sucesso. {len(chunks)} chunks inseridos.",
+    }
+
+
 def extrair_texto_pdf(path: Path) -> dict[str, str]:
     """Extrai texto de um arquivo PDF usando PyMuPDF (fitz), por página.
 

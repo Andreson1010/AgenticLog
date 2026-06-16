@@ -165,5 +165,110 @@ class TestIngerirDocumento(unittest.TestCase):
         mock_st.success.assert_not_called()
 
 
+class TestIngerirDocumentoPDF(unittest.TestCase):
+    """Testes para o fluxo PDF de _ingerir_documento usando adicionar_pdf_incrementalmente."""
+
+    def _spinner_ctx(self) -> MagicMock:
+        ctx = MagicMock()
+        ctx.__enter__ = MagicMock(return_value=None)
+        ctx.__exit__ = MagicMock(return_value=False)
+        return ctx
+
+    def test_pdf_happy_path_shows_success(self) -> None:
+        """PDF feliz: adicionar_pdf_incrementalmente retorna adicionado → st.success + st.rerun."""
+        uploaded_file = _make_uploaded_file("contrato.pdf", b"%PDF-1.4 fake")
+        resultado = {
+            "status": "adicionado",
+            "mensagem": "Arquivo contrato.pdf adicionado com sucesso. 5 chunks inseridos.",
+        }
+
+        with (
+            patch("app.adicionar_pdf_incrementalmente", return_value=resultado) as mock_add,
+            patch("app.st") as mock_st,
+        ):
+            mock_st.spinner.return_value = self._spinner_ctx()
+            _ingerir_documento(uploaded_file)
+
+        from agenticlog.config import DEFAULT_COLLECTION_NAME
+        mock_add.assert_called_once_with("contrato.pdf", b"%PDF-1.4 fake", DEFAULT_COLLECTION_NAME)
+        mock_st.success.assert_called_once()
+        mock_st.rerun.assert_called_once()
+        mock_st.error.assert_not_called()
+
+    def test_pdf_duplicado_shows_info(self) -> None:
+        """Status duplicado → st.info chamado, st.rerun NÃO chamado."""
+        uploaded_file = _make_uploaded_file("contrato.pdf", b"%PDF-1.4 fake")
+        resultado = {
+            "status": "duplicado",
+            "mensagem": "Arquivo contrato.pdf já está presente na base vetorial.",
+        }
+
+        with (
+            patch("app.adicionar_pdf_incrementalmente", return_value=resultado),
+            patch("app.st") as mock_st,
+        ):
+            mock_st.spinner.return_value = self._spinner_ctx()
+            _ingerir_documento(uploaded_file)
+
+        mock_st.info.assert_called_once_with(resultado["mensagem"])
+        mock_st.rerun.assert_not_called()
+        mock_st.success.assert_not_called()
+
+    def test_pdf_hash_diferente_shows_warning(self) -> None:
+        """Status hash_diferente → st.warning chamado, st.rerun NÃO chamado."""
+        uploaded_file = _make_uploaded_file("contrato.pdf", b"%PDF-1.4 fake")
+        resultado = {
+            "status": "hash_diferente",
+            "mensagem": "Arquivo contrato.pdf já existe com conteúdo diferente.",
+        }
+
+        with (
+            patch("app.adicionar_pdf_incrementalmente", return_value=resultado),
+            patch("app.st") as mock_st,
+        ):
+            mock_st.spinner.return_value = self._spinner_ctx()
+            _ingerir_documento(uploaded_file)
+
+        mock_st.warning.assert_called_once_with(resultado["mensagem"])
+        mock_st.rerun.assert_not_called()
+        mock_st.success.assert_not_called()
+
+    def test_pdf_security_error_shows_error(self) -> None:
+        """adicionar_pdf_incrementalmente lança RAGSecurityError → st.error, sem st.rerun."""
+        uploaded_file = _make_uploaded_file("protegido.pdf", b"%PDF-1.4 fake")
+
+        with (
+            patch(
+                "app.adicionar_pdf_incrementalmente",
+                side_effect=RAGSecurityError("PDF protegido por senha."),
+            ),
+            patch("app.st") as mock_st,
+        ):
+            mock_st.spinner.return_value = self._spinner_ctx()
+            _ingerir_documento(uploaded_file)
+
+        mock_st.error.assert_called_once_with("PDF protegido por senha.")
+        mock_st.rerun.assert_not_called()
+
+    def test_pdf_generic_exception_shows_error(self) -> None:
+        """adicionar_pdf_incrementalmente lança Exception genérica → st.error, sem st.rerun."""
+        uploaded_file = _make_uploaded_file("contrato.pdf", b"%PDF-1.4 fake")
+
+        with (
+            patch(
+                "app.adicionar_pdf_incrementalmente",
+                side_effect=RuntimeError("embed falhou"),
+            ),
+            patch("app.st") as mock_st,
+        ):
+            mock_st.spinner.return_value = self._spinner_ctx()
+            _ingerir_documento(uploaded_file)
+
+        mock_st.error.assert_called_once()
+        error_msg = mock_st.error.call_args[0][0]
+        self.assertIn("embed falhou", error_msg)
+        mock_st.rerun.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
