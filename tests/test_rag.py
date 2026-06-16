@@ -1717,13 +1717,13 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
 
     def teste_4_rejeita_extensao_invalida(self) -> None:
         """Extensão .docx → RAGSecurityError antes de qualquer operação em disco."""
-        with self.assertRaises(RAGSecurityError) as ctx:
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
             adicionar_pdf_incrementalmente("documento.docx", b"%PDF-1.4 content")
         self.assertIn("pdf", str(ctx.exception).lower())
 
     def teste_5_rejeita_magic_bytes_invalidos(self) -> None:
         """Conteúdo sem magic bytes %PDF → RAGSecurityError antes de qualquer escrita."""
-        with self.assertRaises(RAGSecurityError) as ctx:
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
             adicionar_pdf_incrementalmente("doc.pdf", b"PK\x03\x04 not a pdf")
         self.assertIn("PDF", str(ctx.exception))
 
@@ -1731,7 +1731,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
         """Conteúdo > MAX_DOCUMENT_FILE_SIZE_MB MB → RAGSecurityError antes de escrita em disco."""
         from agenticlog.config import MAX_DOCUMENT_FILE_SIZE_MB
         conteudo = b"%PDF" + b"x" * (MAX_DOCUMENT_FILE_SIZE_MB * 1024 * 1024 + 1)
-        with self.assertRaises(RAGSecurityError) as ctx:
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
             adicionar_pdf_incrementalmente("grande.pdf", conteudo)
         self.assertIn(str(MAX_DOCUMENT_FILE_SIZE_MB), str(ctx.exception))
 
@@ -1740,7 +1740,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
         """json_count + pdf_count >= MAX_JSON_FILES → RAGSecurityError."""
         from agenticlog.config import MAX_JSON_FILES
         mock_dir.glob.return_value = [MagicMock()] * MAX_JSON_FILES
-        with self.assertRaises(RAGSecurityError) as ctx:
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
             adicionar_pdf_incrementalmente("novo.pdf", self._valid_pdf_bytes())
         self.assertIn(str(MAX_JSON_FILES), str(ctx.exception))
 
@@ -1771,8 +1771,8 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
         mock_tmp_file.name = "/tmp/tmpXXX.pdf"
         mock_tempfile.NamedTemporaryFile.return_value = mock_tmp_file
 
-        with patch("agenticlog.rag.extrair_texto_pdf", side_effect=RAGSecurityError("PDF protegido por senha.")):
-            with self.assertRaises(RAGSecurityError) as ctx:
+        with patch("agenticlog.rag.extrair_texto_pdf", side_effect=rag.RAGSecurityError("PDF protegido por senha.")):
+            with self.assertRaises(rag.RAGSecurityError) as ctx:
                 adicionar_pdf_incrementalmente("protegido.pdf", conteudo)
 
         self.assertIn("senha", str(ctx.exception))
@@ -1806,9 +1806,9 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
 
         with patch(
             "agenticlog.rag.extrair_texto_pdf",
-            side_effect=RAGSecurityError("PDF não contém texto extraível (somente imagem)."),
+            side_effect=rag.RAGSecurityError("PDF não contém texto extraível (somente imagem)."),
         ):
-            with self.assertRaises(RAGSecurityError) as ctx:
+            with self.assertRaises(rag.RAGSecurityError) as ctx:
                 adicionar_pdf_incrementalmente("scan.pdf", conteudo)
 
         self.assertIn("somente imagem", str(ctx.exception))
