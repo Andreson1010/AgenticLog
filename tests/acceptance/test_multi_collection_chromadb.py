@@ -244,23 +244,19 @@ class TestAC03UploadJsonComColecaoNomeada(unittest.TestCase):
 class TestAC04UploadPdfComColecaoNomeada(unittest.TestCase):
     """
     AC4: WHEN operador clica "Ingerir Documento" com PDF válido e coleção nomeada
-    THEN sistema SHALL chamar salvar_pdf_enviado(filename, conteudo, collection_name)
-    seguido de reconstruir_vectordb(collection_name) e exibir sucesso com o nome da coleção.
+    THEN sistema SHALL chamar adicionar_pdf_incrementalmente(filename, conteudo, collection_name)
+    e exibir sucesso com o nome da coleção.
     """
 
     @patch("app.st")
-    @patch("app.reconstruir_vectordb")
-    @patch("app.salvar_pdf_enviado")
-    def teste_1_pdf_com_nome_colecao_chama_salvar_e_reconstruir(
+    @patch("app.adicionar_pdf_incrementalmente")
+    def teste_1_pdf_com_nome_colecao_chama_adicionar_incrementalmente(
         self,
-        mock_salvar: MagicMock,
-        mock_reconstruir: MagicMock,
+        mock_adicionar: MagicMock,
         mock_st: MagicMock,
     ) -> None:
-        """AC4: PDF + 'contratos' → salvar_pdf_enviado e reconstruir_vectordb com 'contratos'."""
-        saved_path = MagicMock(spec=Path)
-        mock_salvar.return_value = saved_path
-        mock_reconstruir.return_value = None
+        """AC4: PDF + 'contratos' → adicionar_pdf_incrementalmente chamado com 'contratos'."""
+        mock_adicionar.return_value = {"status": "adicionado", "mensagem": "contrato.pdf adicionado."}
         mock_st.spinner.return_value = _spinner_ctx()
 
         uploaded_file = _make_uploaded_file("contrato.pdf", b"%PDF-1.4 fake")
@@ -268,24 +264,19 @@ class TestAC04UploadPdfComColecaoNomeada(unittest.TestCase):
         from app import _ingerir_documento
         _ingerir_documento(uploaded_file, collection_name="contratos")
 
-        mock_salvar.assert_called_once_with(
+        mock_adicionar.assert_called_once_with(
             "contrato.pdf", b"%PDF-1.4 fake", "contratos"
         )
-        mock_reconstruir.assert_called_once_with("contratos")
 
     @patch("app.st")
-    @patch("app.reconstruir_vectordb")
-    @patch("app.salvar_pdf_enviado")
+    @patch("app.adicionar_pdf_incrementalmente")
     def teste_2_pdf_sucesso_exibe_mensagem_com_nome_colecao(
         self,
-        mock_salvar: MagicMock,
-        mock_reconstruir: MagicMock,
+        mock_adicionar: MagicMock,
         mock_st: MagicMock,
     ) -> None:
         """AC4: sucesso PDF → st.success contendo o nome da coleção."""
-        saved_path = MagicMock(spec=Path)
-        mock_salvar.return_value = saved_path
-        mock_reconstruir.return_value = None
+        mock_adicionar.return_value = {"status": "adicionado", "mensagem": "contrato.pdf adicionado."}
         mock_st.spinner.return_value = _spinner_ctx()
 
         uploaded_file = _make_uploaded_file("contrato.pdf", b"%PDF-1.4 fake")

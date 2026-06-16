@@ -36,6 +36,7 @@ from agenticlog.rag import (
     _computar_hash_conteudo,
     _enriquecer_metadados_chunks,
     adicionar_documento_incrementalmente,
+    adicionar_pdf_incrementalmente,
     salvar_documento_enviado,
     salvar_pdf_enviado,
     extrair_texto_pdf,
@@ -1570,6 +1571,407 @@ class TestMetadadosUnificados(unittest.TestCase):
         rag._enriquecer_metadados_chunks(grupo2, "b" * 64, "json", 0)
         self.assertEqual([c.metadata["chunk_index"] for c in grupo1], [0, 1])
         self.assertEqual([c.metadata["chunk_index"] for c in grupo2], [0, 1, 2])
+
+
+class TestAdicionarPdfIncrementalmente(unittest.TestCase):
+    """Testes para adicionar_pdf_incrementalmente (REC-02)."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        import agenticlog.agent  # garante que o módulo está em sys.modules antes dos patches  # noqa: F401
+
+    def _valid_pdf_bytes(self) -> bytes:
+        return b"%PDF-1.4 fake content"
+
+    def _chunk(self, content: str = "chunk", page: int = 1) -> LCDocument:
+        return LCDocument(page_content=content, metadata={"page": page})
+
+    def _setup_vectordb_mock(self, ids: list, metadatas: list) -> MagicMock:
+        mock_vdb = MagicMock()
+        mock_vdb.get.return_value = {"ids": ids, "metadatas": metadatas}
+        return mock_vdb
+
+    @patch("agenticlog.rag.uuid")
+    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.rag.shutil")
+    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.extrair_texto_pdf")
+    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.rag.Chroma")
+    def teste_1_happy_path_adiciona_chunks(
+        self,
+        mock_chroma: MagicMock,
+        mock_emb: MagicMock,
+        mock_extrair: MagicMock,
+        mock_splitter_cls: MagicMock,
+        mock_dir: MagicMock,
+        mock_shutil: MagicMock,
+        mock_tempfile: MagicMock,
+        mock_uuid: MagicMock,
+    ) -> None:
+        """Happy path: PDF válido → arquivo salvo, chunks inseridos, 5 campos de metadados, retorna adicionado."""
+        conteudo = self._valid_pdf_bytes()
+        mock_vdb = self._setup_vectordb_mock([], [])
+        mock_chroma.return_value = mock_vdb
+
+        mock_dir.glob.return_value = []
+        fake_path = MagicMock()
+        fake_path.__truediv__ = MagicMock(return_value=fake_path)
+        fake_path.__str__ = MagicMock(return_value="/data/documents/contrato.pdf")
+        mock_dir.__truediv__ = MagicMock(return_value=fake_path)
+
+        mock_extrair.return_value = {"PÁGINA_1": "texto da página 1"}
+
+        # chunk com source já setado — simula o que split_documents faz ao herdar metadados do Document pai
+        chunk1 = LCDocument(
+            page_content="PÁGINA_1: texto da página 1",
+            metadata={"page": 1, "source": "/data/documents/contrato.pdf"},
+        )
+        mock_splitter = MagicMock()
+        mock_splitter.split_documents.return_value = [chunk1]
+        mock_splitter_cls.return_value = mock_splitter
+
+        mock_tmp = MagicMock()
+        mock_tmp.__enter__ = MagicMock(return_value=mock_tmp)
+        mock_tmp.__exit__ = MagicMock(return_value=False)
+        mock_tmp.name = "/tmp/tmpXXX.pdf"
+        mock_tempfile.NamedTemporaryFile.return_value = mock_tmp
+
+        mock_uuid.uuid4.return_value.hex = "abc123"
+
+        with patch("agenticlog.agent.invalidar_vector_db") as mock_invalidar:
+            result = adicionar_pdf_incrementalmente("contrato.pdf", conteudo)
+
+        self.assertEqual(result["status"], "adicionado")
+        self.assertIn("contrato.pdf", result["mensagem"])
+        mock_vdb.add_documents.assert_called_once()
+        mock_invalidar.assert_called_once()
+        mock_shutil.move.assert_called_once()
+        mock_extrair.assert_called_once()
+
+        called_chunks = mock_vdb.add_documents.call_args[0][0]
+        meta = called_chunks[0].metadata
+        self.assertIn("file_hash", meta)
+        self.assertIn("chunk_index", meta)
+        self.assertIn("doc_type", meta)
+        self.assertIn("page", meta)
+        self.assertIn("source", meta)
+        self.assertEqual(meta["doc_type"], "pdf")
+
+    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.rag.Chroma")
+    def teste_2_duplicado_mesmo_hash(
+        self,
+        mock_chroma: MagicMock,
+        mock_emb: MagicMock,
+        mock_dir: MagicMock,
+    ) -> None:
+        """Mesmo source + mesmo file_hash no ChromaDB → retorna duplicado, sem escrita em disco."""
+        conteudo = self._valid_pdf_bytes()
+        hash_str = hashlib.sha256(conteudo).hexdigest()
+
+        fake_path = MagicMock()
+        fake_path.__str__ = MagicMock(return_value="/data/documents/contrato.pdf")
+        mock_dir.__truediv__ = MagicMock(return_value=fake_path)
+        mock_dir.glob.return_value = []
+
+        mock_vdb = self._setup_vectordb_mock(
+            ["id1"], [{"file_hash": hash_str}]
+        )
+        mock_chroma.return_value = mock_vdb
+
+        result = adicionar_pdf_incrementalmente("contrato.pdf", conteudo)
+
+        self.assertEqual(result["status"], "duplicado")
+        mock_vdb.add_documents.assert_not_called()
+
+    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.rag.Chroma")
+    def teste_3_hash_diferente_mesmo_nome(
+        self,
+        mock_chroma: MagicMock,
+        mock_emb: MagicMock,
+        mock_dir: MagicMock,
+    ) -> None:
+        """Mesmo source, hash diferente → retorna hash_diferente, sem escrita em disco."""
+        conteudo = self._valid_pdf_bytes()
+        hash_antigo = hashlib.sha256(b"conteudo anterior").hexdigest()
+
+        fake_path = MagicMock()
+        fake_path.__str__ = MagicMock(return_value="/data/documents/contrato.pdf")
+        mock_dir.__truediv__ = MagicMock(return_value=fake_path)
+        mock_dir.glob.return_value = []
+
+        mock_vdb = self._setup_vectordb_mock(
+            ["id1"], [{"file_hash": hash_antigo}]
+        )
+        mock_chroma.return_value = mock_vdb
+
+        result = adicionar_pdf_incrementalmente("contrato.pdf", conteudo)
+
+        self.assertEqual(result["status"], "hash_diferente")
+        mock_vdb.add_documents.assert_not_called()
+
+    def teste_4_rejeita_extensao_invalida(self) -> None:
+        """Extensão .docx → RAGSecurityError antes de qualquer operação em disco."""
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
+            adicionar_pdf_incrementalmente("documento.docx", b"%PDF-1.4 content")
+        self.assertIn("pdf", str(ctx.exception).lower())
+
+    def teste_5_rejeita_magic_bytes_invalidos(self) -> None:
+        """Conteúdo sem magic bytes %PDF → RAGSecurityError antes de qualquer escrita."""
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
+            adicionar_pdf_incrementalmente("doc.pdf", b"PK\x03\x04 not a pdf")
+        self.assertIn("PDF", str(ctx.exception))
+
+    def teste_6_rejeita_tamanho_excedido(self) -> None:
+        """Conteúdo > MAX_DOCUMENT_FILE_SIZE_MB MB → RAGSecurityError antes de escrita em disco."""
+        from agenticlog.config import MAX_DOCUMENT_FILE_SIZE_MB
+        conteudo = b"%PDF" + b"x" * (MAX_DOCUMENT_FILE_SIZE_MB * 1024 * 1024 + 1)
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
+            adicionar_pdf_incrementalmente("grande.pdf", conteudo)
+        self.assertIn(str(MAX_DOCUMENT_FILE_SIZE_MB), str(ctx.exception))
+
+    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    def teste_7_rejeita_limite_de_arquivos(self, mock_dir: MagicMock) -> None:
+        """json_count + pdf_count >= MAX_JSON_FILES → RAGSecurityError."""
+        from agenticlog.config import MAX_JSON_FILES
+        mock_dir.glob.return_value = [MagicMock()] * MAX_JSON_FILES
+        with self.assertRaises(rag.RAGSecurityError) as ctx:
+            adicionar_pdf_incrementalmente("novo.pdf", self._valid_pdf_bytes())
+        self.assertIn(str(MAX_JSON_FILES), str(ctx.exception))
+
+    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.rag.Chroma")
+    def teste_8_rejeita_pdf_com_senha(
+        self,
+        mock_chroma: MagicMock,
+        mock_emb: MagicMock,
+        mock_dir: MagicMock,
+        mock_tempfile: MagicMock,
+    ) -> None:
+        """extrair_texto_pdf lança RAGSecurityError(senha) → propagado, tempfile removido."""
+        conteudo = self._valid_pdf_bytes()
+        mock_vdb = self._setup_vectordb_mock([], [])
+        mock_chroma.return_value = mock_vdb
+        mock_dir.glob.return_value = []
+
+        fake_path = MagicMock()
+        fake_path.__str__ = MagicMock(return_value="/data/documents/protegido.pdf")
+        mock_dir.__truediv__ = MagicMock(return_value=fake_path)
+
+        mock_tmp_file = MagicMock()
+        mock_tmp_file.__enter__ = MagicMock(return_value=mock_tmp_file)
+        mock_tmp_file.__exit__ = MagicMock(return_value=False)
+        mock_tmp_file.name = "/tmp/tmpXXX.pdf"
+        mock_tempfile.NamedTemporaryFile.return_value = mock_tmp_file
+
+        with patch("agenticlog.rag.extrair_texto_pdf", side_effect=rag.RAGSecurityError("PDF protegido por senha.")):
+            with self.assertRaises(rag.RAGSecurityError) as ctx:
+                adicionar_pdf_incrementalmente("protegido.pdf", conteudo)
+
+        self.assertIn("senha", str(ctx.exception))
+
+    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.rag.Chroma")
+    def teste_9_rejeita_pdf_somente_imagem(
+        self,
+        mock_chroma: MagicMock,
+        mock_emb: MagicMock,
+        mock_dir: MagicMock,
+        mock_tempfile: MagicMock,
+    ) -> None:
+        """extrair_texto_pdf lança RAGSecurityError(somente imagem) → propagado."""
+        conteudo = self._valid_pdf_bytes()
+        mock_vdb = self._setup_vectordb_mock([], [])
+        mock_chroma.return_value = mock_vdb
+        mock_dir.glob.return_value = []
+
+        fake_path = MagicMock()
+        fake_path.__str__ = MagicMock(return_value="/data/documents/scan.pdf")
+        mock_dir.__truediv__ = MagicMock(return_value=fake_path)
+
+        mock_tmp_file = MagicMock()
+        mock_tmp_file.__enter__ = MagicMock(return_value=mock_tmp_file)
+        mock_tmp_file.__exit__ = MagicMock(return_value=False)
+        mock_tmp_file.name = "/tmp/tmpXXX.pdf"
+        mock_tempfile.NamedTemporaryFile.return_value = mock_tmp_file
+
+        with patch(
+            "agenticlog.rag.extrair_texto_pdf",
+            side_effect=rag.RAGSecurityError("PDF não contém texto extraível (somente imagem)."),
+        ):
+            with self.assertRaises(rag.RAGSecurityError) as ctx:
+                adicionar_pdf_incrementalmente("scan.pdf", conteudo)
+
+        self.assertIn("somente imagem", str(ctx.exception))
+
+    @patch("agenticlog.rag.uuid")
+    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.rag.shutil")
+    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.extrair_texto_pdf")
+    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.rag.Chroma")
+    def teste_10_zero_chunks_retorna_sem_indexar(
+        self,
+        mock_chroma: MagicMock,
+        mock_emb: MagicMock,
+        mock_extrair: MagicMock,
+        mock_splitter_cls: MagicMock,
+        mock_dir: MagicMock,
+        mock_shutil: MagicMock,
+        mock_tempfile: MagicMock,
+        mock_uuid: MagicMock,
+    ) -> None:
+        """PDF válido mas splitter retorna [] → arquivo removido, retorna adicionado com mensagem de 0 chunks."""
+        conteudo = self._valid_pdf_bytes()
+        mock_vdb = self._setup_vectordb_mock([], [])
+        mock_chroma.return_value = mock_vdb
+
+        mock_dir.glob.return_value = []
+        fake_saved_path = MagicMock()
+        fake_saved_path.__str__ = MagicMock(return_value="/data/documents/vazio.pdf")
+        mock_dir.__truediv__ = MagicMock(return_value=fake_saved_path)
+
+        mock_extrair.return_value = {"PÁGINA_1": "algum texto"}
+
+        mock_splitter = MagicMock()
+        mock_splitter.split_documents.return_value = []
+        mock_splitter_cls.return_value = mock_splitter
+
+        mock_tmp = MagicMock()
+        mock_tmp.__enter__ = MagicMock(return_value=mock_tmp)
+        mock_tmp.__exit__ = MagicMock(return_value=False)
+        mock_tmp.name = "/tmp/tmpXXX.pdf"
+        mock_tempfile.NamedTemporaryFile.return_value = mock_tmp
+
+        with self.assertLogs("agenticlog.rag", level="WARNING"):
+            result = adicionar_pdf_incrementalmente("vazio.pdf", conteudo)
+
+        self.assertEqual(result["status"], "adicionado")
+        self.assertIn("0 chunks", result["mensagem"])
+        mock_vdb.add_documents.assert_not_called()
+        fake_saved_path.unlink.assert_called()
+
+    @patch("agenticlog.rag.uuid")
+    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.rag.shutil")
+    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.extrair_texto_pdf")
+    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.rag.Chroma")
+    def teste_11_rollback_em_falha_de_add_documents(
+        self,
+        mock_chroma: MagicMock,
+        mock_emb: MagicMock,
+        mock_extrair: MagicMock,
+        mock_splitter_cls: MagicMock,
+        mock_dir: MagicMock,
+        mock_shutil: MagicMock,
+        mock_tempfile: MagicMock,
+        mock_uuid: MagicMock,
+    ) -> None:
+        """add_documents lança → vectordb.delete chamado com chunk_ids, arquivo removido, exceção re-levantada."""
+        conteudo = self._valid_pdf_bytes()
+        mock_vdb = self._setup_vectordb_mock([], [])
+        mock_vdb.add_documents.side_effect = RuntimeError("embed falhou")
+        mock_chroma.return_value = mock_vdb
+
+        mock_dir.glob.return_value = []
+        fake_saved_path = MagicMock()
+        fake_saved_path.__str__ = MagicMock(return_value="/data/documents/relatorio.pdf")
+        mock_dir.__truediv__ = MagicMock(return_value=fake_saved_path)
+
+        mock_extrair.return_value = {"PÁGINA_1": "texto"}
+
+        chunk = self._chunk("PÁGINA_1: texto", page=1)
+        mock_splitter = MagicMock()
+        mock_splitter.split_documents.return_value = [chunk]
+        mock_splitter_cls.return_value = mock_splitter
+
+        mock_tmp = MagicMock()
+        mock_tmp.__enter__ = MagicMock(return_value=mock_tmp)
+        mock_tmp.__exit__ = MagicMock(return_value=False)
+        mock_tmp.name = "/tmp/tmpXXX.pdf"
+        mock_tempfile.NamedTemporaryFile.return_value = mock_tmp
+
+        mock_uuid.uuid4.return_value.hex = "deadbeef"
+
+        with self.assertRaises(RuntimeError) as exc_ctx:
+            adicionar_pdf_incrementalmente("relatorio.pdf", conteudo)
+
+        self.assertEqual(str(exc_ctx.exception), "embed falhou")
+        mock_vdb.delete.assert_called_once()
+        fake_saved_path.unlink.assert_called()
+
+    @patch("agenticlog.rag.uuid")
+    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.rag.shutil")
+    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.extrair_texto_pdf")
+    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.rag.Chroma")
+    def teste_12_chunk_index_global_entre_paginas(
+        self,
+        mock_chroma: MagicMock,
+        mock_emb: MagicMock,
+        mock_extrair: MagicMock,
+        mock_splitter_cls: MagicMock,
+        mock_dir: MagicMock,
+        mock_shutil: MagicMock,
+        mock_tempfile: MagicMock,
+        mock_uuid: MagicMock,
+    ) -> None:
+        """PDF 3-páginas: chunk_index é global (0, 1, 2) sem reset por página."""
+        conteudo = self._valid_pdf_bytes()
+        mock_vdb = self._setup_vectordb_mock([], [])
+        mock_chroma.return_value = mock_vdb
+
+        mock_dir.glob.return_value = []
+        fake_saved_path = MagicMock()
+        fake_saved_path.__str__ = MagicMock(return_value="/data/documents/multi.pdf")
+        mock_dir.__truediv__ = MagicMock(return_value=fake_saved_path)
+
+        mock_extrair.return_value = {
+            "PÁGINA_1": "texto pagina 1",
+            "PÁGINA_2": "texto pagina 2",
+            "PÁGINA_3": "texto pagina 3",
+        }
+
+        chunks = [
+            self._chunk("PÁGINA_1: texto pagina 1", page=1),
+            self._chunk("PÁGINA_2: texto pagina 2", page=2),
+            self._chunk("PÁGINA_3: texto pagina 3", page=3),
+        ]
+        mock_splitter = MagicMock()
+        mock_splitter.split_documents.return_value = chunks
+        mock_splitter_cls.return_value = mock_splitter
+
+        mock_tmp = MagicMock()
+        mock_tmp.__enter__ = MagicMock(return_value=mock_tmp)
+        mock_tmp.__exit__ = MagicMock(return_value=False)
+        mock_tmp.name = "/tmp/tmpXXX.pdf"
+        mock_tempfile.NamedTemporaryFile.return_value = mock_tmp
+
+        mock_uuid.uuid4.return_value.hex = "aabbcc"
+
+        with patch("agenticlog.agent.invalidar_vector_db"):
+            adicionar_pdf_incrementalmente("multi.pdf", conteudo)
+
+        called_chunks = mock_vdb.add_documents.call_args[0][0]
+        chunk_indices = [c.metadata["chunk_index"] for c in called_chunks]
+        self.assertEqual(chunk_indices, [0, 1, 2])
 
 
 if __name__ == "__main__":
