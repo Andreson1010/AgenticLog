@@ -2,6 +2,7 @@
 
 ## Done
 
+### Foundation
 - [x] LangGraph 6-node FSM (decision → retrieve/generate/web → rank)
 - [x] ChromaDB RAG pipeline with security validation (path traversal, forbidden keys, size limits)
 - [x] Cosine similarity ranking across 5 candidate responses
@@ -10,48 +11,79 @@
 - [x] Module docstrings in Portuguese
 - [x] tlc-spec-driven brownfield mapping + project init
 
-## Backlog
-
 ### Reliability
-- [x] Lazy LLM initialization (fix SPOF at module import)
-- [x] Retry logic on LLM calls (httpx.ConnectError handler)
-- [x] Health check before first workflow invocation (PR #10)
+- [x] Lazy LLM initialization — PR #8
+- [x] Retry logic on LLM calls (exponential backoff, 3 attempts) — PR #9
+- [x] Health check before first workflow invocation — PR #10
 
 ### Observability
-- [x] Replace print() with logging module across rag.py + agent.py (PR #11)
-- [x] Structured log output with log level config in config.py (PR #12)
+- [x] Replace print() with logging module — PR #11
+- [x] Structured log output (LOG_LEVEL, LOG_FORMAT env vars) — PR #12
+- [x] Query history audit logging (SQLite, GET /history) — PR #27
 
 ### Configuration
-- [x] Move routing keyword lists to config.py constants (PR #15)
-- [ ] ~~Load LLM credentials from .env~~ — descartado (LMStudio local, hardcoded aceitável)
+- [x] Routing keywords in config.py constants — PR #15
+- [x] LLM provider portability (LLM_MODEL env var, Protocol) — PR #32
 
 ### Quality
-- [x] Integration test for agent_workflow.invoke() (PR #14)
-- [x] Streamlit UI test (streamlit.testing) (PR #14)
-- [x] GitHub Actions CI with coverage gate (PR #14)
+- [x] Integration tests + Streamlit UI tests + GitHub Actions CI — PR #14
+- [x] Lint tooling (ruff, mypy, bandit, pre-commit, CI lint job) — PR #24
 
 ### Features
-- [x] Document ingestion via Streamlit UI — JSON (PR #17)
-- [x] Windows reserved name validation (PR #19)
-- [x] PDF upload + ingestion via PyMuPDF (PR #21)
-- [x] Incremental ChromaDB ingestion without full rebuild (PR #22)
-- [x] REST API via FastAPI — POST /query (PR #23)
+- [x] Document ingestion via Streamlit UI — JSON — PR #17
+- [x] Windows reserved name validation — PR #19
+- [x] PDF upload + ingestion via PyMuPDF — PR #21
+- [x] Incremental ChromaDB ingestion without full rebuild (JSON) — PR #22
+- [x] FastAPI REST API — POST /query, GET /health — PR #23
+- [x] Streamlit → HTTP client (app.py calls API via httpx) — PR #25
+- [x] Multi-collection ChromaDB support — PR #26
+- [x] Portuguese multilingual embeddings (paraphrase-multilingual-mpnet-base-v2) — PR #28
+- [x] Chunking estrutura-aware (jq_schema por chave, sentence separators, PDF 1 Doc/página) — PR #31
+- [x] LLM provider portability (LLM_MODEL env, OpenAI Protocol) — PR #32
 
-### Features (backlog)
-- [ ] Migração app.py para cliente HTTP da API (REST API client story)
-- [ ] Multi-document collection support in ChromaDB
-- [ ] Query history and audit logging
+### Ingestão Incremental
+- [x] REC-01 — Unificar metadados de chunks (`source`, `file_hash`, `chunk_index`, `page`, `doc_type`) — PR #38
+- [x] REC-02 — Implementar `adicionar_pdf_incrementalmente()` — PR #39
+
+---
+
+## Backlog
+
+### Ingestão Incremental (próximo)
+
+- [ ] **REC-03** — Upsert pattern (deleção antes de re-ingestão)
+
+  Quando documento é atualizado (mesmo nome, hash diferente), chunks antigos e novos convivem no índice, degradando respostas silenciosamente. Deletar chunks antigos por `source` antes de inserir:
+  ```python
+  vector_db.delete(where={"source": nome_arquivo})
+  vector_db.add_documents(novos_chunks)
+  ```
+  **Onde:** `adicionar_documento_incrementalmente()` e `adicionar_pdf_incrementalmente()` (REC-02).
+
+- [ ] **REC-04** — CLI incremental por padrão
+
+  `python -m agenticlog.rag` sempre faz full rebuild. Adicionar argparse:
+  - Sem flags → ingestão incremental de todos os arquivos em `data/documents/`
+  - `--rebuild` → `cria_vectordb()` (comportamento atual)
+  
+  Atualizar `CLAUDE.md`.
+
+---
 
 ## Feature Specs
 
-| Feature | Spec | Status |
-|---|---|---|
-| Portuguese docstrings | .specs/features/portuguese-docstrings/spec.md | Done |
-| Retry LLM calls | .specs/features/retry-llm-backoff/spec.md | Done |
-| Health check LMStudio | .specs/features/health-check-lmstudio/spec.md | Done |
-| Logging module | .specs/features/logging-module/spec.md | Done |
-| Structured log config | .specs/features/structured-log-config/spec.md | Done |
-| Document ingestion UI | .specs/features/document-ingestion-ui/spec.md | Done |
-| PDF upload ingestion | .specs/features/pdf-upload-ingestion/spec.md | Done |
-| Incremental ChromaDB ingestion | .specs/features/incremental-chroma-ingestion/spec.md | Done |
-| FastAPI REST API | .specs/features/fastapi-rest-api/spec.md | Done |
+| Feature | Spec | PR | Status |
+|---|---|---|---|
+| Portuguese docstrings | .specs/features/portuguese-docstrings/spec.md | — | Done |
+| Retry LLM calls | .specs/features/retry-llm-backoff/spec.md | — | Done |
+| Health check LMStudio | .specs/features/health-check-lmstudio/spec.md | — | Done |
+| Logging module | .specs/features/logging-module/spec.md | — | Done |
+| Structured log config | .specs/features/structured-log-config/spec.md | #12 | Done |
+| Document ingestion UI | .specs/features/document-ingestion-ui/spec.md | #17 | Done |
+| PDF upload ingestion | .specs/features/pdf-upload-ingestion/spec.md | #21 | Done |
+| Incremental ChromaDB ingestion | .specs/features/incremental-chroma-ingestion/spec.md | #22 | Done |
+| FastAPI REST API | .specs/features/fastapi-rest-api/spec.md | #23 | Done |
+| Chunking estrutura-aware | .specs/features/chunking-estrutura-aware/spec.md | #31 | Done |
+| LLM provider portability | .specs/features/llm-provider-portability/spec.md | #32 | Done |
+| Unificar metadados de chunks | .specs/features/unificar-metadados-chunks/spec.md | #38 | Done |
+| Ingestão incremental PDF | .specs/features/adicionar-pdf-incrementalmente/spec.md | #39 | Done |
