@@ -16,8 +16,6 @@ from agenticlog.rag import (
     sanitizar_nome_colecao,
     adicionar_documento_incrementalmente,
     adicionar_pdf_incrementalmente,
-    reconstruir_vectordb,
-    salvar_pdf_enviado,
 )
 
 NOVA_COLECAO_SENTINEL = "Nova coleção…"

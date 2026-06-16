@@ -671,7 +671,9 @@ class TestAC5RollbackOnFailure:
         mock_uuid: MagicMock,
     ) -> None:
         """AC-5: add_documents levanta exceção → vectordb.delete + saved_path.unlink + re-raise."""
-        mock_dir.__truediv__ = lambda self_inner, other: Path("/fake/documents") / other
+        saved_path_mock = MagicMock(spec=Path)
+        saved_path_mock.__str__ = MagicMock(return_value="/fake/documents/relatorio.pdf")
+        mock_dir.__truediv__ = MagicMock(return_value=saved_path_mock)
         mock_dir.glob.return_value = []
 
         tmp_ctx = MagicMock()
@@ -683,7 +685,6 @@ class TestAC5RollbackOnFailure:
         mock_extrair.return_value = {"PÁGINA_1": "Texto."}
 
         mock_vdb = _make_mock_vectordb()
-        # add_documents fails
         original_error = RuntimeError("ChromaDB write failure")
         mock_vdb.add_documents.side_effect = original_error
         mock_chroma_cls.return_value = mock_vdb
@@ -693,23 +694,16 @@ class TestAC5RollbackOnFailure:
         mock_splitter_instance.split_documents.return_value = chunks
         mock_splitter_cls.return_value = mock_splitter_instance
 
-        # uuid generates deterministic IDs
-        fake_ids = ["id_0", "id_1"]
-        mock_uuid.uuid4.return_value.hex = "id_0"  # simplified
-
-        # We need to track what path.unlink is called on
-        saved_path_mock = MagicMock(spec=Path)
-        # shutil.move just needs to succeed — saved_path is DIR_DOCUMENTS / safe_name
-        # which is mock_dir / "relatorio.pdf"
+        mock_uuid.uuid4.return_value.hex = "id_0"
 
         with pytest.raises(RuntimeError) as exc_info:
             rag.adicionar_pdf_incrementalmente(_VALID_FILENAME, _VALID_PDF_BYTES)
 
         assert exc_info.value is original_error
-        # vectordb.delete must have been called (rollback)
         mock_vdb.delete.assert_called_once()
         delete_call_args = mock_vdb.delete.call_args
         assert "ids" in delete_call_args.kwargs or len(delete_call_args.args) > 0
+        saved_path_mock.unlink.assert_called_once()
 
     @patch("agenticlog.rag.uuid")
     @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
