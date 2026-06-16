@@ -34,6 +34,7 @@ from agenticlog.rag import (
     _sanitizar_nome_arquivo,
     _sanitizar_nome_colecao,
     _computar_hash_conteudo,
+    _enriquecer_metadados_chunks,
     adicionar_documento_incrementalmente,
     salvar_documento_enviado,
     salvar_pdf_enviado,
@@ -241,6 +242,7 @@ class TestCriaVectordb(unittest.TestCase):
         mock_loader_instance.load.assert_called_once()
         mock_chroma.from_documents.assert_not_called()
 
+    @patch("agenticlog.rag._hash_arquivo", return_value="a" * 64)
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
@@ -249,7 +251,7 @@ class TestCriaVectordb(unittest.TestCase):
     @patch("agenticlog.rag._valida_arquivos_json")
     @patch("agenticlog.rag._valida_path_documentos")
     def test_cria_vectordb_com_documentos_json_usa_jq_schema_e_separators(
-        self, mock_valida_path, mock_valida_json, mock_loader, mock_dir, mock_splitter, mock_emb, mock_chroma
+        self, mock_valida_path, mock_valida_json, mock_loader, mock_dir, mock_splitter, mock_emb, mock_chroma, mock_hash
     ):
         """Com documentos JSON válidos: usa JQ_SCHEMA_CAMPOS_JSON e separators de ADR-007."""
         from langchain_core.documents import Document
@@ -284,9 +286,17 @@ class TestCriaVectordb(unittest.TestCase):
 
         mock_chroma.from_documents.assert_called_once()
         call_args = mock_chroma.from_documents.call_args
-        self.assertEqual(len(call_args[0][0]), 2)
-        self.assertTrue(call_args[0][0][0].page_content.startswith("DESCRIÇÃO: "))
-        self.assertTrue(call_args[0][0][1].page_content.startswith("CRITÉRIOS: "))
+        passed_docs = call_args[0][0]
+        self.assertEqual(len(passed_docs), 2)
+        self.assertTrue(passed_docs[0].page_content.startswith("DESCRIÇÃO: "))
+        self.assertTrue(passed_docs[1].page_content.startswith("CRITÉRIOS: "))
+
+        # metadados unificados (REC-01)
+        self.assertEqual(passed_docs[0].metadata["doc_type"], "json")
+        self.assertEqual(passed_docs[0].metadata["page"], 0)
+        self.assertEqual(passed_docs[0].metadata["chunk_index"], 0)
+        self.assertEqual(passed_docs[1].metadata["chunk_index"], 1)
+        self.assertEqual(len(passed_docs[0].metadata["file_hash"]), 64)
 
         mock_emb.assert_called_once_with(
             model_name=config.EMBEDDING_MODEL,
@@ -294,6 +304,7 @@ class TestCriaVectordb(unittest.TestCase):
             encode_kwargs={"normalize_embeddings": True},
         )
 
+    @patch("agenticlog.rag._hash_arquivo", return_value="a" * 64)
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
@@ -303,7 +314,7 @@ class TestCriaVectordb(unittest.TestCase):
     @patch("agenticlog.rag._valida_path_documentos")
     def test_cria_vectordb_filtra_documento_json_com_valor_vazio(
         self, mock_valida_path, mock_valida_json, mock_loader, mock_dir,
-        mock_splitter, mock_emb, mock_chroma
+        mock_splitter, mock_emb, mock_chroma, mock_hash
     ):
         """Document JSON com page_content vazio (chave com valor "") é descartado."""
         from langchain_core.documents import Document
@@ -333,6 +344,7 @@ class TestCriaVectordb(unittest.TestCase):
         # "CAMPO_VAZIO: " com .strip() == "CAMPO_VAZIO:" é NAO vazio -> permanece
         self.assertIn("CAMPO_VAZIO: ", contents)
 
+    @patch("agenticlog.rag._hash_arquivo", return_value="a" * 64)
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
@@ -343,7 +355,7 @@ class TestCriaVectordb(unittest.TestCase):
     @patch("agenticlog.rag._valida_path_documentos")
     def test_cria_vectordb_pdf_multipagina_um_document_por_pagina(
         self, mock_valida_path, mock_valida_json, mock_loader, mock_dir,
-        mock_extrair, mock_splitter, mock_emb, mock_chroma
+        mock_extrair, mock_splitter, mock_emb, mock_chroma, mock_hash
     ):
         """PDF multi-página: 1 Document por página, prefixo PÁGINA_N: ."""
         mock_loader_instance = MagicMock()
@@ -370,7 +382,15 @@ class TestCriaVectordb(unittest.TestCase):
         self.assertEqual(len(passed_docs), 2)
         self.assertEqual(passed_docs[0].page_content, "PÁGINA_1: conteúdo da primeira página")
         self.assertEqual(passed_docs[1].page_content, "PÁGINA_2: conteúdo da segunda página")
+        # metadados unificados (REC-01)
+        self.assertEqual(passed_docs[0].metadata["page"], 1)
+        self.assertEqual(passed_docs[1].metadata["page"], 2)
+        self.assertEqual(passed_docs[0].metadata["doc_type"], "pdf")
+        self.assertEqual(passed_docs[0].metadata["chunk_index"], 0)
+        self.assertEqual(passed_docs[1].metadata["chunk_index"], 1)
+        self.assertEqual(len(passed_docs[0].metadata["file_hash"]), 64)
 
+    @patch("agenticlog.rag._hash_arquivo", return_value="a" * 64)
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
@@ -381,7 +401,7 @@ class TestCriaVectordb(unittest.TestCase):
     @patch("agenticlog.rag._valida_path_documentos")
     def test_cria_vectordb_pdf_todas_paginas_em_branco_loga_erro_sem_levantar(
         self, mock_valida_path, mock_valida_json, mock_loader, mock_dir,
-        mock_extrair, mock_splitter, mock_emb, mock_chroma
+        mock_extrair, mock_splitter, mock_emb, mock_chroma, mock_hash
     ):
         """PDF totalmente em branco: RAGSecurityError é capturada e logada, zero Documents."""
         from langchain_core.documents import Document
@@ -447,6 +467,7 @@ class TestGetRagEmbeddingModel(unittest.TestCase):
 class TestLogging(unittest.TestCase):
     """Testes para o módulo de logging em rag.py (LG-01 a LG-11)."""
 
+    @patch("agenticlog.rag._hash_arquivo", return_value="a" * 64)
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
@@ -456,7 +477,7 @@ class TestLogging(unittest.TestCase):
     @patch("agenticlog.rag._valida_path_documentos")
     def teste_1_log_info_gerando_embeddings(
         self, mock_valida_path, mock_valida_json, mock_loader, mock_dir,
-        mock_splitter, mock_emb, mock_chroma
+        mock_splitter, mock_emb, mock_chroma, mock_hash
     ):
         """assertLogs INFO captura registro contendo 'Gerando' ao executar cria_vectordb (AC-04)."""
         from langchain_core.documents import Document
@@ -478,6 +499,7 @@ class TestLogging(unittest.TestCase):
             f"Esperava 'Gerando' nos logs, encontrado: {cm.output}",
         )
 
+    @patch("agenticlog.rag._hash_arquivo", return_value="a" * 64)
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
@@ -487,7 +509,7 @@ class TestLogging(unittest.TestCase):
     @patch("agenticlog.rag._valida_path_documentos")
     def teste_2_log_info_criado_com_sucesso(
         self, mock_valida_path, mock_valida_json, mock_loader, mock_dir,
-        mock_splitter, mock_emb, mock_chroma
+        mock_splitter, mock_emb, mock_chroma, mock_hash
     ):
         """assertLogs INFO captura registro contendo 'Criado' ao finalizar cria_vectordb (AC-04)."""
         from langchain_core.documents import Document
@@ -530,6 +552,7 @@ class TestLogging(unittest.TestCase):
             f"Esperava 'Nenhum documento' nos logs, encontrado: {cm.output}",
         )
 
+    @patch("agenticlog.rag._hash_arquivo", return_value="a" * 64)
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
@@ -539,7 +562,7 @@ class TestLogging(unittest.TestCase):
     @patch("agenticlog.rag._valida_path_documentos")
     def teste_4_sem_stdout_quando_importado_como_biblioteca(
         self, mock_valida_path, mock_valida_json, mock_loader, mock_dir,
-        mock_splitter, mock_emb, mock_chroma
+        mock_splitter, mock_emb, mock_chroma, mock_hash
     ):
         """Nenhuma saída em stdout quando cria_vectordb() chamada como biblioteca (AC-01)."""
         import io
@@ -1148,6 +1171,13 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
         self.assertIn("2 chunks", result["mensagem"])
         mock_vdb.add_documents.assert_called_once()
         mock_invalidar.assert_called_once()
+        # metadados unificados (REC-01)
+        called_chunks = mock_vdb.add_documents.call_args[0][0]
+        self.assertEqual(called_chunks[0].metadata["chunk_index"], 0)
+        self.assertEqual(called_chunks[1].metadata["chunk_index"], 1)
+        self.assertEqual(called_chunks[0].metadata["doc_type"], "json")
+        self.assertEqual(called_chunks[0].metadata["page"], 0)
+        self.assertEqual(len(called_chunks[0].metadata["file_hash"]), 64)
 
     def teste_2_primeira_ingestao_sem_colecao_existente(self) -> None:
         """Cold-start (sem coleção existente): cria coleção, ingere sem erro."""
@@ -1180,7 +1210,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
         conteudo = b'{"pedido": "123"}'
         hash_str = hashlib.sha256(conteudo).hexdigest()
         mock_vdb = self._setup_vectordb_mock(
-            ["id1"], [{"content_hash": hash_str, "source": "/some/path/doc.json"}]
+            ["id1"], [{"file_hash": hash_str, "source": "/some/path/doc.json"}]
         )
 
         with (
@@ -1201,7 +1231,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
         conteudo = b'{"pedido": "123_v2"}'
         hash_antigo = hashlib.sha256(b"versao_anterior").hexdigest()
         mock_vdb = self._setup_vectordb_mock(
-            ["id1"], [{"content_hash": hash_antigo, "source": "/path/doc.json"}]
+            ["id1"], [{"file_hash": hash_antigo, "source": "/path/doc.json"}]
         )
 
         with (
@@ -1466,6 +1496,80 @@ class TestResidualSplitBehavior(unittest.TestCase):
         self.assertEqual(len(chunks), 6)
         for chave, chunk in zip(dados.keys(), chunks, strict=True):
             self.assertTrue(chunk.page_content.startswith(f"{chave}: "))
+
+
+class TestMetadadosUnificados(unittest.TestCase):
+    """Testes unitários para _enriquecer_metadados_chunks e campos unificados (REC-01)."""
+
+    def teste_1_enriquece_todos_os_campos(self) -> None:
+        """Todos os 5 campos presentes após enriquecimento."""
+        chunks = [LCDocument(page_content="a", metadata={})]
+        rag._enriquecer_metadados_chunks(chunks, "a" * 64, "json", 0)
+        meta = chunks[0].metadata
+        self.assertIn("file_hash", meta)
+        self.assertIn("chunk_index", meta)
+        self.assertIn("doc_type", meta)
+        self.assertIn("page", meta)
+
+    def teste_2_chunk_index_sequencial_json(self) -> None:
+        """Dois chunks JSON recebem chunk_index [0, 1]."""
+        chunks = [
+            LCDocument(page_content="c0", metadata={}),
+            LCDocument(page_content="c1", metadata={}),
+        ]
+        rag._enriquecer_metadados_chunks(chunks, "a" * 64, "json", 0)
+        self.assertEqual([c.metadata["chunk_index"] for c in chunks], [0, 1])
+
+    def teste_3_chunk_index_single_chunk(self) -> None:
+        """Chunk único tem chunk_index == 0."""
+        chunk = LCDocument(page_content="x", metadata={})
+        rag._enriquecer_metadados_chunks([chunk], "a" * 64, "json", 0)
+        self.assertEqual(chunk.metadata["chunk_index"], 0)
+
+    def teste_4_page_sentinel_json(self) -> None:
+        """Chunks JSON recebem page=0."""
+        chunk = LCDocument(page_content="x", metadata={})
+        rag._enriquecer_metadados_chunks([chunk], "a" * 64, "json", 0)
+        self.assertEqual(chunk.metadata["page"], 0)
+
+    def teste_5_page_nao_sobrescrito_quando_none(self) -> None:
+        """page=None não sobrescreve page já presente (PDF: herdado do Document pai)."""
+        chunk = LCDocument(page_content="x", metadata={"page": 3})
+        rag._enriquecer_metadados_chunks([chunk], "a" * 64, "pdf")
+        self.assertEqual(chunk.metadata["page"], 3)
+
+    def teste_6_doc_type_json(self) -> None:
+        """Chunks JSON recebem doc_type='json'."""
+        chunk = LCDocument(page_content="x", metadata={})
+        rag._enriquecer_metadados_chunks([chunk], "a" * 64, "json", 0)
+        self.assertEqual(chunk.metadata["doc_type"], "json")
+
+    def teste_7_doc_type_pdf(self) -> None:
+        """Chunks PDF recebem doc_type='pdf'."""
+        chunk = LCDocument(page_content="x", metadata={"page": 1})
+        rag._enriquecer_metadados_chunks([chunk], "a" * 64, "pdf")
+        self.assertEqual(chunk.metadata["doc_type"], "pdf")
+
+    def teste_8_file_hash_sha256_correto(self) -> None:
+        """_computar_hash_conteudo retorna SHA-256 de 64 chars identico ao hashlib."""
+        conteudo = b"teste de logistica"
+        esperado = hashlib.sha256(conteudo).hexdigest()
+        resultado = rag._computar_hash_conteudo(conteudo)
+        self.assertEqual(resultado, esperado)
+        self.assertEqual(len(resultado), 64)
+
+    def teste_9_zero_chunks_sem_erro(self) -> None:
+        """Lista vazia não levanta exceção."""
+        rag._enriquecer_metadados_chunks([], "a" * 64, "json", 0)
+
+    def teste_10_dois_grupos_chunk_index_independente(self) -> None:
+        """Dois grupos separados têm chunk_index independentes partindo de 0."""
+        grupo1 = [LCDocument(page_content=f"a{i}", metadata={}) for i in range(2)]
+        grupo2 = [LCDocument(page_content=f"b{i}", metadata={}) for i in range(3)]
+        rag._enriquecer_metadados_chunks(grupo1, "a" * 64, "json", 0)
+        rag._enriquecer_metadados_chunks(grupo2, "b" * 64, "json", 0)
+        self.assertEqual([c.metadata["chunk_index"] for c in grupo1], [0, 1])
+        self.assertEqual([c.metadata["chunk_index"] for c in grupo2], [0, 1, 2])
 
 
 if __name__ == "__main__":

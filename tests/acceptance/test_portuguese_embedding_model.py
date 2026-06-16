@@ -85,6 +85,7 @@ class TestAC02RagEmbeddingCallSitesUsamConfig(unittest.TestCase):
 
         mock_emb.assert_called_once_with(model_name=config.EMBEDDING_MODEL)
 
+    @patch("agenticlog.rag._hash_arquivo", return_value="a" * 64)
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
@@ -101,6 +102,7 @@ class TestAC02RagEmbeddingCallSitesUsamConfig(unittest.TestCase):
         mock_splitter: MagicMock,
         mock_emb: MagicMock,
         mock_chroma: MagicMock,
+        mock_hash: MagicMock,
     ) -> None:
         """AC2: cria_vectordb() constrói HuggingFaceEmbeddings(model_name=config.EMBEDDING_MODEL, ...)."""
         from langchain_core.documents import Document
@@ -424,6 +426,7 @@ class TestAC09ModelKwargsEncodeKwargsInalterados(unittest.TestCase):
             self.agent_source,
         )
 
+    @patch("agenticlog.rag._hash_arquivo", return_value="a" * 64)
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
@@ -440,6 +443,7 @@ class TestAC09ModelKwargsEncodeKwargsInalterados(unittest.TestCase):
         mock_splitter: MagicMock,
         mock_emb: MagicMock,
         mock_chroma: MagicMock,
+        mock_hash: MagicMock,
     ) -> None:
         """AC9: cria_vectordb() chama HuggingFaceEmbeddings com exatamente os três kwargs
         esperados (model_name, model_kwargs com device, encode_kwargs com normalize_embeddings)."""

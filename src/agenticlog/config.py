@@ -76,6 +76,15 @@ RETRIEVAL_K_PER_COLLECTION: dict[str, int] = {
 }
 RETRIEVAL_K_TOTAL: int = 3  # limite final de docs únicos após mesclar todas as coleções
 
+# Metadados unificados de chunks (REC-01)
+METADATA_FILE_HASH: str = "file_hash"
+METADATA_CHUNK_INDEX: str = "chunk_index"
+METADATA_PAGE: str = "page"
+METADATA_DOC_TYPE: str = "doc_type"
+METADATA_DOC_TYPE_JSON: str = "json"
+METADATA_DOC_TYPE_PDF: str = "pdf"
+METADATA_PAGE_JSON_SENTINEL: int = 0
+
 # Segurança - limites para carregamento de documentos
 MAX_JSON_FILES = 1000          # impede carregamento irrestrito de arquivos maliciosos
 MAX_JSON_FILE_SIZE_MB = 10     # bloqueia arquivos excessivamente grandes (proteção contra DoS)

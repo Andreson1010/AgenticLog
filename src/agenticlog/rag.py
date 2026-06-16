@@ -47,6 +47,13 @@ from agenticlog.config import (
     COLLECTION_NAME_MIN_LEN,
     COLLECTION_NAME_MAX_LEN,
     COLLECTION_NAME_PATTERN,
+    METADATA_FILE_HASH,
+    METADATA_CHUNK_INDEX,
+    METADATA_PAGE,
+    METADATA_DOC_TYPE,
+    METADATA_DOC_TYPE_JSON,
+    METADATA_DOC_TYPE_PDF,
+    METADATA_PAGE_JSON_SENTINEL,
 )
 
 logger = logging.getLogger(__name__)
@@ -271,6 +278,26 @@ def _computar_hash_conteudo(conteudo: bytes) -> str:
     return hashlib.sha256(conteudo).hexdigest()
 
 
+def _hash_arquivo(path: str) -> str:
+    """Lê arquivo do disco e retorna SHA-256 do conteúdo (REC-01)."""
+    return _computar_hash_conteudo(Path(path).read_bytes())
+
+
+def _enriquecer_metadados_chunks(
+    chunks: list, file_hash: str, doc_type: str, page: int | None = None
+) -> None:
+    """Enriquece chunks in-place com campos unificados de metadados (REC-01).
+
+    page=None preserva o valor já presente em chunk.metadata (PDF: herdado do Document pai).
+    """
+    for idx, chunk in enumerate(chunks):
+        chunk.metadata[METADATA_FILE_HASH] = file_hash
+        chunk.metadata[METADATA_CHUNK_INDEX] = idx
+        chunk.metadata[METADATA_DOC_TYPE] = doc_type
+        if page is not None:
+            chunk.metadata[METADATA_PAGE] = page
+
+
 def adicionar_documento_incrementalmente(
     filename: str,
     conteudo: bytes,
@@ -323,7 +350,7 @@ def adicionar_documento_incrementalmente(
         where={"source": {"$eq": str(planned_path)}}
     )
     if existing["ids"]:
-        existing_hash = existing["metadatas"][0].get("content_hash")
+        existing_hash = existing["metadatas"][0].get(METADATA_FILE_HASH)
         if existing_hash == hash_str:
             return {
                 "status": "duplicado",
@@ -370,8 +397,9 @@ def adicionar_documento_incrementalmente(
             "mensagem": f"Arquivo {safe_name} não pôde ser indexado: 0 chunks gerados.",
         }
 
-    for chunk in chunks:
-        chunk.metadata["content_hash"] = hash_str
+    _enriquecer_metadados_chunks(
+        chunks, hash_str, METADATA_DOC_TYPE_JSON, METADATA_PAGE_JSON_SENTINEL
+    )
 
     chunk_ids = [uuid.uuid4().hex for _ in chunks]
 
@@ -541,8 +569,12 @@ def cria_vectordb(collection_name: str = DEFAULT_COLLECTION_NAME) -> None:
         try:
             paginas = extrair_texto_pdf(pdf_path)
             for chave, texto in paginas.items():
+                page_num = int(chave.split("_")[1])
                 pdf_docs.append(
-                    Document(page_content=f"{chave}: {texto}", metadata={"source": str(pdf_path)})
+                    Document(
+                        page_content=f"{chave}: {texto}",
+                        metadata={"source": str(pdf_path), METADATA_PAGE: page_num},
+                    )
                 )
         except RAGSecurityError as e:
             logger.error("PDF corrompido ignorado durante reconstrução: %s — %s", pdf_path.name, e)
@@ -561,7 +593,24 @@ def cria_vectordb(collection_name: str = DEFAULT_COLLECTION_NAME) -> None:
         chunk_overlap=CHUNK_OVERLAP,
         separators=["\n\n", "\n", ". ", "! ", "? ", " ", ""],
     )
-    chunks = text_splitter.split_documents(documents)
+
+    json_chunks = text_splitter.split_documents(json_docs)
+    _src_json: dict[str, list] = {}
+    for chunk in json_chunks:
+        _src_json.setdefault(chunk.metadata.get("source", ""), []).append(chunk)
+    for src, group in _src_json.items():
+        fh = _hash_arquivo(src)
+        _enriquecer_metadados_chunks(group, fh, METADATA_DOC_TYPE_JSON, METADATA_PAGE_JSON_SENTINEL)
+
+    pdf_chunks = text_splitter.split_documents(pdf_docs)
+    _src_pdf: dict[str, list] = {}
+    for chunk in pdf_chunks:
+        _src_pdf.setdefault(chunk.metadata.get("source", ""), []).append(chunk)
+    for src, group in _src_pdf.items():
+        fh = _hash_arquivo(src)
+        _enriquecer_metadados_chunks(group, fh, METADATA_DOC_TYPE_PDF)
+
+    chunks = json_chunks + pdf_chunks
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     embedding_model = HuggingFaceEmbeddings(
