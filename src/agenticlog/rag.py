@@ -298,6 +298,28 @@ def _enriquecer_metadados_chunks(
             chunk.metadata[METADATA_PAGE] = page
 
 
+def _backup_arquivo(path: Path) -> Path:
+    """Cria cópia temporária de ``path`` para restauração em caso de falha de upsert."""
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".bak") as bak:
+        backup_path = Path(bak.name)
+    shutil.copy2(path, backup_path)
+    return backup_path
+
+
+def _reverter_disco(saved_path: Path, backup_path: Path | None) -> None:
+    """Reverte o estado do disco após falha de ingestão.
+
+    Upsert (``backup_path`` não-nulo): restaura o conteúdo antigo, mantendo o disco
+    consistente com os chunks antigos que permanecem no Chroma — evita perda do
+    documento original.
+    Arquivo novo (``backup_path`` nulo): remove o arquivo recém-gravado.
+    """
+    if backup_path is not None:
+        shutil.move(str(backup_path), saved_path)
+    else:
+        saved_path.unlink(missing_ok=True)
+
+
 def adicionar_documento_incrementalmente(
     filename: str,
     conteudo: bytes,
@@ -361,11 +383,14 @@ def adicionar_documento_incrementalmente(
 
     saved_path: Path | None = None
     tmp_path: Path | None = None
+    backup_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
             tmp.write(conteudo)
             tmp_path = Path(tmp.name)
         _valida_json_sem_chaves_proibidas(tmp_path)
+        if old_ids and planned_path.exists():
+            backup_path = _backup_arquivo(planned_path)
         shutil.move(str(tmp_path), planned_path)
         saved_path = planned_path
         tmp_path = None
@@ -386,7 +411,7 @@ def adicionar_documento_incrementalmente(
 
     if not chunks:
         logger.warning("Arquivo %s produziu zero chunks após divisão.", safe_name)
-        saved_path.unlink(missing_ok=True)
+        _reverter_disco(saved_path, backup_path)
         return {
             "status": "adicionado",
             "mensagem": f"Arquivo {safe_name} não pôde ser indexado: 0 chunks gerados.",
@@ -410,7 +435,7 @@ def adicionar_documento_incrementalmente(
                 chunk_ids,
                 rollback_exc,
             )
-        saved_path.unlink(missing_ok=True)
+        _reverter_disco(saved_path, backup_path)
         raise ingestion_exc
 
     if old_ids:
@@ -421,6 +446,9 @@ def adicionar_documento_incrementalmente(
                 "Falha ao deletar chunks antigos de %s (IDs: %s). Erro: %s",
                 safe_name, old_ids, del_exc,
             )
+
+    if backup_path is not None:
+        backup_path.unlink(missing_ok=True)
 
     try:
         from agenticlog.agent import invalidar_vector_db  # lazy — evita importação pesada no CLI
@@ -503,12 +531,15 @@ def adicionar_pdf_incrementalmente(
 
     saved_path: Path | None = None
     tmp_path: Path | None = None
+    backup_path: Path | None = None
     paginas: dict[str, str] = {}
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             tmp.write(conteudo)
             tmp_path = Path(tmp.name)
         paginas = extrair_texto_pdf(tmp_path)
+        if old_ids and planned_path.exists():
+            backup_path = _backup_arquivo(planned_path)
         shutil.move(str(tmp_path), planned_path)
         saved_path = planned_path
         tmp_path = None
@@ -536,7 +567,7 @@ def adicionar_pdf_incrementalmente(
 
     if not chunks:
         logger.warning("Arquivo %s produziu zero chunks após divisão.", safe_name)
-        saved_path.unlink(missing_ok=True)
+        _reverter_disco(saved_path, backup_path)
         return {
             "status": "adicionado",
             "mensagem": f"Arquivo {safe_name} não pôde ser indexado: 0 chunks gerados.",
@@ -558,7 +589,7 @@ def adicionar_pdf_incrementalmente(
                 chunk_ids,
                 rollback_exc,
             )
-        saved_path.unlink(missing_ok=True)
+        _reverter_disco(saved_path, backup_path)
         raise ingestion_exc
 
     if old_ids:
@@ -569,6 +600,9 @@ def adicionar_pdf_incrementalmente(
                 "Falha ao deletar chunks antigos de %s (IDs: %s). Erro: %s",
                 safe_name, old_ids, del_exc,
             )
+
+    if backup_path is not None:
+        backup_path.unlink(missing_ok=True)
 
     try:
         from agenticlog.agent import invalidar_vector_db  # lazy — evita importação pesada no CLI
