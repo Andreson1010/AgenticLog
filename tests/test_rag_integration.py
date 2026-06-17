@@ -137,7 +137,7 @@ class TestIngestionIntegration:
             patch("agenticlog.rag._get_rag_embedding_model", return_value=mock_emb_instance),
             patch("agenticlog.rag.Chroma", return_value=fail_vdb),
             patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
-            patch("agenticlog.rag.RecursiveCharacterTextSplitter") as mock_splitter_cls,
+            patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
         ):
             mock_loader_cls.return_value.load.return_value = [LCDocument(page_content="d", metadata={})]
             mock_splitter_cls.return_value.split_documents.return_value = [
