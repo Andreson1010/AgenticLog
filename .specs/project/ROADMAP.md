@@ -44,22 +44,14 @@
 ### Ingestão Incremental
 - [x] REC-01 — Unificar metadados de chunks (`source`, `file_hash`, `chunk_index`, `page`, `doc_type`) — PR #38
 - [x] REC-02 — Implementar `adicionar_pdf_incrementalmente()` — PR #39
+- [x] REC-03 — Upsert pattern (deleção de chunks antigos antes de re-ingestão; upsert atômico) — PRs #42, #43
 - [x] REC-04 — CLI incremental por padrão (`python -m agenticlog.rag` sem flags; `--rebuild` para reconstrução)
 
 ---
 
 ## Backlog
 
-### Ingestão Incremental (próximo)
-
-- [ ] **REC-03** — Upsert pattern (deleção antes de re-ingestão)
-
-  Quando documento é atualizado (mesmo nome, hash diferente), chunks antigos e novos convivem no índice, degradando respostas silenciosamente. Deletar chunks antigos por `source` antes de inserir:
-  ```python
-  vector_db.delete(where={"source": nome_arquivo})
-  vector_db.add_documents(novos_chunks)
-  ```
-  **Onde:** `adicionar_documento_incrementalmente()` e `adicionar_pdf_incrementalmente()` (REC-02).
+_Nenhum item pendente na trilha de Ingestão Incremental (REC-01 a REC-04 entregues)._
 
 ---
 
