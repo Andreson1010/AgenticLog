@@ -19,13 +19,19 @@ uv pip install -e .
 
 ### Build VectorDB (first time, after changing documents, or after changing chunking/embedding configuration)
 ```bash
+# Default: incremental ingestion of every file in data/documents/ (skips unchanged, upserts changed)
 python -m agenticlog.rag
+
+# Full rebuild from scratch (legacy behavior)
+python -m agenticlog.rag --rebuild
 ```
+
+The CLI is **incremental by default** (REC-04): with no flags it ingests each `*.json` and `*.pdf` in `data/documents/`, skipping files already indexed with the same content-hash and upserting changed ones — no full rebuild. Use `--rebuild` to discard `data/vectordb/` content and recompute every chunk (required after any chunking-strategy or embedding-model change; see Silent-degradation risk below).
 
 **After changing any of the following in `config.py`** — `EMBEDDING_MODEL`, `SEMANTIC_BREAKPOINT_TYPE`, `SEMANTIC_BREAKPOINT_THRESHOLD`, `JQ_SCHEMA_CAMPOS_JSON` (jq_schema), or PDF-extraction logic in `extrair_texto_pdf` (`src/agenticlog/rag.py`) — rebuild the vector DB from scratch:
 1. Stop the running app (if any).
 2. Delete `data/vectordb/` (gitignored, fully regenerable).
-3. Rerun `python -m agenticlog.rag`.
+3. Rerun `python -m agenticlog.rag --rebuild`.
 4. Resume queries with `streamlit run app.py`.
 
 The current embedding model is `sentence-transformers/paraphrase-multilingual-mpnet-base-v2` (multilingual, 768-dim, optimized for Portuguese among other languages). On first run with this model, expect a larger download (~1.0–1.1 GB, vs ~440 MB for the previous `BAAI/bge-base-en`), so initial setup takes longer.

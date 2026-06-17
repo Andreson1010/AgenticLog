@@ -44,6 +44,7 @@
 ### Ingestão Incremental
 - [x] REC-01 — Unificar metadados de chunks (`source`, `file_hash`, `chunk_index`, `page`, `doc_type`) — PR #38
 - [x] REC-02 — Implementar `adicionar_pdf_incrementalmente()` — PR #39
+- [x] REC-04 — CLI incremental por padrão (`python -m agenticlog.rag` sem flags; `--rebuild` para reconstrução)
 
 ---
 
@@ -59,14 +60,6 @@
   vector_db.add_documents(novos_chunks)
   ```
   **Onde:** `adicionar_documento_incrementalmente()` e `adicionar_pdf_incrementalmente()` (REC-02).
-
-- [ ] **REC-04** — CLI incremental por padrão
-
-  `python -m agenticlog.rag` sempre faz full rebuild. Adicionar argparse:
-  - Sem flags → ingestão incremental de todos os arquivos em `data/documents/`
-  - `--rebuild` → `cria_vectordb()` (comportamento atual)
-  
-  Atualizar `CLAUDE.md`.
 
 ---
 
