@@ -37,9 +37,9 @@ LLM_RETRY_WAIT_INITIAL_SECONDS: float = 1.0  # espera inicial do backoff exponen
 LLM_RETRY_WAIT_MAX_SECONDS: float = 4.0      # espera máxima do backoff exponencial em segundos
 LLM_HEALTH_CHECK_TIMEOUT_SECONDS: float = 5.0  # timeout do GET /v1/models antes do workflow
 
-# RAG
-CHUNK_SIZE = 500    # tamanho máximo de cada chunk de texto em caracteres
-CHUNK_OVERLAP = 50  # sobreposição entre chunks para preservar contexto nas bordas
+# RAG — Semantic Chunking (ADR-013)
+SEMANTIC_BREAKPOINT_TYPE: str = "percentile"  # método de detecção de breakpoints semânticos
+SEMANTIC_BREAKPOINT_THRESHOLD: float = 95.0   # percentil de dissimilaridade para corte
 
 # jq_schema compartilhado: 1 valor de saída do jq por chave top-level do JSON -> 1 Document
 # por chave (chunking estrutura-aware, ADR-008). `to_entries[]` (com `[]`, sem `map`) faz o jq

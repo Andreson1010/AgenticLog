@@ -98,7 +98,7 @@ class TestAC1HappyPath:
 
     @patch("agenticlog.rag.invalidar_vector_db", create=True)
     @patch("agenticlog.rag.uuid")
-    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.extrair_texto_pdf")
@@ -157,7 +157,7 @@ class TestAC1HappyPath:
 
     @patch("agenticlog.rag.invalidar_vector_db", create=True)
     @patch("agenticlog.rag.uuid")
-    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.extrair_texto_pdf")
@@ -208,7 +208,7 @@ class TestAC1HappyPath:
 
     @patch("agenticlog.rag.invalidar_vector_db", create=True)
     @patch("agenticlog.rag.uuid")
-    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.extrair_texto_pdf")
@@ -278,7 +278,7 @@ class TestAC1HappyPath:
 
     @patch("agenticlog.rag.invalidar_vector_db", create=True)
     @patch("agenticlog.rag.uuid")
-    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.extrair_texto_pdf")
@@ -652,7 +652,7 @@ class TestAC5RollbackOnFailure:
     """
 
     @patch("agenticlog.rag.uuid")
-    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.extrair_texto_pdf")
@@ -706,7 +706,7 @@ class TestAC5RollbackOnFailure:
         saved_path_mock.unlink.assert_called_once()
 
     @patch("agenticlog.rag.uuid")
-    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.extrair_texto_pdf")
@@ -925,7 +925,7 @@ class TestAC7ZeroChunks:
     """
 
     @patch("agenticlog.rag.uuid")
-    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.extrair_texto_pdf")
@@ -976,7 +976,7 @@ class TestAC7ZeroChunks:
         # add_documents should NOT have been called
         mock_vdb.add_documents.assert_not_called()
 
-    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.extrair_texto_pdf")
@@ -1033,7 +1033,7 @@ class TestAC8GlobalChunkIndex:
 
     @patch("agenticlog.rag.invalidar_vector_db", create=True)
     @patch("agenticlog.rag.uuid")
-    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.extrair_texto_pdf")
@@ -1124,7 +1124,7 @@ class TestAC8GlobalChunkIndex:
 
     @patch("agenticlog.rag.invalidar_vector_db", create=True)
     @patch("agenticlog.rag.uuid")
-    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.extrair_texto_pdf")

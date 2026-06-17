@@ -504,7 +504,7 @@ class TestAC06DefaultCollectionName(unittest.TestCase):
              patch("agenticlog.rag._valida_json_sem_chaves_proibidas"), \
              patch("agenticlog.rag.shutil.move"), \
              patch("agenticlog.rag.JSONLoader") as mock_loader, \
-             patch("agenticlog.rag.RecursiveCharacterTextSplitter") as mock_splitter:
+             patch("agenticlog.rag.SemanticChunker") as mock_splitter:
 
             mock_dir.glob.return_value = []
             mock_dir.__truediv__ = lambda self, other: Path("/fake") / other

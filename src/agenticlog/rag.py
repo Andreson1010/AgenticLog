@@ -22,7 +22,7 @@ import fitz  # PyMuPDF
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import DirectoryLoader, JSONLoader
 from langchain_core.documents import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_experimental.text_splitter import SemanticChunker
 from langchain_huggingface import HuggingFaceEmbeddings
 import torch
 
@@ -31,8 +31,8 @@ from agenticlog.config import (
     DIR_DOCUMENTS,
     DIR_VECTORDB,
     EMBEDDING_MODEL,
-    CHUNK_SIZE,
-    CHUNK_OVERLAP,
+    SEMANTIC_BREAKPOINT_TYPE,
+    SEMANTIC_BREAKPOINT_THRESHOLD,
     JQ_SCHEMA_CAMPOS_JSON,
     MAX_JSON_FILES,
     MAX_JSON_FILE_SIZE_MB,
@@ -382,10 +382,10 @@ def adicionar_documento_incrementalmente(
     docs = loader.load()
     # Descarta Documents com page_content vazio (chave JSON com valor "", [] ou {}) — ADR-011
     docs = [d for d in docs if d.page_content.strip()]
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=CHUNK_SIZE,
-        chunk_overlap=CHUNK_OVERLAP,
-        separators=["\n\n", "\n", ". ", "! ", "? ", " ", ""],
+    text_splitter = SemanticChunker(
+        embeddings=embedding_model,
+        breakpoint_threshold_type=SEMANTIC_BREAKPOINT_TYPE,
+        breakpoint_threshold_amount=SEMANTIC_BREAKPOINT_THRESHOLD,
     )
     chunks = text_splitter.split_documents(docs)
 
@@ -525,10 +525,10 @@ def adicionar_pdf_incrementalmente(
         )
     pdf_docs = [d for d in pdf_docs if d.page_content.strip()]
 
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=CHUNK_SIZE,
-        chunk_overlap=CHUNK_OVERLAP,
-        separators=["\n\n", "\n", ". ", "! ", "? ", " ", ""],
+    text_splitter = SemanticChunker(
+        embeddings=embedding_model,
+        breakpoint_threshold_type=SEMANTIC_BREAKPOINT_TYPE,
+        breakpoint_threshold_amount=SEMANTIC_BREAKPOINT_THRESHOLD,
     )
     chunks = text_splitter.split_documents(pdf_docs)
 
@@ -683,8 +683,8 @@ def cria_vectordb(collection_name: str = DEFAULT_COLLECTION_NAME) -> None:
     Fluxo:
     1. Valida segurança dos paths e arquivos JSON.
     2. Carrega documentos com JSONLoader usando jq_schema para achatar chave-valor.
-    3. Divide em chunks com RecursiveCharacterTextSplitter.
-    4. Gera embeddings com HuggingFace e persiste no ChromaDB.
+    3. Gera embeddings com HuggingFace e divide em chunks com SemanticChunker (ADR-013).
+    4. Persiste no ChromaDB.
     """
     _sanitizar_nome_colecao(collection_name)
     global vectordb  # inicializado como None no nível do módulo; preenchido aqui
@@ -729,10 +729,17 @@ def cria_vectordb(collection_name: str = DEFAULT_COLLECTION_NAME) -> None:
         logger.warning("Nenhum documento encontrado.")
         return
 
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=CHUNK_SIZE,
-        chunk_overlap=CHUNK_OVERLAP,
-        separators=["\n\n", "\n", ". ", "! ", "? ", " ", ""],
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    embedding_model = HuggingFaceEmbeddings(
+        model_name=EMBEDDING_MODEL,
+        model_kwargs={"device": device},
+        encode_kwargs={"normalize_embeddings": True},
+    )
+
+    text_splitter = SemanticChunker(
+        embeddings=embedding_model,
+        breakpoint_threshold_type=SEMANTIC_BREAKPOINT_TYPE,
+        breakpoint_threshold_amount=SEMANTIC_BREAKPOINT_THRESHOLD,
     )
 
     json_chunks = text_splitter.split_documents(json_docs)
@@ -752,13 +759,6 @@ def cria_vectordb(collection_name: str = DEFAULT_COLLECTION_NAME) -> None:
         _enriquecer_metadados_chunks(group, fh, METADATA_DOC_TYPE_PDF)
 
     chunks = json_chunks + pdf_chunks
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    embedding_model = HuggingFaceEmbeddings(
-        model_name=EMBEDDING_MODEL,
-        model_kwargs={"device": device},
-        encode_kwargs={"normalize_embeddings": True},
-    )
 
     vectordb = Chroma.from_documents(
         chunks,

@@ -222,7 +222,7 @@ class TestCriaVectordb(unittest.TestCase):
 
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     @patch("agenticlog.rag.DirectoryLoader")
     @patch("agenticlog.rag._valida_arquivos_json")
@@ -246,7 +246,7 @@ class TestCriaVectordb(unittest.TestCase):
     @patch("agenticlog.rag._hash_arquivo", return_value="a" * 64)
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     @patch("agenticlog.rag.DirectoryLoader")
     @patch("agenticlog.rag._valida_arquivos_json")
@@ -278,11 +278,11 @@ class TestCriaVectordb(unittest.TestCase):
             config.JQ_SCHEMA_CAMPOS_JSON,
         )
 
-        # separators de ADR-007 passados ao splitter
+        # SemanticChunker inicializado com embedding model e config de ADR-013
         mock_splitter.assert_called_once_with(
-            chunk_size=config.CHUNK_SIZE,
-            chunk_overlap=config.CHUNK_OVERLAP,
-            separators=["\n\n", "\n", ". ", "! ", "? ", " ", ""],
+            embeddings=mock_emb.return_value,
+            breakpoint_threshold_type=config.SEMANTIC_BREAKPOINT_TYPE,
+            breakpoint_threshold_amount=config.SEMANTIC_BREAKPOINT_THRESHOLD,
         )
 
         mock_chroma.from_documents.assert_called_once()
@@ -308,7 +308,7 @@ class TestCriaVectordb(unittest.TestCase):
     @patch("agenticlog.rag._hash_arquivo", return_value="a" * 64)
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     @patch("agenticlog.rag.DirectoryLoader")
     @patch("agenticlog.rag._valida_arquivos_json")
@@ -348,7 +348,7 @@ class TestCriaVectordb(unittest.TestCase):
     @patch("agenticlog.rag._hash_arquivo", return_value="a" * 64)
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.extrair_texto_pdf")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     @patch("agenticlog.rag.DirectoryLoader")
@@ -394,7 +394,7 @@ class TestCriaVectordb(unittest.TestCase):
     @patch("agenticlog.rag._hash_arquivo", return_value="a" * 64)
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.extrair_texto_pdf")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     @patch("agenticlog.rag.DirectoryLoader")
@@ -471,7 +471,7 @@ class TestLogging(unittest.TestCase):
     @patch("agenticlog.rag._hash_arquivo", return_value="a" * 64)
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     @patch("agenticlog.rag.DirectoryLoader")
     @patch("agenticlog.rag._valida_arquivos_json")
@@ -503,7 +503,7 @@ class TestLogging(unittest.TestCase):
     @patch("agenticlog.rag._hash_arquivo", return_value="a" * 64)
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     @patch("agenticlog.rag.DirectoryLoader")
     @patch("agenticlog.rag._valida_arquivos_json")
@@ -556,7 +556,7 @@ class TestLogging(unittest.TestCase):
     @patch("agenticlog.rag._hash_arquivo", return_value="a" * 64)
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     @patch("agenticlog.rag.DirectoryLoader")
     @patch("agenticlog.rag._valida_arquivos_json")
@@ -1154,7 +1154,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
                 patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
-                patch("agenticlog.rag.RecursiveCharacterTextSplitter") as mock_splitter_cls,
+                patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
                 patch("agenticlog.agent.invalidar_vector_db") as mock_invalidar,
@@ -1193,7 +1193,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
                 patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
-                patch("agenticlog.rag.RecursiveCharacterTextSplitter") as mock_splitter_cls,
+                patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
                 patch("agenticlog.agent.invalidar_vector_db"),
@@ -1274,7 +1274,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
                 patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
-                patch("agenticlog.rag.RecursiveCharacterTextSplitter") as mock_splitter_cls,
+                patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
             ):
@@ -1303,7 +1303,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
                 patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
-                patch("agenticlog.rag.RecursiveCharacterTextSplitter") as mock_splitter_cls,
+                patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
                 self.assertLogs("agenticlog.rag", level="WARNING") as log_ctx,
@@ -1329,7 +1329,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
                 patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
-                patch("agenticlog.rag.RecursiveCharacterTextSplitter") as mock_splitter_cls,
+                patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
                 self.assertLogs("agenticlog.rag", level="WARNING") as log_ctx,
@@ -1357,7 +1357,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
                 patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
-                patch("agenticlog.rag.RecursiveCharacterTextSplitter") as mock_splitter_cls,
+                patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
                 patch("agenticlog.agent.invalidar_vector_db"),
@@ -1373,9 +1373,9 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
         self.assertEqual(kwargs["jq_schema"], config.JQ_SCHEMA_CAMPOS_JSON)
 
         mock_splitter_cls.assert_called_once_with(
-            chunk_size=config.CHUNK_SIZE,
-            chunk_overlap=config.CHUNK_OVERLAP,
-            separators=["\n\n", "\n", ". ", "! ", "? ", " ", ""],
+            embeddings=ANY,
+            breakpoint_threshold_type=config.SEMANTIC_BREAKPOINT_TYPE,
+            breakpoint_threshold_amount=config.SEMANTIC_BREAKPOINT_THRESHOLD,
         )
 
     def teste_11_filtra_documents_com_page_content_vazio(self) -> None:
@@ -1389,7 +1389,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
                 patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
-                patch("agenticlog.rag.RecursiveCharacterTextSplitter") as mock_splitter_cls,
+                patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
                 patch("agenticlog.agent.invalidar_vector_db"),
@@ -1410,93 +1410,6 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
         self.assertIn("campo_b: ", contents)  # .strip() == "campo_b:" -- nao vazio, permanece
         self.assertNotIn("", contents)
         self.assertEqual(len(passed_docs), 2)
-
-
-class TestResidualSplitBehavior(unittest.TestCase):
-    """Testes de comportamento real do RecursiveCharacterTextSplitter com separators de ADR-007."""
-
-    def _splitter(self):
-        from langchain.text_splitter import RecursiveCharacterTextSplitter
-        return RecursiveCharacterTextSplitter(
-            chunk_size=config.CHUNK_SIZE,
-            chunk_overlap=config.CHUNK_OVERLAP,
-            separators=["\n\n", "\n", ". ", "! ", "? ", " ", ""],
-        )
-
-    def teste_1_campo_no_limite_exato_nao_e_dividido(self) -> None:
-        """page_content com len == CHUNK_SIZE exato nao e dividido (1 chunk)."""
-        valor = "x" * (config.CHUNK_SIZE - len("CAMPO: "))
-        doc = LCDocument(page_content=f"CAMPO: {valor}", metadata={})
-        self.assertEqual(len(doc.page_content), config.CHUNK_SIZE)
-
-        chunks = self._splitter().split_documents([doc])
-
-        self.assertEqual(len(chunks), 1)
-        self.assertEqual(chunks[0].page_content, doc.page_content)
-
-    def teste_2_campo_acima_do_limite_e_dividido_so_primeiro_mantem_prefixo(self) -> None:
-        """page_content > CHUNK_SIZE e dividido residualmente; so o 1o pedaco mantem 'CAMPO: '."""
-        # Texto com frases completas para exercitar separadores ". ", "! ", "? "
-        frase = "Esta e uma frase de exemplo sobre logistica e cadeia de suprimentos. "
-        valor = frase * 10  # > CHUNK_SIZE (500)
-        doc = LCDocument(page_content=f"CAMPO: {valor}", metadata={})
-        self.assertGreater(len(doc.page_content), config.CHUNK_SIZE)
-
-        chunks = self._splitter().split_documents([doc])
-
-        self.assertGreater(len(chunks), 1)
-        self.assertTrue(chunks[0].page_content.startswith("CAMPO: "))
-        for chunk in chunks[1:]:
-            self.assertFalse(chunk.page_content.startswith("CAMPO: "))
-
-    def teste_3_pagina_pdf_acima_do_limite_prefere_fronteira_de_frase(self) -> None:
-        """Pagina PDF > CHUNK_SIZE: split residual prefere '. '/'! '/'? ' sobre corte bruto."""
-        frase = "Materiais de logistica incluem paletes, embalagens e racks. "
-        texto = frase * 10
-        doc = LCDocument(page_content=f"PÁGINA_1: {texto}", metadata={})
-
-        chunks = self._splitter().split_documents([doc])
-
-        self.assertGreater(len(chunks), 1)
-        self.assertTrue(chunks[0].page_content.startswith("PÁGINA_1: "))
-
-        # Pedacos que nao sao o ultimo devem terminar em fronteira de palavra/frase —
-        # separators sentence-aware (". ", "! ", "? ", " ") garantem que o split nunca
-        # ocorre no meio de uma palavra. Verifica isso checando, no texto original, qual
-        # caractere segue imediatamente o final de cada chunk: deve ser espaco/pontuacao,
-        # nunca uma letra (o que indicaria corte no meio de uma palavra).
-        primeiro_conteudo = chunks[0].page_content[len("PÁGINA_1: "):]
-        offset = len(primeiro_conteudo)
-        for chunk in chunks[:-1]:
-            proximo_char = texto[offset] if offset < len(texto) else ""
-            self.assertFalse(
-                proximo_char.isalpha(),
-                f"Chunk terminou no meio de uma palavra (próximo char {proximo_char!r}): "
-                f"{chunk.page_content!r}",
-            )
-
-    def teste_4_doc1_json_seis_chaves_produz_seis_chunks(self) -> None:
-        """Replica AC1/Independent Test: doc1.json (6 chaves, todas <= CHUNK_SIZE) -> 6 chunks."""
-        import json as json_module
-
-        doc1_path = config.DIR_DOCUMENTS / "doc1.json"
-        if not doc1_path.exists():
-            self.skipTest("data/documents/doc1.json nao encontrado neste ambiente")
-
-        dados = json_module.loads(doc1_path.read_text(encoding="utf-8"))
-        docs = [
-            LCDocument(page_content=f"{chave}: {valor}", metadata={})
-            for chave, valor in dados.items()
-        ]
-        # Confirma premissa: todos os campos <= CHUNK_SIZE (sem split)
-        for d in docs:
-            self.assertLessEqual(len(d.page_content), config.CHUNK_SIZE)
-
-        chunks = self._splitter().split_documents(docs)
-
-        self.assertEqual(len(chunks), 6)
-        for chave, chunk in zip(dados.keys(), chunks, strict=True):
-            self.assertTrue(chunk.page_content.startswith(f"{chave}: "))
 
 
 class TestMetadadosUnificados(unittest.TestCase):
@@ -1595,7 +1508,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
     @patch("agenticlog.rag.tempfile")
     @patch("agenticlog.rag.shutil")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.extrair_texto_pdf")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
@@ -1817,7 +1730,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
     @patch("agenticlog.rag.tempfile")
     @patch("agenticlog.rag.shutil")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.extrair_texto_pdf")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
@@ -1866,7 +1779,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
     @patch("agenticlog.rag.tempfile")
     @patch("agenticlog.rag.shutil")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.extrair_texto_pdf")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
@@ -1918,7 +1831,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
     @patch("agenticlog.rag.tempfile")
     @patch("agenticlog.rag.shutil")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.RecursiveCharacterTextSplitter")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.extrair_texto_pdf")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
