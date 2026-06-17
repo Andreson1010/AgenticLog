@@ -15,9 +15,9 @@ from agenticlog.config import (
 )
 from agenticlog.rag import (
     RAGSecurityError,
-    sanitizar_nome_colecao,
     adicionar_documento_incrementalmente,
     adicionar_pdf_incrementalmente,
+    sanitizar_nome_colecao,
 )
 
 NOVA_COLECAO_SENTINEL = "Nova coleção…"
