@@ -56,8 +56,6 @@ The system exposes two interfaces: a Streamlit UI for interactive use and a Fast
 - Multi-user authentication
 - Fine-tuning the LLM
 - Cloud deployment / hosted vector DB
-- Upsert (replace existing document chunks on re-upload — REC-03, backlog)
-- CLI incremental por padrão (REC-04, backlog)
 
 ## Success Criteria
 

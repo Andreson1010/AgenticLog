@@ -10,6 +10,7 @@ Responsabilidades:
 Execute: python -m agenticlog.rag
 """
 
+import argparse
 import hashlib
 import json
 import logging
@@ -826,29 +827,92 @@ def cria_vectordb(collection_name: str = DEFAULT_COLLECTION_NAME) -> None:
     logger.info("Banco de Dados Vetorial Criado com sucesso!")
 
 
-def _executar_main() -> None:
-    """Ponto de entrada CLI — configura logging e invoca cria_vectordb."""
+def ingerir_incrementalmente(collection_name: str = DEFAULT_COLLECTION_NAME) -> dict[str, int]:
+    """Ingestão incremental de todos os arquivos em data/documents/ sem reconstrução (REC-04).
+
+    Itera sobre cada *.json e *.pdf em DIR_DOCUMENTS, lê o conteúdo binário e delega para
+    adicionar_documento_incrementalmente / adicionar_pdf_incrementalmente. Arquivos já
+    presentes com mesmo hash são pulados (status "duplicado") pelas funções incrementais;
+    arquivos alterados disparam upsert (REC-03). Erro operacional em um arquivo (I/O, PDF
+    corrompido) é registrado e não aborta os demais.
+
+    Fail-fast de segurança: RAGSecurityError (path traversal, chave proibida, tamanho) é
+    propagado para abortar o lote — indica entrada suspeita e deve ser tratado pelo chamador.
+
+    Entrada: collection_name — coleção ChromaDB de destino.
+    Saída: dict com contadores agregados por status final (ex.: {"adicionado": 3, "duplicado": 1}).
+    Lança RAGSecurityError se algum arquivo falhar na validação de segurança.
+    """
+    contadores: dict[str, int] = {}
+    arquivos = sorted(DIR_DOCUMENTS.glob("*.json")) + sorted(DIR_DOCUMENTS.glob("*.pdf"))
+    for path in arquivos:
+        try:
+            conteudo = path.read_bytes()
+            if path.suffix.lower() == ".json":
+                resultado = adicionar_documento_incrementalmente(path.name, conteudo, collection_name)
+            else:
+                resultado = adicionar_pdf_incrementalmente(path.name, conteudo, collection_name)
+        except RAGSecurityError:
+            # Violação de segurança não é "arquivo ruim" — propaga para abortar o lote (fail-fast).
+            logger.error("Violação de segurança ao ingerir %s — abortando lote.", path.name)
+            raise
+        except Exception as e:  # um arquivo ruim não deve abortar o lote
+            logger.error("Falha ao ingerir %s: %s", path.name, e, exc_info=True)
+            contadores["erro"] = contadores.get("erro", 0) + 1
+            continue
+        status = resultado["status"]
+        contadores[status] = contadores.get(status, 0) + 1
+        logger.info(resultado["mensagem"])
+
+    logger.info("Ingestão incremental concluída: %s", contadores)
+    return contadores
+
+
+def _configurar_logging_cli() -> None:
+    """Configura o logger do pacote 'agenticlog' para a execução via CLI."""
     pkg_logger = logging.getLogger("agenticlog")
     pkg_logger.setLevel(LOG_LEVEL)
     # clear existing handlers to avoid duplicates on repeated calls
     pkg_logger.handlers.clear()
 
+    handler = logging.StreamHandler()
     if LOG_FORMAT == "json":
-        handler = logging.StreamHandler()
         handler.setFormatter(_JsonFormatter())
-        pkg_logger.addHandler(handler)
     else:
-        handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
-        pkg_logger.addHandler(handler)
+    pkg_logger.addHandler(handler)
+
+
+def _executar_main(argv: list[str] | None = None) -> None:
+    """Ponto de entrada CLI — configura logging e ingere documentos (REC-04).
+
+    Sem flags  → ingestão incremental de todos os arquivos em data/documents/.
+    --rebuild  → reconstrução completa do banco vetorial (cria_vectordb, comportamento legado).
+    """
+    parser = argparse.ArgumentParser(
+        prog="python -m agenticlog.rag",
+        description="Constrói ou atualiza o banco vetorial ChromaDB do AgenticLog.",
+    )
+    parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Reconstrói o banco vetorial do zero (descarta o índice atual).",
+    )
+    args = parser.parse_args(argv)
+
+    _configurar_logging_cli()
 
     try:
-        cria_vectordb()
+        if args.rebuild:
+            cria_vectordb()
+        else:
+            ingerir_incrementalmente()
     except RAGSecurityError as e:
         logger.error("Erro de segurança: %s", e)
         raise SystemExit(1) from e
     except Exception as e:
-        logger.error("Erro ao criar banco vetorial: %s", e)
+        operacao = "rebuild do banco vetorial" if args.rebuild else "ingestão incremental"
+        logger.error("Erro durante %s: %s", operacao, e)
         raise SystemExit(1) from e
 
 

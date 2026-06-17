@@ -20,7 +20,6 @@ import unittest
 import pytest
 
 import hashlib
-import tempfile
 
 from langchain_core.documents import Document as LCDocument
 
@@ -30,6 +29,7 @@ from agenticlog.rag import (
     _valida_json_sem_chaves_proibidas,
     _valida_arquivos_json,
     cria_vectordb,
+    ingerir_incrementalmente,
     _executar_main,
     _sanitizar_nome_arquivo,
     _sanitizar_nome_colecao,
@@ -613,7 +613,7 @@ class TestLogging(unittest.TestCase):
         with patch.object(rag, "cria_vectordb", side_effect=rag.RAGSecurityError("falha de segurança simulada")):
             with self.assertLogs("agenticlog.rag", level="ERROR") as cm:
                 with self.assertRaises(SystemExit) as ctx:
-                    _executar_main()
+                    _executar_main(["--rebuild"])
 
         self.assertEqual(ctx.exception.code, 1)
         self.assertTrue(
@@ -626,12 +626,12 @@ class TestLogging(unittest.TestCase):
         with patch.object(rag, "cria_vectordb", side_effect=RuntimeError("erro generico simulado")):
             with self.assertLogs("agenticlog.rag", level="ERROR") as cm:
                 with self.assertRaises(SystemExit) as ctx:
-                    _executar_main()
+                    _executar_main(["--rebuild"])
 
         self.assertEqual(ctx.exception.code, 1)
         self.assertTrue(
-            any("Erro ao criar banco vetorial" in msg for msg in cm.output),
-            f"Esperava 'Erro ao criar banco vetorial' nos logs, encontrado: {cm.output}",
+            any("Erro durante rebuild do banco vetorial" in msg for msg in cm.output),
+            f"Esperava 'Erro durante rebuild do banco vetorial' nos logs, encontrado: {cm.output}",
         )
 
 
@@ -722,7 +722,7 @@ class TestStructuredLogConfig:
         # Em modo text, _executar_main configura o logger 'agenticlog' sem formatter JSON.
         # Verifica que _JsonFormatter NÃO está registrado no logger do pacote após a chamada.
         with patch.object(rag, "cria_vectordb", return_value=None):
-            rag._executar_main()
+            rag._executar_main(["--rebuild"])
 
         from agenticlog.config import _JsonFormatter
         pkg_logger = logging.getLogger("agenticlog")
@@ -2064,6 +2064,113 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
         called_chunks = mock_vdb.add_documents.call_args[0][0]
         chunk_indices = [c.metadata["chunk_index"] for c in called_chunks]
         self.assertEqual(chunk_indices, [0, 1, 2])
+
+
+class TestIngerirIncrementalmente(unittest.TestCase):
+    """Testes para ingerir_incrementalmente e o CLI incremental por padrão (REC-04)."""
+
+    def _criar_docs(self, tmp: Path, nomes: list[str]) -> None:
+        for nome in nomes:
+            (tmp / nome).write_bytes(b"conteudo")
+
+    def teste_1_despacha_por_extensao_e_agrega_contadores(self):
+        """Itera *.json e *.pdf, despacha por extensão e agrega contadores por status."""
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            self._criar_docs(tmp, ["a.json", "b.json", "c.pdf"])
+
+            mock_json = MagicMock(side_effect=[
+                {"status": "adicionado", "mensagem": "ok a"},
+                {"status": "duplicado", "mensagem": "dup b"},
+            ])
+            mock_pdf = MagicMock(return_value={"status": "adicionado", "mensagem": "ok c"})
+
+            with patch.object(rag, "DIR_DOCUMENTS", tmp), \
+                 patch.object(rag, "adicionar_documento_incrementalmente", mock_json), \
+                 patch.object(rag, "adicionar_pdf_incrementalmente", mock_pdf):
+                contadores = ingerir_incrementalmente()
+
+        self.assertEqual(contadores, {"adicionado": 2, "duplicado": 1})
+        self.assertEqual(mock_json.call_count, 2)
+        mock_pdf.assert_called_once()
+        # nome do arquivo é passado, não o caminho completo
+        self.assertEqual(mock_pdf.call_args[0][0], "c.pdf")
+
+    def teste_2_erro_operacional_nao_aborta_lote(self):
+        """Erro operacional (não-segurança) em um arquivo é contado como 'erro'; os demais seguem."""
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            self._criar_docs(tmp, ["ok.json", "ruim.json"])
+
+            def _side(nome, conteudo, collection_name):
+                if nome == "ruim.json":
+                    raise RuntimeError("falha operacional simulada")
+                return {"status": "adicionado", "mensagem": "ok"}
+
+            with patch.object(rag, "DIR_DOCUMENTS", tmp), \
+                 patch.object(rag, "adicionar_documento_incrementalmente", side_effect=_side), \
+                 patch.object(rag, "adicionar_pdf_incrementalmente", MagicMock()):
+                contadores = ingerir_incrementalmente()
+
+        self.assertEqual(contadores, {"adicionado": 1, "erro": 1})
+
+    def teste_2b_violacao_seguranca_aborta_lote(self):
+        """RAGSecurityError é propagado (fail-fast), abortando o lote em vez de ser contado."""
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            self._criar_docs(tmp, ["a.json", "malicioso.json"])
+
+            def _side(nome, conteudo, collection_name):
+                if nome == "malicioso.json":
+                    raise rag.RAGSecurityError("chave proibida")
+                return {"status": "adicionado", "mensagem": "ok"}
+
+            with patch.object(rag, "DIR_DOCUMENTS", tmp), \
+                 patch.object(rag, "adicionar_documento_incrementalmente", side_effect=_side), \
+                 patch.object(rag, "adicionar_pdf_incrementalmente", MagicMock()):
+                with self.assertRaises(rag.RAGSecurityError):
+                    ingerir_incrementalmente()
+
+    def teste_2c_propaga_collection_name(self):
+        """collection_name é repassado às funções incrementais (json e pdf)."""
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            self._criar_docs(tmp, ["a.json", "b.pdf"])
+
+            mock_json = MagicMock(return_value={"status": "adicionado", "mensagem": "ok"})
+            mock_pdf = MagicMock(return_value={"status": "adicionado", "mensagem": "ok"})
+
+            with patch.object(rag, "DIR_DOCUMENTS", tmp), \
+                 patch.object(rag, "adicionar_documento_incrementalmente", mock_json), \
+                 patch.object(rag, "adicionar_pdf_incrementalmente", mock_pdf):
+                ingerir_incrementalmente("colecao_custom")
+
+        self.assertEqual(mock_json.call_args[0][2], "colecao_custom")
+        self.assertEqual(mock_pdf.call_args[0][2], "colecao_custom")
+
+    def teste_3_sem_arquivos_retorna_dict_vazio(self):
+        """Diretório sem documentos retorna contadores vazios sem erro."""
+        with tempfile.TemporaryDirectory() as d:
+            with patch.object(rag, "DIR_DOCUMENTS", Path(d)):
+                self.assertEqual(ingerir_incrementalmente(), {})
+
+    def teste_4_cli_sem_flags_chama_ingestao_incremental(self):
+        """_executar_main() sem flags invoca ingerir_incrementalmente, não cria_vectordb (REC-04)."""
+        with patch.object(rag, "ingerir_incrementalmente", return_value={}) as mock_inc, \
+             patch.object(rag, "cria_vectordb") as mock_rebuild:
+            rag._executar_main([])
+
+        mock_inc.assert_called_once()
+        mock_rebuild.assert_not_called()
+
+    def teste_5_cli_rebuild_chama_cria_vectordb(self):
+        """_executar_main(['--rebuild']) invoca cria_vectordb, não a ingestão incremental."""
+        with patch.object(rag, "ingerir_incrementalmente") as mock_inc, \
+             patch.object(rag, "cria_vectordb", return_value=None) as mock_rebuild:
+            rag._executar_main(["--rebuild"])
+
+        mock_rebuild.assert_called_once()
+        mock_inc.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -141,7 +141,7 @@ def test_ac05_json_format_produces_valid_json_lines(monkeypatch, capsys):
          _patch("agenticlog.rag._valida_arquivos_json"), \
          _patch("agenticlog.rag.DirectoryLoader") as mock_loader:
         mock_loader.return_value.load.return_value = []
-        rag._executar_main()
+        rag._executar_main(["--rebuild"])
 
     captured = capsys.readouterr()
     lines = [line for line in captured.err.splitlines() if line.strip()]
@@ -180,7 +180,7 @@ def test_ac06_text_format_does_not_use_json_formatter(monkeypatch):
     )
 
     with patch.object(rag, "cria_vectordb", return_value=None):
-        rag._executar_main()
+        rag._executar_main(["--rebuild"])
 
     pkg_logger = logging.getLogger("agenticlog")
     json_handlers = [
