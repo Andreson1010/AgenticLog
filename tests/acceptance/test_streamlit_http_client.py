@@ -194,6 +194,18 @@ class TestAC02DictAccess(unittest.TestCase):
             msg=f"Nome do arquivo ausente nos rótulos: {expander_labels}",
         )
 
+    def teste_5_resposta_vazia_renderiza_fallback_sem_bolha_invisivel(self) -> None:
+        """Resposta vazia/whitespace renderiza o fallback '(sem resposta)', não uma bolha invisível."""
+        at = _run_query(MagicMock(return_value=_success_mock(ranked_response="   ")))
+
+        self.assertFalse(at.exception, msg=f"Unexpected exception: {at.exception}")
+        markdown_blob = " ".join(m.value for m in at.markdown)
+        self.assertIn(
+            "(sem resposta)",
+            markdown_blob,
+            msg="Resposta vazia deveria mostrar o fallback '(sem resposta)'",
+        )
+
 
 # ---------------------------------------------------------------------------
 # AC-03: HTTP 503 + LMStudio detail → st.error with that message

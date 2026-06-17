@@ -542,7 +542,8 @@ elif st.session_state.ranked_response is not None:
     confidence = float(st.session_state.confidence_score or 0.0)
     next_step = st.session_state.next_step or ""
     rota_label, rota_icon = _ROTAS.get(next_step, ("Desconhecida", "❓"))
-    route_html = f'<span class="cl-badge">{rota_icon} {rota_label}</span>'
+    # rota_label/rota_icon vêm de _ROTAS (constante), mas escapamos por robustez estrutural.
+    route_html = f'<span class="cl-badge">{rota_icon} {html.escape(str(rota_label))}</span>'
 
     # Divide a resposta em parágrafos (quebras em branco do modelo) e escapa HTML,
     # evitando os buracos verticais de pre-wrap e quebra de layout por caractere especial.
@@ -550,6 +551,8 @@ elif st.session_state.ranked_response is not None:
     resposta_html = "".join(
         f'<p class="cl-para">{html.escape(p.strip())}</p>' for p in paragrafos if p.strip()
     )
+    # Fallback para resposta vazia/whitespace — evita bolha invisível (sem texto algum).
+    resposta_html = resposta_html or '<p class="cl-para"><em>(sem resposta)</em></p>'
 
     if st.session_state.last_query:
         st.markdown(
@@ -580,7 +583,8 @@ elif st.session_state.ranked_response is not None:
         for i, doc in enumerate(retrieved):
             meta = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
             source_raw = meta.get("source", "Desconhecida")
-            source = Path(source_raw).name or source_raw  # só o nome do arquivo, sem o caminho
+            # Só o nome do arquivo, sem o caminho; cai para "Desconhecida" se ficar vazio.
+            source = Path(source_raw).name or source_raw or "Desconhecida"
             # Prefixo com índice garante rótulo único (evita IDs de elemento duplicados no loop).
             with st.expander(f"{i + 1}. {source}"):
                 conteudo = html.escape(str(doc.get("page_content", "")))
