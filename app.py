@@ -70,13 +70,11 @@ def _ingerir_documento(uploaded_file: Any, collection_name: str = DEFAULT_COLLEC
         except Exception as e:
             st.error(f"Erro ao ingerir documento. Detalhe: {e}")
             return
-        if resultado["status"] == "adicionado":
+        if resultado["status"] in ("adicionado", "substituido"):
             st.success(f"Documento ingerido com sucesso na coleção '{collection_name}'.")
             st.rerun()
         elif resultado["status"] == "duplicado":
             st.info(resultado["mensagem"])
-        else:
-            st.warning(resultado["mensagem"])
         return
     else:
         try:
@@ -90,13 +88,11 @@ def _ingerir_documento(uploaded_file: Any, collection_name: str = DEFAULT_COLLEC
             return
         status = resultado["status"]
         mensagem = resultado["mensagem"]
-        if status == "adicionado":
+        if status in ("adicionado", "substituido"):
             st.success(mensagem)
             st.rerun()
         elif status == "duplicado":
             st.info(mensagem)
-        elif status == "hash_diferente":
-            st.warning(mensagem)
 
 
 # ---------------------------------------------------------------------------

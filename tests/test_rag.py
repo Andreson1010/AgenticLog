@@ -1227,26 +1227,38 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
         self.assertEqual(result["status"], "duplicado")
         mock_vdb.add_documents.assert_not_called()
 
-    def teste_4_detecta_hash_diferente(self) -> None:
-        """Mesmo nome, hash diferente: retorna status hash_diferente, sem adicionar chunks."""
+    def teste_4_upsert_hash_diferente(self) -> None:
+        """Mesmo nome, hash diferente: upsert — adiciona chunks novos, deleta antigos, retorna 'substituido'."""
         conteudo = b'{"pedido": "123_v2"}'
         hash_antigo = hashlib.sha256(b"versao_anterior").hexdigest()
+        old_ids = ["id_antigo_1", "id_antigo_2"]
         mock_vdb = self._setup_vectordb_mock(
-            ["id1"], [{"file_hash": hash_antigo, "source": "/path/doc.json"}]
+            old_ids,
+            [{"file_hash": hash_antigo, "source": "/path/doc.json"} for _ in old_ids],
         )
 
-        with (
-            patch("agenticlog.rag.Chroma", return_value=mock_vdb),
-            patch("agenticlog.rag._get_rag_embedding_model"),
-            patch("agenticlog.rag.DIR_DOCUMENTS") as mock_dir,
-            patch("agenticlog.rag.DIR_VECTORDB"),
-        ):
-            mock_dir.glob.return_value = []
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
 
-            result = adicionar_documento_incrementalmente("doc.json", conteudo)
+            with (
+                patch("agenticlog.rag.Chroma", return_value=mock_vdb),
+                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
+                patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
+                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
+                patch("agenticlog.agent.invalidar_vector_db"),
+            ):
+                mock_loader_cls.return_value.load.return_value = [
+                    LCDocument(page_content="pedido v2", metadata={})
+                ]
+                mock_splitter_cls.return_value.split_documents.return_value = [self._chunk()]
 
-        self.assertEqual(result["status"], "hash_diferente")
-        mock_vdb.add_documents.assert_not_called()
+                result = adicionar_documento_incrementalmente("doc.json", conteudo)
+
+        self.assertEqual(result["status"], "substituido")
+        mock_vdb.add_documents.assert_called_once()
+        mock_vdb.delete.assert_called_once_with(ids=old_ids)
 
     def teste_5_rejeita_seguranca(self) -> None:
         """Falha de validação de segurança levanta RAGSecurityError antes de tocar Chroma."""
@@ -1600,33 +1612,51 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
         self.assertEqual(result["status"], "duplicado")
         mock_vdb.add_documents.assert_not_called()
 
+    @patch("agenticlog.agent.invalidar_vector_db")
+    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.rag.extrair_texto_pdf")
+    @patch("agenticlog.rag.shutil")
+    @patch("agenticlog.rag.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
-    def teste_3_hash_diferente_mesmo_nome(
+    def teste_3_upsert_hash_diferente_mesmo_nome(
         self,
         mock_chroma: MagicMock,
         mock_emb: MagicMock,
         mock_dir: MagicMock,
+        mock_tempfile: MagicMock,
+        mock_shutil: MagicMock,
+        mock_extrair: MagicMock,
+        mock_splitter_cls: MagicMock,
+        mock_invalidar: MagicMock,
     ) -> None:
-        """Mesmo source, hash diferente → retorna hash_diferente, sem escrita em disco."""
+        """Mesmo source, hash diferente → upsert: chunks antigos deletados, novos adicionados, retorna 'substituido'."""
         conteudo = self._valid_pdf_bytes()
         hash_antigo = hashlib.sha256(b"conteudo anterior").hexdigest()
+        old_ids = ["id1"]
 
         fake_path = MagicMock()
         fake_path.__str__ = MagicMock(return_value="/data/documents/contrato.pdf")
         mock_dir.__truediv__ = MagicMock(return_value=fake_path)
         mock_dir.glob.return_value = []
 
-        mock_vdb = self._setup_vectordb_mock(
-            ["id1"], [{"file_hash": hash_antigo}]
-        )
+        mock_vdb = self._setup_vectordb_mock(old_ids, [{"file_hash": hash_antigo}])
         mock_chroma.return_value = mock_vdb
+
+        fake_tmp = MagicMock()
+        fake_tmp.name = "/tmp/fake_contrato.pdf"
+        mock_tempfile.NamedTemporaryFile.return_value.__enter__ = MagicMock(return_value=fake_tmp)
+        mock_tempfile.NamedTemporaryFile.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_extrair.return_value = {"PÁGINA_1": "Conteúdo de teste"}
+        mock_splitter_cls.return_value.split_documents.return_value = [self._chunk()]
 
         result = adicionar_pdf_incrementalmente("contrato.pdf", conteudo)
 
-        self.assertEqual(result["status"], "hash_diferente")
-        mock_vdb.add_documents.assert_not_called()
+        self.assertEqual(result["status"], "substituido")
+        mock_vdb.add_documents.assert_called_once()
+        mock_vdb.delete.assert_called_once_with(ids=old_ids)
 
     def teste_4_rejeita_extensao_invalida(self) -> None:
         """Extensão .docx → RAGSecurityError antes de qualquer operação em disco."""

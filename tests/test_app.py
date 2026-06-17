@@ -144,12 +144,12 @@ class TestIngerirDocumento(unittest.TestCase):
         mock_st.rerun.assert_not_called()
         mock_st.success.assert_not_called()
 
-    def teste_6_upload_hash_diferente_exibe_warning(self) -> None:
-        """Status hash_diferente → st.warning chamado, st.rerun NÃO chamado."""
+    def teste_6_upload_substituido_exibe_success_e_rerun(self) -> None:
+        """Status substituido → st.success chamado, st.rerun chamado."""
         uploaded_file = _make_uploaded_file()
         resultado = {
-            "status": "hash_diferente",
-            "mensagem": "Arquivo doc.json já existe com conteúdo diferente.",
+            "status": "substituido",
+            "mensagem": "Arquivo doc.json atualizado na base vetorial. 3 chunks substituídos.",
         }
 
         with (
@@ -160,9 +160,9 @@ class TestIngerirDocumento(unittest.TestCase):
             mock_st.spinner.return_value.__exit__ = MagicMock(return_value=False)
             _ingerir_documento(uploaded_file)
 
-        mock_st.warning.assert_called_once_with(resultado["mensagem"])
-        mock_st.rerun.assert_not_called()
-        mock_st.success.assert_not_called()
+        mock_st.success.assert_called_once_with(resultado["mensagem"])
+        mock_st.rerun.assert_called_once()
+        mock_st.warning.assert_not_called()
 
 
 class TestIngerirDocumentoPDF(unittest.TestCase):
@@ -214,12 +214,12 @@ class TestIngerirDocumentoPDF(unittest.TestCase):
         mock_st.rerun.assert_not_called()
         mock_st.success.assert_not_called()
 
-    def test_pdf_hash_diferente_shows_warning(self) -> None:
-        """Status hash_diferente → st.warning chamado, st.rerun NÃO chamado."""
+    def test_pdf_substituido_shows_success(self) -> None:
+        """Status substituido → st.success chamado, st.rerun chamado."""
         uploaded_file = _make_uploaded_file("contrato.pdf", b"%PDF-1.4 fake")
         resultado = {
-            "status": "hash_diferente",
-            "mensagem": "Arquivo contrato.pdf já existe com conteúdo diferente.",
+            "status": "substituido",
+            "mensagem": "Arquivo contrato.pdf atualizado na base vetorial. 5 chunks substituídos.",
         }
 
         with (
@@ -229,9 +229,9 @@ class TestIngerirDocumentoPDF(unittest.TestCase):
             mock_st.spinner.return_value = self._spinner_ctx()
             _ingerir_documento(uploaded_file)
 
-        mock_st.warning.assert_called_once_with(resultado["mensagem"])
-        mock_st.rerun.assert_not_called()
-        mock_st.success.assert_not_called()
+        mock_st.success.assert_called_once()
+        mock_st.rerun.assert_called_once()
+        mock_st.warning.assert_not_called()
 
     def test_pdf_security_error_shows_error(self) -> None:
         """adicionar_pdf_incrementalmente lança RAGSecurityError → st.error, sem st.rerun."""

@@ -366,34 +366,54 @@ class TestAC04DedupUsesFileHash(unittest.TestCase):
 
         self.assertEqual(result["status"], "duplicado")
 
+    @patch("agenticlog.agent.invalidar_vector_db")
+    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.rag.JSONLoader")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
-    def teste_2_hash_diferente_detectado_via_file_hash(
+    def teste_2_hash_diferente_upsert_via_file_hash(
         self,
         mock_dir: MagicMock,
         mock_chroma: MagicMock,
         mock_emb: MagicMock,
+        mock_loader_cls: MagicMock,
+        mock_splitter_cls: MagicMock,
+        mock_invalidar: MagicMock,
     ) -> None:
         import agenticlog.rag as rag_mod
         from pathlib import Path
+        import tempfile as tmpmod
 
         conteudo_novo = b'{"campo": "valor_novo"}'
 
-        mock_dir.__truediv__ = lambda self, other: Path(f"/fake/docs/{other}")
-        mock_dir.glob.return_value = []
+        with tmpmod.TemporaryDirectory() as real_tmp:
+            real_tmp_path = Path(real_tmp)
+            mock_dir.__truediv__ = lambda self, other: real_tmp_path / other
+            mock_dir.glob.return_value = []
 
-        mock_chroma_instance = MagicMock()
-        mock_chroma_instance.get.return_value = {
-            "ids": ["existing-id"],
-            "metadatas": [{"file_hash": "0" * 64, "source": "/fake/docs/doc1.json"}],
-        }
-        mock_chroma.return_value = mock_chroma_instance
+            mock_chroma_instance = MagicMock()
+            mock_chroma_instance.get.return_value = {
+                "ids": ["existing-id"],
+                "metadatas": [{"file_hash": "0" * 64, "source": str(real_tmp_path / "doc1.json")}],
+            }
+            mock_chroma.return_value = mock_chroma_instance
 
-        result = rag_mod.adicionar_documento_incrementalmente("doc1.json", conteudo_novo)
+            mock_loader_cls.return_value.load.return_value = [
+                Document(page_content="valor novo", metadata={})
+            ]
+            mock_splitter_cls.return_value.split_documents.return_value = [
+                Document(page_content="chunk novo", metadata={})
+            ]
 
-        self.assertEqual(result["status"], "hash_diferente")
+            result = rag_mod.adicionar_documento_incrementalmente("doc1.json", conteudo_novo)
 
+        self.assertEqual(result["status"], "substituido")
+        mock_chroma_instance.delete.assert_called_once_with(ids=["existing-id"])
+
+    @patch("agenticlog.agent.invalidar_vector_db")
+    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.rag.JSONLoader")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
@@ -402,30 +422,44 @@ class TestAC04DedupUsesFileHash(unittest.TestCase):
         mock_dir: MagicMock,
         mock_chroma: MagicMock,
         mock_emb: MagicMock,
+        mock_loader_cls: MagicMock,
+        mock_splitter_cls: MagicMock,
+        mock_invalidar: MagicMock,
     ) -> None:
-        """Metadata key must be 'file_hash', not the old 'content_hash'."""
+        """Metadata key must be 'file_hash', not the old 'content_hash' — mismatch causes upsert."""
         import agenticlog.rag as rag_mod
         from pathlib import Path
         import hashlib
+        import tempfile as tmpmod
 
         conteudo = b'{"campo": "valor"}'
         expected_hash = hashlib.sha256(conteudo).hexdigest()
 
-        mock_dir.__truediv__ = lambda self, other: Path(f"/fake/docs/{other}")
-        mock_dir.glob.return_value = []
+        with tmpmod.TemporaryDirectory() as real_tmp:
+            real_tmp_path = Path(real_tmp)
+            mock_dir.__truediv__ = lambda self, other: real_tmp_path / other
+            mock_dir.glob.return_value = []
 
-        # Return metadata with OLD key 'content_hash' — should NOT match
-        mock_chroma_instance = MagicMock()
-        mock_chroma_instance.get.return_value = {
-            "ids": ["existing-id"],
-            "metadatas": [{"content_hash": expected_hash}],  # old key, file_hash missing
-        }
-        mock_chroma.return_value = mock_chroma_instance
+            # Return metadata with OLD key 'content_hash' — should NOT match file_hash
+            mock_chroma_instance = MagicMock()
+            mock_chroma_instance.get.return_value = {
+                "ids": ["existing-id"],
+                "metadatas": [{"content_hash": expected_hash}],  # old key, file_hash missing
+            }
+            mock_chroma.return_value = mock_chroma_instance
 
-        # existing_hash = None (file_hash not found), hash_str = expected_hash → not equal → hash_diferente
-        result = rag_mod.adicionar_documento_incrementalmente("doc1.json", conteudo)
+            mock_loader_cls.return_value.load.return_value = [
+                Document(page_content="valor", metadata={})
+            ]
+            mock_splitter_cls.return_value.split_documents.return_value = [
+                Document(page_content="chunk", metadata={})
+            ]
 
-        self.assertEqual(result["status"], "hash_diferente")
+            # existing_hash = None (file_hash not found) → not equal to expected_hash → upsert
+            result = rag_mod.adicionar_documento_incrementalmente("doc1.json", conteudo)
+
+        # old content_hash key is ignored → treated as stale metadata → upsert, not dedup
+        self.assertEqual(result["status"], "substituido")
 
 
 if __name__ == "__main__":
