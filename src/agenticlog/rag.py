@@ -349,6 +349,7 @@ def adicionar_documento_incrementalmente(
     existing = vectordb_instance.get(
         where={"source": {"$eq": str(planned_path)}}
     )
+    old_ids: list[str] = []
     if existing["ids"]:
         existing_hash = existing["metadatas"][0].get(METADATA_FILE_HASH)
         if existing_hash == hash_str:
@@ -356,13 +357,7 @@ def adicionar_documento_incrementalmente(
                 "status": "duplicado",
                 "mensagem": f"Arquivo {safe_name} já está presente na base vetorial.",
             }
-        return {
-            "status": "hash_diferente",
-            "mensagem": (
-                f"Arquivo {safe_name} já existe com conteúdo diferente. "
-                "Remoção e substituição não são suportadas nesta versão."
-            ),
-        }
+        old_ids = list(existing["ids"])
 
     saved_path: Path | None = None
     tmp_path: Path | None = None
@@ -418,16 +413,28 @@ def adicionar_documento_incrementalmente(
         saved_path.unlink(missing_ok=True)
         raise ingestion_exc
 
+    if old_ids:
+        try:
+            vectordb_instance.delete(ids=old_ids)
+        except Exception as del_exc:
+            logger.warning(
+                "Falha ao deletar chunks antigos de %s (IDs: %s). Erro: %s",
+                safe_name, old_ids, del_exc,
+            )
+
     try:
         from agenticlog.agent import invalidar_vector_db  # lazy — evita importação pesada no CLI
         invalidar_vector_db()
     except ImportError as e:
         logger.warning("Não foi possível invalidar o singleton do agente: %s", e)
 
-    return {
-        "status": "adicionado",
-        "mensagem": f"Arquivo {safe_name} adicionado com sucesso. {len(chunks)} chunks inseridos.",
-    }
+    status_final = "substituido" if old_ids else "adicionado"
+    mensagem_final = (
+        f"Arquivo {safe_name} atualizado na base vetorial. {len(chunks)} chunks substituídos."
+        if old_ids
+        else f"Arquivo {safe_name} adicionado com sucesso. {len(chunks)} chunks inseridos."
+    )
+    return {"status": status_final, "mensagem": mensagem_final}
 
 
 def adicionar_pdf_incrementalmente(
@@ -443,8 +450,8 @@ def adicionar_pdf_incrementalmente(
       collection_name — nome da coleção ChromaDB de destino.
     Saída: dict com chaves "status" e "mensagem":
       {"status": "adicionado", "mensagem": "Arquivo <nome> adicionado com sucesso. N chunks inseridos."}
+      {"status": "substituido", "mensagem": "Arquivo <nome> atualizado na base vetorial. N chunks substituídos."}
       {"status": "duplicado", "mensagem": "Arquivo <nome> já está presente na base vetorial."}
-      {"status": "hash_diferente", "mensagem": "Arquivo <nome> já existe com conteúdo diferente. ..."}
     Lança RAGSecurityError em qualquer falha de validação de segurança.
     Lança Exception se a ingestão falhar após rollback.
     """
@@ -484,6 +491,7 @@ def adicionar_pdf_incrementalmente(
     existing = vectordb_instance.get(
         where={"source": {"$eq": str(planned_path)}}
     )
+    old_ids: list[str] = []
     if existing["ids"]:
         existing_hash = existing["metadatas"][0].get(METADATA_FILE_HASH)
         if existing_hash == hash_str:
@@ -491,13 +499,7 @@ def adicionar_pdf_incrementalmente(
                 "status": "duplicado",
                 "mensagem": f"Arquivo {safe_name} já está presente na base vetorial.",
             }
-        return {
-            "status": "hash_diferente",
-            "mensagem": (
-                f"Arquivo {safe_name} já existe com conteúdo diferente. "
-                "Remoção e substituição não são suportadas nesta versão."
-            ),
-        }
+        old_ids = list(existing["ids"])
 
     saved_path: Path | None = None
     tmp_path: Path | None = None
@@ -559,16 +561,28 @@ def adicionar_pdf_incrementalmente(
         saved_path.unlink(missing_ok=True)
         raise ingestion_exc
 
+    if old_ids:
+        try:
+            vectordb_instance.delete(ids=old_ids)
+        except Exception as del_exc:
+            logger.warning(
+                "Falha ao deletar chunks antigos de %s (IDs: %s). Erro: %s",
+                safe_name, old_ids, del_exc,
+            )
+
     try:
         from agenticlog.agent import invalidar_vector_db  # lazy — evita importação pesada no CLI
         invalidar_vector_db()
     except ImportError as e:
         logger.warning("Não foi possível invalidar o singleton: %s", e)
 
-    return {
-        "status": "adicionado",
-        "mensagem": f"Arquivo {safe_name} adicionado com sucesso. {len(chunks)} chunks inseridos.",
-    }
+    status_final = "substituido" if old_ids else "adicionado"
+    mensagem_final = (
+        f"Arquivo {safe_name} atualizado na base vetorial. {len(chunks)} chunks substituídos."
+        if old_ids
+        else f"Arquivo {safe_name} adicionado com sucesso. {len(chunks)} chunks inseridos."
+    )
+    return {"status": status_final, "mensagem": mensagem_final}
 
 
 def extrair_texto_pdf(path: Path) -> dict[str, str]:

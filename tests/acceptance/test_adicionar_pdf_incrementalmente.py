@@ -403,65 +403,107 @@ class TestAC2DedupMesmoHash:
 # AC-3: Hash diferente, mesmo nome
 # ---------------------------------------------------------------------------
 
-class TestAC3HashDiferente:
+class TestAC3Upsert:
     """
     AC-3: GIVEN a PDF with the same filename but different content already in ChromaDB
-    WHEN called THEN SHALL return {"status": "hash_diferente", ...} without modifying storage.
+    WHEN called THEN SHALL perform upsert: add new chunks, delete old chunks,
+    return {"status": "substituido", ...}.
     """
 
+    @patch("agenticlog.agent.invalidar_vector_db")
+    @patch("agenticlog.rag.extrair_texto_pdf")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.shutil")
     @patch("agenticlog.rag.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
-    def teste_7_hash_diferente_retorna_sem_escrita(
+    def teste_7_upsert_substitui_chunks_antigos(
         self,
         mock_dir: MagicMock,
         mock_tempfile: MagicMock,
         mock_shutil: MagicMock,
         mock_chroma_cls: MagicMock,
         mock_embeddings_cls: MagicMock,
+        mock_splitter_cls: MagicMock,
+        mock_extrair: MagicMock,
+        mock_invalidar: MagicMock,
     ) -> None:
-        """AC-3: mesmo nome, hash diferente → status hash_diferente, sem escrita em disco."""
-        # The stored hash is different from the hash of _VALID_PDF_BYTES
+        """AC-3: mesmo nome, hash diferente → upsert: novos chunks adicionados, antigos deletados, status 'substituido'."""
         stored_different_hash = "b" * 64
+        old_ids = ["old_id_1", "old_id_2"]
 
         mock_dir.__truediv__ = lambda self_inner, other: Path("/fake/documents") / other
         mock_dir.glob.return_value = []
 
-        mock_vdb = _make_mock_vectordb(existing_ids=["id1"], existing_hash=stored_different_hash)
+        mock_vdb = MagicMock()
+        mock_vdb.get.return_value = {
+            "ids": old_ids,
+            "metadatas": [{"file_hash": stored_different_hash}] * 2,
+        }
         mock_chroma_cls.return_value = mock_vdb
+
+        fake_tmp = MagicMock()
+        fake_tmp.name = "/tmp/fake_pdf.pdf"
+        mock_tempfile.NamedTemporaryFile.return_value.__enter__ = MagicMock(return_value=fake_tmp)
+        mock_tempfile.NamedTemporaryFile.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_extrair.return_value = {"PÁGINA_1": "Conteúdo da página 1"}
+        mock_splitter_cls.return_value.split_documents.return_value = [
+            MagicMock(page_content="chunk v2", metadata={})
+        ]
 
         resultado = rag.adicionar_pdf_incrementalmente(
             _VALID_FILENAME, _VALID_PDF_BYTES, DEFAULT_COLLECTION_NAME
         )
 
-        assert resultado["status"] == "hash_diferente"
-        mock_tempfile.NamedTemporaryFile.assert_not_called()
-        mock_shutil.move.assert_not_called()
-        mock_vdb.add_documents.assert_not_called()
+        assert resultado["status"] == "substituido"
+        mock_vdb.add_documents.assert_called_once()
+        mock_vdb.delete.assert_called_once_with(ids=old_ids)
+        mock_tempfile.NamedTemporaryFile.assert_called_once()
+        mock_shutil.move.assert_called_once()
 
+    @patch("agenticlog.agent.invalidar_vector_db")
+    @patch("agenticlog.rag.extrair_texto_pdf")
+    @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
+    @patch("agenticlog.rag.shutil")
+    @patch("agenticlog.rag.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
-    def teste_8_hash_diferente_mensagem_contem_nome(
+    def teste_8_upsert_mensagem_contem_nome(
         self,
         mock_dir: MagicMock,
+        mock_tempfile: MagicMock,
+        mock_shutil: MagicMock,
         mock_chroma_cls: MagicMock,
         mock_embeddings_cls: MagicMock,
+        mock_splitter_cls: MagicMock,
+        mock_extrair: MagicMock,
+        mock_invalidar: MagicMock,
     ) -> None:
-        """AC-3: mensagem de hash_diferente deve mencionar o nome do arquivo."""
+        """AC-3: mensagem de upsert deve mencionar o nome do arquivo."""
         mock_dir.__truediv__ = lambda self_inner, other: Path("/fake/documents") / other
-        mock_dir.glob.return_value = []  # Empty to pass file count guard
+        mock_dir.glob.return_value = []
 
         mock_vdb = _make_mock_vectordb(existing_ids=["id1"], existing_hash="c" * 64)
         mock_chroma_cls.return_value = mock_vdb
 
+        fake_tmp = MagicMock()
+        fake_tmp.name = "/tmp/fake_pdf2.pdf"
+        mock_tempfile.NamedTemporaryFile.return_value.__enter__ = MagicMock(return_value=fake_tmp)
+        mock_tempfile.NamedTemporaryFile.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_extrair.return_value = {"PÁGINA_1": "Conteúdo"}
+        mock_splitter_cls.return_value.split_documents.return_value = [
+            MagicMock(page_content="chunk", metadata={})
+        ]
+
         resultado = rag.adicionar_pdf_incrementalmente(
             _VALID_FILENAME, _VALID_PDF_BYTES, DEFAULT_COLLECTION_NAME
         )
 
-        assert resultado["status"] == "hash_diferente"
+        assert resultado["status"] == "substituido"
         assert "relatorio.pdf" in resultado["mensagem"]
 
 
@@ -827,15 +869,15 @@ class TestAC6AppIntegration:
 
     @patch("app.st")
     @patch("app.adicionar_pdf_incrementalmente")
-    def teste_19_hash_diferente_mostra_warning_sem_rerun(
+    def teste_19_substituido_mostra_success_com_rerun(
         self,
         mock_adicionar: MagicMock,
         mock_st: MagicMock,
     ) -> None:
-        """AC-6: status hash_diferente → st.warning chamado, st.rerun NÃO chamado."""
+        """AC-6: status substituido → st.success chamado, st.rerun chamado."""
         mock_adicionar.return_value = {
-            "status": "hash_diferente",
-            "mensagem": "Arquivo relatorio.pdf já existe com conteúdo diferente.",
+            "status": "substituido",
+            "mensagem": "Arquivo relatorio.pdf atualizado na base vetorial. 5 chunks substituídos.",
         }
         mock_st.spinner.return_value = _make_spinner_ctx()
 
@@ -844,9 +886,9 @@ class TestAC6AppIntegration:
         from app import _ingerir_documento
         _ingerir_documento(uploaded_file)
 
-        mock_st.warning.assert_called_once()
-        mock_st.rerun.assert_not_called()
-        mock_st.success.assert_not_called()
+        mock_st.success.assert_called_once()
+        mock_st.rerun.assert_called_once()
+        mock_st.warning.assert_not_called()
 
     @patch("app.st")
     @patch("app.adicionar_pdf_incrementalmente")
