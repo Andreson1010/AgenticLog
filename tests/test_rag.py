@@ -20,7 +20,6 @@ import unittest
 import pytest
 
 import hashlib
-import tempfile
 
 from langchain_core.documents import Document as LCDocument
 
@@ -631,8 +630,8 @@ class TestLogging(unittest.TestCase):
 
         self.assertEqual(ctx.exception.code, 1)
         self.assertTrue(
-            any("Erro ao criar banco vetorial" in msg for msg in cm.output),
-            f"Esperava 'Erro ao criar banco vetorial' nos logs, encontrado: {cm.output}",
+            any("Erro durante rebuild do banco vetorial" in msg for msg in cm.output),
+            f"Esperava 'Erro durante rebuild do banco vetorial' nos logs, encontrado: {cm.output}",
         )
 
 
@@ -2097,15 +2096,15 @@ class TestIngerirIncrementalmente(unittest.TestCase):
         # nome do arquivo é passado, não o caminho completo
         self.assertEqual(mock_pdf.call_args[0][0], "c.pdf")
 
-    def teste_2_arquivo_com_erro_nao_aborta_lote(self):
-        """Falha em um arquivo é contada como 'erro' e os demais seguem sendo processados."""
+    def teste_2_erro_operacional_nao_aborta_lote(self):
+        """Erro operacional (não-segurança) em um arquivo é contado como 'erro'; os demais seguem."""
         with tempfile.TemporaryDirectory() as d:
             tmp = Path(d)
             self._criar_docs(tmp, ["ok.json", "ruim.json"])
 
             def _side(nome, conteudo, collection_name):
                 if nome == "ruim.json":
-                    raise rag.RAGSecurityError("falha simulada")
+                    raise RuntimeError("falha operacional simulada")
                 return {"status": "adicionado", "mensagem": "ok"}
 
             with patch.object(rag, "DIR_DOCUMENTS", tmp), \
@@ -2114,6 +2113,40 @@ class TestIngerirIncrementalmente(unittest.TestCase):
                 contadores = ingerir_incrementalmente()
 
         self.assertEqual(contadores, {"adicionado": 1, "erro": 1})
+
+    def teste_2b_violacao_seguranca_aborta_lote(self):
+        """RAGSecurityError é propagado (fail-fast), abortando o lote em vez de ser contado."""
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            self._criar_docs(tmp, ["a.json", "malicioso.json"])
+
+            def _side(nome, conteudo, collection_name):
+                if nome == "malicioso.json":
+                    raise rag.RAGSecurityError("chave proibida")
+                return {"status": "adicionado", "mensagem": "ok"}
+
+            with patch.object(rag, "DIR_DOCUMENTS", tmp), \
+                 patch.object(rag, "adicionar_documento_incrementalmente", side_effect=_side), \
+                 patch.object(rag, "adicionar_pdf_incrementalmente", MagicMock()):
+                with self.assertRaises(rag.RAGSecurityError):
+                    ingerir_incrementalmente()
+
+    def teste_2c_propaga_collection_name(self):
+        """collection_name é repassado às funções incrementais (json e pdf)."""
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            self._criar_docs(tmp, ["a.json", "b.pdf"])
+
+            mock_json = MagicMock(return_value={"status": "adicionado", "mensagem": "ok"})
+            mock_pdf = MagicMock(return_value={"status": "adicionado", "mensagem": "ok"})
+
+            with patch.object(rag, "DIR_DOCUMENTS", tmp), \
+                 patch.object(rag, "adicionar_documento_incrementalmente", mock_json), \
+                 patch.object(rag, "adicionar_pdf_incrementalmente", mock_pdf):
+                ingerir_incrementalmente("colecao_custom")
+
+        self.assertEqual(mock_json.call_args[0][2], "colecao_custom")
+        self.assertEqual(mock_pdf.call_args[0][2], "colecao_custom")
 
     def teste_3_sem_arquivos_retorna_dict_vazio(self):
         """Diretório sem documentos retorna contadores vazios sem erro."""

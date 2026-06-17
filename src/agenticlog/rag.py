@@ -833,11 +833,15 @@ def ingerir_incrementalmente(collection_name: str = DEFAULT_COLLECTION_NAME) -> 
     Itera sobre cada *.json e *.pdf em DIR_DOCUMENTS, lê o conteúdo binário e delega para
     adicionar_documento_incrementalmente / adicionar_pdf_incrementalmente. Arquivos já
     presentes com mesmo hash são pulados (status "duplicado") pelas funções incrementais;
-    arquivos alterados disparam upsert (REC-03). Falha em um arquivo é registrada e não
-    aborta os demais.
+    arquivos alterados disparam upsert (REC-03). Erro operacional em um arquivo (I/O, PDF
+    corrompido) é registrado e não aborta os demais.
+
+    Fail-fast de segurança: RAGSecurityError (path traversal, chave proibida, tamanho) é
+    propagado para abortar o lote — indica entrada suspeita e deve ser tratado pelo chamador.
 
     Entrada: collection_name — coleção ChromaDB de destino.
     Saída: dict com contadores agregados por status final (ex.: {"adicionado": 3, "duplicado": 1}).
+    Lança RAGSecurityError se algum arquivo falhar na validação de segurança.
     """
     contadores: dict[str, int] = {}
     arquivos = sorted(DIR_DOCUMENTS.glob("*.json")) + sorted(DIR_DOCUMENTS.glob("*.pdf"))
@@ -848,8 +852,12 @@ def ingerir_incrementalmente(collection_name: str = DEFAULT_COLLECTION_NAME) -> 
                 resultado = adicionar_documento_incrementalmente(path.name, conteudo, collection_name)
             else:
                 resultado = adicionar_pdf_incrementalmente(path.name, conteudo, collection_name)
+        except RAGSecurityError:
+            # Violação de segurança não é "arquivo ruim" — propaga para abortar o lote (fail-fast).
+            logger.error("Violação de segurança ao ingerir %s — abortando lote.", path.name)
+            raise
         except Exception as e:  # um arquivo ruim não deve abortar o lote
-            logger.error("Falha ao ingerir %s: %s", path.name, e)
+            logger.error("Falha ao ingerir %s: %s", path.name, e, exc_info=True)
             contadores["erro"] = contadores.get("erro", 0) + 1
             continue
         status = resultado["status"]
@@ -903,7 +911,8 @@ def _executar_main(argv: list[str] | None = None) -> None:
         logger.error("Erro de segurança: %s", e)
         raise SystemExit(1) from e
     except Exception as e:
-        logger.error("Erro ao criar banco vetorial: %s", e)
+        operacao = "rebuild do banco vetorial" if args.rebuild else "ingestão incremental"
+        logger.error("Erro durante %s: %s", operacao, e)
         raise SystemExit(1) from e
 
 
