@@ -11,7 +11,7 @@ import logging
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock, ANY
+from unittest.mock import patch, MagicMock, ANY, call
 
 _root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_root / "src"))
@@ -1423,6 +1423,84 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
         self.assertNotIn("", contents)
         self.assertEqual(len(passed_docs), 2)
 
+    def teste_12_upsert_falha_no_add_restaura_arquivo_antigo(self) -> None:
+        """Upsert + falha no add_documents: conteúdo antigo restaurado no disco (consistente
+        com chunks antigos ainda no Chroma); exceção re-levantada; chunks antigos NÃO deletados."""
+        conteudo_novo = b'{"pedido": "123_v2"}'
+        hash_antigo = hashlib.sha256(b"versao_anterior").hexdigest()
+        old_ids = ["id_antigo_1"]
+        mock_vdb = self._setup_vectordb_mock(
+            old_ids, [{"file_hash": hash_antigo, "source": "/path/doc.json"}]
+        )
+        mock_vdb.add_documents.side_effect = RuntimeError("embed fail")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            conteudo_antigo = b'{"pedido": "123_v1"}'
+            (tmp_path / "doc.json").write_bytes(conteudo_antigo)
+
+            with (
+                patch("agenticlog.rag.Chroma", return_value=mock_vdb),
+                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
+                patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
+                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
+            ):
+                mock_loader_cls.return_value.load.return_value = [LCDocument(page_content="d", metadata={})]
+                mock_splitter_cls.return_value.split_documents.return_value = [self._chunk()]
+
+                with self.assertRaises(RuntimeError) as exc_ctx:
+                    adicionar_documento_incrementalmente("doc.json", conteudo_novo)
+
+                # disco restaurado para o conteúdo antigo, não deletado nem sobrescrito
+                self.assertTrue((tmp_path / "doc.json").exists())
+                self.assertEqual((tmp_path / "doc.json").read_bytes(), conteudo_antigo)
+                # nenhum .bak órfão deixado
+                self.assertEqual(list(tmp_path.glob("*.bak")), [])
+
+        self.assertEqual(str(exc_ctx.exception), "embed fail")
+        # chunks antigos preservados (delete só chamado no rollback dos chunks novos)
+        mock_vdb.delete.assert_called_once()
+        self.assertNotIn(call(ids=old_ids), mock_vdb.delete.call_args_list)
+
+    def teste_13_upsert_falha_no_split_restaura_arquivo_antigo(self) -> None:
+        """Upsert + falha no split_documents (chunking/embeddings, antes do add): arquivo antigo
+        restaurado; exceção propagada; add_documents NÃO chamado; chunks antigos NÃO deletados."""
+        conteudo_novo = b'{"pedido": "123_v2"}'
+        hash_antigo = hashlib.sha256(b"versao_anterior").hexdigest()
+        old_ids = ["id_antigo_1"]
+        mock_vdb = self._setup_vectordb_mock(
+            old_ids, [{"file_hash": hash_antigo, "source": "/path/doc.json"}]
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            conteudo_antigo = b'{"pedido": "123_v1"}'
+            (tmp_path / "doc.json").write_bytes(conteudo_antigo)
+
+            with (
+                patch("agenticlog.rag.Chroma", return_value=mock_vdb),
+                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
+                patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
+                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
+            ):
+                mock_loader_cls.return_value.load.return_value = [LCDocument(page_content="d", metadata={})]
+                mock_splitter_cls.return_value.split_documents.side_effect = RuntimeError("embed fail")
+
+                with self.assertRaises(RuntimeError) as exc_ctx:
+                    adicionar_documento_incrementalmente("doc.json", conteudo_novo)
+
+                self.assertTrue((tmp_path / "doc.json").exists())
+                self.assertEqual((tmp_path / "doc.json").read_bytes(), conteudo_antigo)
+                self.assertEqual(list(tmp_path.glob("*.bak")), [])
+
+        self.assertEqual(str(exc_ctx.exception), "embed fail")
+        mock_vdb.add_documents.assert_not_called()
+        mock_vdb.delete.assert_not_called()
+
 
 class TestMetadadosUnificados(unittest.TestCase):
     """Testes unitários para _enriquecer_metadados_chunks e campos unificados (REC-01)."""
@@ -1657,6 +1735,77 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
         self.assertEqual(result["status"], "substituido")
         mock_vdb.add_documents.assert_called_once()
         mock_vdb.delete.assert_called_once_with(ids=old_ids)
+
+    def teste_3b_upsert_falha_no_add_restaura_pdf_antigo(self) -> None:
+        """Upsert + falha no add_documents: PDF antigo restaurado no disco (consistente com
+        chunks antigos ainda no Chroma); exceção re-levantada; chunks antigos NÃO deletados."""
+        conteudo_novo = b"%PDF-1.4 versao nova"
+        hash_antigo = hashlib.sha256(b"%PDF-1.4 versao antiga").hexdigest()
+        old_ids = ["id1"]
+        mock_vdb = self._setup_vectordb_mock(old_ids, [{"file_hash": hash_antigo}])
+        mock_vdb.add_documents.side_effect = RuntimeError("embed fail")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            conteudo_antigo = b"%PDF-1.4 versao antiga"
+            (tmp_path / "contrato.pdf").write_bytes(conteudo_antigo)
+
+            with (
+                patch("agenticlog.rag.Chroma", return_value=mock_vdb),
+                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.rag.extrair_texto_pdf") as mock_extrair,
+                patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
+                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
+            ):
+                mock_extrair.return_value = {"PÁGINA_1": "texto"}
+                mock_splitter_cls.return_value.split_documents.return_value = [self._chunk()]
+
+                with self.assertRaises(RuntimeError) as exc_ctx:
+                    adicionar_pdf_incrementalmente("contrato.pdf", conteudo_novo)
+
+                self.assertTrue((tmp_path / "contrato.pdf").exists())
+                self.assertEqual((tmp_path / "contrato.pdf").read_bytes(), conteudo_antigo)
+                self.assertEqual(list(tmp_path.glob("*.bak")), [])
+
+        self.assertEqual(str(exc_ctx.exception), "embed fail")
+        mock_vdb.delete.assert_called_once()
+        self.assertNotIn(call(ids=old_ids), mock_vdb.delete.call_args_list)
+
+    def teste_3c_upsert_falha_no_split_restaura_pdf_antigo(self) -> None:
+        """Upsert + falha no split_documents (antes do add): PDF antigo restaurado; exceção
+        propagada; add_documents NÃO chamado; chunks antigos NÃO deletados."""
+        conteudo_novo = b"%PDF-1.4 versao nova"
+        hash_antigo = hashlib.sha256(b"%PDF-1.4 versao antiga").hexdigest()
+        old_ids = ["id1"]
+        mock_vdb = self._setup_vectordb_mock(old_ids, [{"file_hash": hash_antigo}])
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            conteudo_antigo = b"%PDF-1.4 versao antiga"
+            (tmp_path / "contrato.pdf").write_bytes(conteudo_antigo)
+
+            with (
+                patch("agenticlog.rag.Chroma", return_value=mock_vdb),
+                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.rag.extrair_texto_pdf") as mock_extrair,
+                patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
+                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
+            ):
+                mock_extrair.return_value = {"PÁGINA_1": "texto"}
+                mock_splitter_cls.return_value.split_documents.side_effect = RuntimeError("embed fail")
+
+                with self.assertRaises(RuntimeError) as exc_ctx:
+                    adicionar_pdf_incrementalmente("contrato.pdf", conteudo_novo)
+
+                self.assertTrue((tmp_path / "contrato.pdf").exists())
+                self.assertEqual((tmp_path / "contrato.pdf").read_bytes(), conteudo_antigo)
+                self.assertEqual(list(tmp_path.glob("*.bak")), [])
+
+        self.assertEqual(str(exc_ctx.exception), "embed fail")
+        mock_vdb.add_documents.assert_not_called()
+        mock_vdb.delete.assert_not_called()
 
     def teste_4_rejeita_extensao_invalida(self) -> None:
         """Extensão .docx → RAGSecurityError antes de qualquer operação em disco."""

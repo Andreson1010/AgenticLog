@@ -298,6 +298,28 @@ def _enriquecer_metadados_chunks(
             chunk.metadata[METADATA_PAGE] = page
 
 
+def _backup_arquivo(path: Path) -> Path:
+    """Cria cópia temporária de ``path`` para restauração em caso de falha de upsert."""
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".bak") as bak:
+        backup_path = Path(bak.name)
+    shutil.copy2(path, backup_path)
+    return backup_path
+
+
+def _reverter_disco(saved_path: Path, backup_path: Path | None) -> None:
+    """Reverte o estado do disco após falha de ingestão.
+
+    Upsert (``backup_path`` não-nulo): restaura o conteúdo antigo, mantendo o disco
+    consistente com os chunks antigos que permanecem no Chroma — evita perda do
+    documento original.
+    Arquivo novo (``backup_path`` nulo): remove o arquivo recém-gravado.
+    """
+    if backup_path is not None:
+        shutil.move(str(backup_path), saved_path)
+    else:
+        saved_path.unlink(missing_ok=True)
+
+
 def adicionar_documento_incrementalmente(
     filename: str,
     conteudo: bytes,
@@ -361,11 +383,14 @@ def adicionar_documento_incrementalmente(
 
     saved_path: Path | None = None
     tmp_path: Path | None = None
+    backup_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
             tmp.write(conteudo)
             tmp_path = Path(tmp.name)
         _valida_json_sem_chaves_proibidas(tmp_path)
+        if old_ids and planned_path.exists():
+            backup_path = _backup_arquivo(planned_path)
         shutil.move(str(tmp_path), planned_path)
         saved_path = planned_path
         tmp_path = None
@@ -373,54 +398,61 @@ def adicionar_documento_incrementalmente(
         if tmp_path is not None:
             tmp_path.unlink(missing_ok=True)
 
-    loader = JSONLoader(str(saved_path), jq_schema=JQ_SCHEMA_CAMPOS_JSON)
-    docs = loader.load()
-    # Descarta Documents com page_content vazio (chave JSON com valor "", [] ou {}) — ADR-011
-    docs = [d for d in docs if d.page_content.strip()]
-    text_splitter = SemanticChunker(
-        embeddings=embedding_model,
-        breakpoint_threshold_type=SEMANTIC_BREAKPOINT_TYPE,
-        breakpoint_threshold_amount=SEMANTIC_BREAKPOINT_THRESHOLD,
-    )
-    chunks = text_splitter.split_documents(docs)
-
-    if not chunks:
-        logger.warning("Arquivo %s produziu zero chunks após divisão.", safe_name)
-        saved_path.unlink(missing_ok=True)
-        return {
-            "status": "adicionado",
-            "mensagem": f"Arquivo {safe_name} não pôde ser indexado: 0 chunks gerados.",
-        }
-
-    _enriquecer_metadados_chunks(
-        chunks, hash_str, METADATA_DOC_TYPE_JSON, METADATA_PAGE_JSON_SENTINEL
-    )
-
-    chunk_ids = [uuid.uuid4().hex for _ in chunks]
-
+    # Tudo após shutil.move (carga, chunking c/ embeddings, ingestão) é guardado:
+    # qualquer falha reverte o disco para o estado pré-operação (upsert atômico).
     try:
-        vectordb_instance.add_documents(chunks, ids=chunk_ids)
-    except Exception as ingestion_exc:
-        try:
-            if chunk_ids:
-                vectordb_instance.delete(ids=chunk_ids)
-        except Exception as rollback_exc:
-            logger.warning(
-                "Rollback falhou após erro de ingestão. IDs órfãos: %s. Erro de rollback: %s",
-                chunk_ids,
-                rollback_exc,
-            )
-        saved_path.unlink(missing_ok=True)
-        raise ingestion_exc
+        loader = JSONLoader(str(saved_path), jq_schema=JQ_SCHEMA_CAMPOS_JSON)
+        docs = loader.load()
+        # Descarta Documents com page_content vazio (chave JSON com valor "", [] ou {}) — ADR-011
+        docs = [d for d in docs if d.page_content.strip()]
+        text_splitter = SemanticChunker(
+            embeddings=embedding_model,
+            breakpoint_threshold_type=SEMANTIC_BREAKPOINT_TYPE,
+            breakpoint_threshold_amount=SEMANTIC_BREAKPOINT_THRESHOLD,
+        )
+        chunks = text_splitter.split_documents(docs)
 
-    if old_ids:
+        if not chunks:
+            logger.warning("Arquivo %s produziu zero chunks após divisão.", safe_name)
+            _reverter_disco(saved_path, backup_path)
+            return {
+                "status": "adicionado",
+                "mensagem": f"Arquivo {safe_name} não pôde ser indexado: 0 chunks gerados.",
+            }
+
+        _enriquecer_metadados_chunks(
+            chunks, hash_str, METADATA_DOC_TYPE_JSON, METADATA_PAGE_JSON_SENTINEL
+        )
+
+        chunk_ids = [uuid.uuid4().hex for _ in chunks]
+
         try:
-            vectordb_instance.delete(ids=old_ids)
-        except Exception as del_exc:
-            logger.warning(
-                "Falha ao deletar chunks antigos de %s (IDs: %s). Erro: %s",
-                safe_name, old_ids, del_exc,
-            )
+            vectordb_instance.add_documents(chunks, ids=chunk_ids)
+        except Exception:
+            try:
+                vectordb_instance.delete(ids=chunk_ids)
+            except Exception as rollback_exc:
+                logger.warning(
+                    "Rollback falhou após erro de ingestão. IDs órfãos: %s. Erro de rollback: %s",
+                    chunk_ids,
+                    rollback_exc,
+                )
+            raise
+
+        if old_ids:
+            try:
+                vectordb_instance.delete(ids=old_ids)
+            except Exception as del_exc:
+                logger.warning(
+                    "Falha ao deletar chunks antigos de %s (IDs: %s). Erro: %s",
+                    safe_name, old_ids, del_exc,
+                )
+    except Exception:
+        _reverter_disco(saved_path, backup_path)
+        raise
+    finally:
+        if backup_path is not None and backup_path.exists():
+            backup_path.unlink(missing_ok=True)
 
     try:
         from agenticlog.agent import invalidar_vector_db  # lazy — evita importação pesada no CLI
@@ -503,12 +535,15 @@ def adicionar_pdf_incrementalmente(
 
     saved_path: Path | None = None
     tmp_path: Path | None = None
+    backup_path: Path | None = None
     paginas: dict[str, str] = {}
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             tmp.write(conteudo)
             tmp_path = Path(tmp.name)
         paginas = extrair_texto_pdf(tmp_path)
+        if old_ids and planned_path.exists():
+            backup_path = _backup_arquivo(planned_path)
         shutil.move(str(tmp_path), planned_path)
         saved_path = planned_path
         tmp_path = None
@@ -527,48 +562,55 @@ def adicionar_pdf_incrementalmente(
         )
     pdf_docs = [d for d in pdf_docs if d.page_content.strip()]
 
-    text_splitter = SemanticChunker(
-        embeddings=embedding_model,
-        breakpoint_threshold_type=SEMANTIC_BREAKPOINT_TYPE,
-        breakpoint_threshold_amount=SEMANTIC_BREAKPOINT_THRESHOLD,
-    )
-    chunks = text_splitter.split_documents(pdf_docs)
-
-    if not chunks:
-        logger.warning("Arquivo %s produziu zero chunks após divisão.", safe_name)
-        saved_path.unlink(missing_ok=True)
-        return {
-            "status": "adicionado",
-            "mensagem": f"Arquivo {safe_name} não pôde ser indexado: 0 chunks gerados.",
-        }
-
-    _enriquecer_metadados_chunks(chunks, hash_str, METADATA_DOC_TYPE_PDF)
-
-    chunk_ids = [uuid.uuid4().hex for _ in chunks]
-
+    # Tudo após shutil.move (chunking c/ embeddings, ingestão) é guardado:
+    # qualquer falha reverte o disco para o estado pré-operação (upsert atômico).
     try:
-        vectordb_instance.add_documents(chunks, ids=chunk_ids)
-    except Exception as ingestion_exc:
-        try:
-            if chunk_ids:
-                vectordb_instance.delete(ids=chunk_ids)
-        except Exception as rollback_exc:
-            logger.warning(
-                "Rollback falhou após erro de ingestão. IDs órfãos: %s. Erro: %s",
-                chunk_ids,
-                rollback_exc,
-            )
-        saved_path.unlink(missing_ok=True)
-        raise ingestion_exc
+        text_splitter = SemanticChunker(
+            embeddings=embedding_model,
+            breakpoint_threshold_type=SEMANTIC_BREAKPOINT_TYPE,
+            breakpoint_threshold_amount=SEMANTIC_BREAKPOINT_THRESHOLD,
+        )
+        chunks = text_splitter.split_documents(pdf_docs)
 
-    if old_ids:
+        if not chunks:
+            logger.warning("Arquivo %s produziu zero chunks após divisão.", safe_name)
+            _reverter_disco(saved_path, backup_path)
+            return {
+                "status": "adicionado",
+                "mensagem": f"Arquivo {safe_name} não pôde ser indexado: 0 chunks gerados.",
+            }
+
+        _enriquecer_metadados_chunks(chunks, hash_str, METADATA_DOC_TYPE_PDF)
+
+        chunk_ids = [uuid.uuid4().hex for _ in chunks]
+
         try:
-            vectordb_instance.delete(ids=old_ids)
-        except Exception as del_exc:
-            logger.warning(
-                "Falha ao deletar chunks antigos de %s (IDs: %s). Erro: %s",
-                safe_name, old_ids, del_exc,
-            )
+            vectordb_instance.add_documents(chunks, ids=chunk_ids)
+        except Exception:
+            try:
+                vectordb_instance.delete(ids=chunk_ids)
+            except Exception as rollback_exc:
+                logger.warning(
+                    "Rollback falhou após erro de ingestão. IDs órfãos: %s. Erro: %s",
+                    chunk_ids,
+                    rollback_exc,
+                )
+            raise
+
+        if old_ids:
+            try:
+                vectordb_instance.delete(ids=old_ids)
+            except Exception as del_exc:
+                logger.warning(
+                    "Falha ao deletar chunks antigos de %s (IDs: %s). Erro: %s",
+                    safe_name, old_ids, del_exc,
+                )
+    except Exception:
+        _reverter_disco(saved_path, backup_path)
+        raise
+    finally:
+        if backup_path is not None and backup_path.exists():
+            backup_path.unlink(missing_ok=True)
 
     try:
         from agenticlog.agent import invalidar_vector_db  # lazy — evita importação pesada no CLI
