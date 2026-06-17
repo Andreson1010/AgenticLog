@@ -1,3 +1,5 @@
+import html
+import re
 from pathlib import Path
 from typing import Any
 
@@ -265,9 +267,14 @@ p, span, div, label, li {
     max-width: 80%;
     padding: 0.85rem 1.1rem;
     font-size: 0.95rem;
-    line-height: 1.7;
-    white-space: pre-wrap;
+    line-height: 1.55;
     word-break: break-word;
+}
+.cl-para {
+    margin: 0 0 0.5rem 0;
+}
+.cl-para:last-child {
+    margin-bottom: 0;
 }
 .cl-bubble-user {
     background-color: var(--cl-accent);
@@ -368,12 +375,32 @@ div[data-testid="stButton"] > button:disabled {
     background-color: var(--cl-card-bg);
     border: 1px solid var(--cl-border);
     border-radius: 6px;
+    margin-bottom: 4px;
 }
-[data-testid="stTextArea"] textarea {
-    background-color: var(--cl-bg) !important;
-    color: var(--cl-text) !important;
-    border-color: var(--cl-border) !important;
+[data-testid="stExpander"] summary p {
+    font-size: 0.8rem !important;
+    color: var(--cl-text-secondary) !important;
+}
+.cl-doc-content {
+    max-height: 150px;
+    overflow-y: auto;
+    background-color: var(--cl-bg);
+    color: var(--cl-text-secondary);
+    border: 1px solid var(--cl-border);
+    border-radius: 4px;
+    padding: 0.6rem 0.8rem;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.cl-sources-title {
     font-family: var(--cl-mono);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--cl-text-secondary);
+    margin: 1.1rem 0 0.4rem 0;
 }
 
 /* ---- Spinner ---- */
@@ -517,16 +544,23 @@ elif st.session_state.ranked_response is not None:
     rota_label, rota_icon = _ROTAS.get(next_step, ("Desconhecida", "❓"))
     route_html = f'<span class="cl-badge">{rota_icon} {rota_label}</span>'
 
+    # Divide a resposta em parágrafos (quebras em branco do modelo) e escapa HTML,
+    # evitando os buracos verticais de pre-wrap e quebra de layout por caractere especial.
+    paragrafos = re.split(r"\n\s*\n", str(resposta).strip())
+    resposta_html = "".join(
+        f'<p class="cl-para">{html.escape(p.strip())}</p>' for p in paragrafos if p.strip()
+    )
+
     if st.session_state.last_query:
         st.markdown(
-            f'<div class="cl-chat-row cl-user"><div class="cl-bubble cl-bubble-user">{st.session_state.last_query}</div></div>',
+            f'<div class="cl-chat-row cl-user"><div class="cl-bubble cl-bubble-user">{html.escape(st.session_state.last_query)}</div></div>',
             unsafe_allow_html=True,
         )
 
     st.markdown(f"""
     <div class="cl-chat-row cl-assistant">
         <div class="cl-bubble cl-bubble-assistant">
-            {resposta}
+            {resposta_html}
             <div class="cl-meta">
                 {route_html}
             </div>
@@ -542,9 +576,14 @@ elif st.session_state.ranked_response is not None:
 
     retrieved = st.session_state.retrieved_info or []
     if retrieved:
+        st.markdown(f'<div class="cl-sources-title">Fontes ({len(retrieved)})</div>', unsafe_allow_html=True)
         for i, doc in enumerate(retrieved):
-            source = doc["metadata"].get("source", "Desconhecida") if isinstance(doc.get("metadata"), dict) else "Desconhecida"
-            with st.expander(source):
-                st.text_area("", value=doc["page_content"], disabled=True, key=f"doc_content_{i}")
+            meta = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+            source_raw = meta.get("source", "Desconhecida")
+            source = Path(source_raw).name or source_raw  # só o nome do arquivo, sem o caminho
+            # Prefixo com índice garante rótulo único (evita IDs de elemento duplicados no loop).
+            with st.expander(f"{i + 1}. {source}"):
+                conteudo = html.escape(str(doc.get("page_content", "")))
+                st.markdown(f'<div class="cl-doc-content">{conteudo}</div>', unsafe_allow_html=True)
     else:
         st.write("Nenhum documento relacionado encontrado.")

@@ -172,13 +172,26 @@ class TestAC02DictAccess(unittest.TestCase):
             msg=f"Fallback 'Desconhecida' missing from expanders: {expander_labels}",
         )
 
-    def teste_3_widget_keys_use_loop_index(self) -> None:
-        """Loop index i must be used for text_area keys (doc_content_0, doc_content_1, ...)."""
-        # The source text must use `key=f"doc_content_{i}"` — inspect statically
-        self.assertIn(
-            'key=f"doc_content_{i}"',
-            _APP_SOURCE,
-            msg="app.py must use key=f'doc_content_{i}' for text_area widget keys",
+    def teste_3_multiplos_docs_renderizam_sem_erro(self) -> None:
+        """Múltiplos docs recuperados (mesmo com source repetido) renderizam sem erro de ID duplicado."""
+        docs = [
+            {"page_content": "conteudo A", "metadata": {"source": "/data/documents/frete.json"}},
+            {"page_content": "conteudo B", "metadata": {"source": "/data/documents/frete.json"}},
+            {"page_content": "conteudo C", "metadata": {"source": "/data/documents/estoque.json"}},
+        ]
+        at = _run_query(MagicMock(return_value=_success_mock(retrieved_info=docs, ranked_response="resp")))
+
+        self.assertFalse(at.exception, msg=f"Unexpected exception: {at.exception}")
+        # Um expander por doc; rótulos únicos via prefixo de índice, apenas o nome do arquivo (sem caminho).
+        expander_labels = [e.label for e in at.expander]
+        self.assertEqual(len(expander_labels), 3, msg=f"Esperava 3 expanders, obteve: {expander_labels}")
+        self.assertTrue(
+            all("/data/documents/" not in lbl for lbl in expander_labels),
+            msg=f"Caminho não deveria aparecer no rótulo: {expander_labels}",
+        )
+        self.assertTrue(
+            all("frete.json" in lbl for lbl in expander_labels[:2]),
+            msg=f"Nome do arquivo ausente nos rótulos: {expander_labels}",
         )
 
 
@@ -559,15 +572,14 @@ class TestAC12NoDotAccessOnDocs(unittest.TestCase):
         )
 
     def teste_4_dict_key_access_present_in_source(self) -> None:
-        self.assertIn(
-            'doc["page_content"]',
-            _APP_SOURCE,
-            msg='app.py must use doc["page_content"] dict-key syntax',
+        # Acesso por chave de dict — subscrição direta ou .get() (ambos válidos, .get é defensivo).
+        self.assertTrue(
+            'doc["page_content"]' in _APP_SOURCE or 'doc.get("page_content"' in _APP_SOURCE,
+            msg='app.py must access page_content via dict key (doc["page_content"] or doc.get("page_content"))',
         )
-        self.assertIn(
-            'doc["metadata"]',
-            _APP_SOURCE,
-            msg='app.py must use doc["metadata"] dict-key syntax',
+        self.assertTrue(
+            'doc["metadata"]' in _APP_SOURCE or 'doc.get("metadata"' in _APP_SOURCE,
+            msg='app.py must access metadata via dict key (doc["metadata"] or doc.get("metadata"))',
         )
 
 
