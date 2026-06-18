@@ -38,7 +38,7 @@ class TestIngerirDocumento(unittest.TestCase):
     """Testes para o helper _ingerir_documento de app.py."""
 
     def teste_1_upload_fluxo_sucesso(self) -> None:
-        """JSON feliz: adicionar_documento retorna adicionado → st.success + st.rerun."""
+        """JSON feliz: adicionar_documento retorna adicionado → ingest_msg + st.rerun."""
         uploaded_file = _make_uploaded_file()
         resultado = {
             "status": "adicionado",
@@ -56,8 +56,10 @@ class TestIngerirDocumento(unittest.TestCase):
 
         from agenticlog.config import DEFAULT_COLLECTION_NAME
         mock_add.assert_called_once_with("doc.json", b"{}", DEFAULT_COLLECTION_NAME)
-        mock_st.success.assert_called_once_with(resultado["mensagem"])
+        # Sucesso grava a mensagem em session_state (sobrevive ao st.rerun).
+        self.assertEqual(mock_st.session_state.ingest_msg, ("success", resultado["mensagem"]))
         mock_st.rerun.assert_called_once()
+        mock_st.success.assert_not_called()
         mock_st.error.assert_not_called()
 
     def teste_2_upload_erro_validacao_exibido(self) -> None:
@@ -145,7 +147,7 @@ class TestIngerirDocumento(unittest.TestCase):
         mock_st.success.assert_not_called()
 
     def teste_6_upload_substituido_exibe_success_e_rerun(self) -> None:
-        """Status substituido → st.success chamado, st.rerun chamado."""
+        """Status substituido → ingest_msg gravado, st.rerun chamado."""
         uploaded_file = _make_uploaded_file()
         resultado = {
             "status": "substituido",
@@ -160,8 +162,9 @@ class TestIngerirDocumento(unittest.TestCase):
             mock_st.spinner.return_value.__exit__ = MagicMock(return_value=False)
             _ingerir_documento(uploaded_file)
 
-        mock_st.success.assert_called_once_with(resultado["mensagem"])
+        self.assertEqual(mock_st.session_state.ingest_msg, ("success", resultado["mensagem"]))
         mock_st.rerun.assert_called_once()
+        mock_st.success.assert_not_called()
         mock_st.warning.assert_not_called()
 
 
@@ -191,8 +194,10 @@ class TestIngerirDocumentoPDF(unittest.TestCase):
 
         from agenticlog.config import DEFAULT_COLLECTION_NAME
         mock_add.assert_called_once_with("contrato.pdf", b"%PDF-1.4 fake", DEFAULT_COLLECTION_NAME)
-        mock_st.success.assert_called_once()
+        tipo, _ = mock_st.session_state.ingest_msg
+        self.assertEqual(tipo, "success")
         mock_st.rerun.assert_called_once()
+        mock_st.success.assert_not_called()
         mock_st.error.assert_not_called()
 
     def test_pdf_duplicado_shows_info(self) -> None:
@@ -229,8 +234,10 @@ class TestIngerirDocumentoPDF(unittest.TestCase):
             mock_st.spinner.return_value = self._spinner_ctx()
             _ingerir_documento(uploaded_file)
 
-        mock_st.success.assert_called_once()
+        tipo, _ = mock_st.session_state.ingest_msg
+        self.assertEqual(tipo, "success")
         mock_st.rerun.assert_called_once()
+        mock_st.success.assert_not_called()
         mock_st.warning.assert_not_called()
 
     def test_pdf_security_error_shows_error(self) -> None:

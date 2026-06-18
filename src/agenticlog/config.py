@@ -48,11 +48,9 @@ SEMANTIC_BREAKPOINT_THRESHOLD: float = 95.0   # percentil de dissimilaridade par
 # ValueError ("Expected page_content is string, got <class 'list'>").
 JQ_SCHEMA_CAMPOS_JSON = 'to_entries[] | .key + ": " + (.value | tostring)'
 
-# Roteamento — palavras-chave que determinam o caminho no grafo LangGraph
-ROUTING_KEYWORDS_GERAR: tuple[str, ...] = (
-    "explain", "summarize", "define", "concept", "general", "what is",
-    "explique", "resuma", "defina", "conceito", "geral", "o que é",
-)
+# Roteamento — palavras-chave que determinam o caminho no grafo LangGraph.
+# Estratégia retrieve-first: só "usar_web" é decidido por palavra-chave; todo o
+# restante tenta retrieve e cai para geração direta apenas se a base vier vazia.
 ROUTING_KEYWORDS_WEB: tuple[str, ...] = (
     "search the web", "news", "updated", "recent", "latest information",
     "busque na web", "notícias", "atualizado", "recente", "últimas informações",

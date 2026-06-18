@@ -90,8 +90,10 @@ class TestDOCING01HappyPath(unittest.TestCase):
         mock_adicionar.assert_called_once_with(
             "frete.json", b'{"tipo": "frete"}', DEFAULT_COLLECTION_NAME
         )
-        mock_st.success.assert_called_once_with(resultado["mensagem"])
+        # Sucesso grava ingest_msg (sobrevive ao st.rerun) — não chama st.success direto.
+        self.assertEqual(mock_st.session_state.ingest_msg, ("success", resultado["mensagem"]))
         mock_st.rerun.assert_called_once()
+        mock_st.success.assert_not_called()
         mock_st.error.assert_not_called()
 
 
@@ -600,10 +602,12 @@ class TestPDFIngestion(unittest.TestCase):
         mock_adicionar_pdf.assert_called_once_with(
             "contrato.pdf", b"%PDF-1.4 fake content", DEFAULT_COLLECTION_NAME
         )
-        mock_st.success.assert_called_once_with(
-            f"Documento ingerido com sucesso na coleção '{DEFAULT_COLLECTION_NAME}'."
+        self.assertEqual(
+            mock_st.session_state.ingest_msg,
+            ("success", f"Documento ingerido com sucesso na coleção '{DEFAULT_COLLECTION_NAME}'."),
         )
         mock_st.rerun.assert_called_once()
+        mock_st.success.assert_not_called()
         mock_st.error.assert_not_called()
 
     # ------------------------------------------------------------------
@@ -828,7 +832,11 @@ class TestColecaoSeletor(unittest.TestCase):
         mock_adicionar.assert_called_once_with(
             "pedido.json", b'{"tipo": "pedido"}', "fornecedores"
         )
-        mock_st.success.assert_called_once()
+        self.assertEqual(
+            mock_st.session_state.ingest_msg,
+            ("success", "Arquivo pedido.json adicionado com sucesso. 2 chunks inseridos."),
+        )
+        mock_st.success.assert_not_called()
         mock_st.rerun.assert_called_once()
 
     # ------------------------------------------------------------------
@@ -858,7 +866,11 @@ class TestColecaoSeletor(unittest.TestCase):
         mock_adicionar.assert_called_once_with(
             "contrato.json", b'{"tipo": "contrato"}', "novos-contratos"
         )
-        mock_st.success.assert_called_once()
+        self.assertEqual(
+            mock_st.session_state.ingest_msg,
+            ("success", "Arquivo contrato.json adicionado com sucesso. 5 chunks inseridos."),
+        )
+        mock_st.success.assert_not_called()
         mock_st.rerun.assert_called_once()
 
     # ------------------------------------------------------------------

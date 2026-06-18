@@ -58,7 +58,6 @@ from agenticlog.config import (  # noqa: E402
     RETRIEVAL_K_DEFAULT,
     RETRIEVAL_K_PER_COLLECTION,
     RETRIEVAL_K_TOTAL,
-    ROUTING_KEYWORDS_GERAR,
     ROUTING_KEYWORDS_WEB,
 )
 
@@ -282,14 +281,13 @@ def passo_decisao_agente(state: AgentState) -> AgentState:
     """Nó de decisão do grafo: define state.next_step com base em palavras-chave da consulta.
 
     Entrada: state.query (pergunta do usuário).
-    Saída:   state.next_step — "gerar", "usar_web" ou "retrieve" (padrão).
+    Saída:   state.next_step — "usar_web" ou "retrieve" (padrão).
 
-    # Listas de palavras-chave: controlam o roteamento — termos conceituais → "gerar",
-    # termos de busca web → "usar_web", qualquer outro caso → "retrieve".
+    Estratégia retrieve-first: termos de busca web → "usar_web"; todo o resto → "retrieve".
+    A geração direta ("gerar") não é mais uma rota primária — vira fallback no nó retrieve
+    quando a base vetorial não retorna nenhum documento (ver retrieve_info).
     """
     query = state.query.lower()
-    if any(p in query for p in ROUTING_KEYWORDS_GERAR):
-        return state.model_copy(update={"next_step": "gerar"})
     if any(p in query for p in ROUTING_KEYWORDS_WEB):
         return state.model_copy(update={"next_step": "usar_web"})
     return state.model_copy(update={"next_step": "retrieve"})
@@ -333,8 +331,12 @@ def retrieve_info(state: AgentState) -> AgentState:
 
     Entrada: state.query.
     Saída:   state.retrieved_info — lista de Document retornados pelo retriever.
+             Se a busca vier vazia, faz fallback para next_step="gerar" (geração
+             direta sem contexto), seguindo a estratégia retrieve-first.
     """
     retrieved_docs = _get_retriever(state.query)
+    if not retrieved_docs:
+        return state.model_copy(update={"retrieved_info": [], "next_step": "gerar"})
     return state.model_copy(update={"retrieved_info": retrieved_docs})
 
 
@@ -443,9 +445,7 @@ workflow.add_node("usar_web", usar_ferramenta_web)
 workflow.set_entry_point("decision")
 workflow.add_conditional_edges(
     "decision",
-    lambda s: {"retrieve": "retrieve", "gerar": "generate_multiple", "usar_web": "usar_web"}[
-        s.next_step
-    ],
+    lambda s: {"retrieve": "retrieve", "usar_web": "usar_web"}[s.next_step],
 )
 workflow.add_edge("retrieve", "generate_multiple")
 workflow.add_edge("generate_multiple", "evaluate_similarity")

@@ -65,17 +65,19 @@ def _error_mock(status_code: int, detail: str) -> MagicMock:
 
 
 def _run_query(mock_post: MagicMock, query: str = "pergunta de teste") -> AppTest:
-    """Run the Streamlit app with a query click and return the AppTest instance.
+    """Run the Streamlit app with a query submit and return the AppTest instance.
 
     mock_post must be a fully configured callable — either MagicMock(return_value=response)
     for HTTP response cases or MagicMock(side_effect=exception) for network-error cases.
-    The patch covers all three .run() calls so every rerun sees the same mock.
+    The patch covers every .run() call so every rerun sees the same mock.
+
+    O envio é disparado por Enter no campo (on_change), não por clique no botão:
+    definir o valor do text_input já submete, evitando submit duplicado.
     """
     with patch("app.httpx.post", mock_post):
         at = AppTest.from_file(_APP_PATH)
         at.run()
         at.text_input[0].set_value(query).run()
-        at.button[0].click().run()
     return at
 
 
@@ -119,8 +121,8 @@ class TestAC01SuccessPath(unittest.TestCase):
         with patch("app.httpx.post", mock_post):
             at = AppTest.from_file(_APP_PATH)
             at.run()
+            # Um único gesto de envio (Enter no campo) → exatamente um POST.
             at.text_input[0].set_value("pergunta").run()
-            at.button[0].click().run()
         mock_post.assert_called_once()
         call_kwargs = mock_post.call_args
         # URL must contain /query
@@ -172,13 +174,38 @@ class TestAC02DictAccess(unittest.TestCase):
             msg=f"Fallback 'Desconhecida' missing from expanders: {expander_labels}",
         )
 
-    def teste_3_widget_keys_use_loop_index(self) -> None:
-        """Loop index i must be used for text_area keys (doc_content_0, doc_content_1, ...)."""
-        # The source text must use `key=f"doc_content_{i}"` — inspect statically
+    def teste_3_multiplos_docs_renderizam_sem_erro(self) -> None:
+        """Múltiplos docs recuperados (mesmo com source repetido) renderizam sem erro de ID duplicado."""
+        docs = [
+            {"page_content": "conteudo A", "metadata": {"source": "/data/documents/frete.json"}},
+            {"page_content": "conteudo B", "metadata": {"source": "/data/documents/frete.json"}},
+            {"page_content": "conteudo C", "metadata": {"source": "/data/documents/estoque.json"}},
+        ]
+        at = _run_query(MagicMock(return_value=_success_mock(retrieved_info=docs, ranked_response="resp")))
+
+        self.assertFalse(at.exception, msg=f"Unexpected exception: {at.exception}")
+        # Um expander por doc; rótulos únicos via prefixo de índice, apenas o nome do arquivo (sem caminho).
+        expander_labels = [e.label for e in at.expander]
+        self.assertEqual(len(expander_labels), 3, msg=f"Esperava 3 expanders, obteve: {expander_labels}")
+        self.assertTrue(
+            all("/data/documents/" not in lbl for lbl in expander_labels),
+            msg=f"Caminho não deveria aparecer no rótulo: {expander_labels}",
+        )
+        self.assertTrue(
+            all("frete.json" in lbl for lbl in expander_labels[:2]),
+            msg=f"Nome do arquivo ausente nos rótulos: {expander_labels}",
+        )
+
+    def teste_5_resposta_vazia_renderiza_fallback_sem_bolha_invisivel(self) -> None:
+        """Resposta vazia/whitespace renderiza o fallback '(sem resposta)', não uma bolha invisível."""
+        at = _run_query(MagicMock(return_value=_success_mock(ranked_response="   ")))
+
+        self.assertFalse(at.exception, msg=f"Unexpected exception: {at.exception}")
+        markdown_blob = " ".join(m.value for m in at.markdown)
         self.assertIn(
-            'key=f"doc_content_{i}"',
-            _APP_SOURCE,
-            msg="app.py must use key=f'doc_content_{i}' for text_area widget keys",
+            "(sem resposta)",
+            markdown_blob,
+            msg="Resposta vazia deveria mostrar o fallback '(sem resposta)'",
         )
 
 
@@ -559,15 +586,14 @@ class TestAC12NoDotAccessOnDocs(unittest.TestCase):
         )
 
     def teste_4_dict_key_access_present_in_source(self) -> None:
-        self.assertIn(
-            'doc["page_content"]',
-            _APP_SOURCE,
-            msg='app.py must use doc["page_content"] dict-key syntax',
+        # Acesso por chave de dict — subscrição direta ou .get() (ambos válidos, .get é defensivo).
+        self.assertTrue(
+            'doc["page_content"]' in _APP_SOURCE or 'doc.get("page_content"' in _APP_SOURCE,
+            msg='app.py must access page_content via dict key (doc["page_content"] or doc.get("page_content"))',
         )
-        self.assertIn(
-            'doc["metadata"]',
-            _APP_SOURCE,
-            msg='app.py must use doc["metadata"] dict-key syntax',
+        self.assertTrue(
+            'doc["metadata"]' in _APP_SOURCE or 'doc.get("metadata"' in _APP_SOURCE,
+            msg='app.py must access metadata via dict key (doc["metadata"] or doc.get("metadata"))',
         )
 
 

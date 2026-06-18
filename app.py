@@ -1,3 +1,5 @@
+import html
+import re
 from pathlib import Path
 from typing import Any
 
@@ -13,9 +15,9 @@ from agenticlog.config import (
 )
 from agenticlog.rag import (
     RAGSecurityError,
-    sanitizar_nome_colecao,
     adicionar_documento_incrementalmente,
     adicionar_pdf_incrementalmente,
+    sanitizar_nome_colecao,
 )
 
 NOVA_COLECAO_SENTINEL = "Nova coleção…"
@@ -26,6 +28,9 @@ MSG_CONNECT_ERROR = "Não foi possível conectar ao servidor FastAPI. Inicie com
 MSG_TIMEOUT = "Tempo limite excedido. O servidor pode estar sobrecarregado."
 MSG_ERRO_VALIDACAO = "Erro de validação na consulta. Verifique o texto enviado."
 MSG_ERRO_INTERNO = "Erro interno do servidor."
+
+# Métodos de feedback de st permitidos para a mensagem de ingestão (whitelist de dispatch).
+_INGEST_MSG_TIPOS = ("success", "info", "warning", "error")
 
 _ROTAS = {
     "retrieve": ("Banco de Dados", "🗄️"),
@@ -71,7 +76,10 @@ def _ingerir_documento(uploaded_file: Any, collection_name: str = DEFAULT_COLLEC
             st.error(f"Erro ao ingerir documento. Detalhe: {e}")
             return
         if resultado["status"] in ("adicionado", "substituido"):
-            st.success(f"Documento ingerido com sucesso na coleção '{collection_name}'.")
+            st.session_state.ingest_msg = (
+                "success",
+                f"Documento ingerido com sucesso na coleção '{collection_name}'.",
+            )
             st.rerun()
         elif resultado["status"] == "duplicado":
             st.info(resultado["mensagem"])
@@ -89,7 +97,7 @@ def _ingerir_documento(uploaded_file: Any, collection_name: str = DEFAULT_COLLEC
         status = resultado["status"]
         mensagem = resultado["mensagem"]
         if status in ("adicionado", "substituido"):
-            st.success(mensagem)
+            st.session_state.ingest_msg = ("success", mensagem)
             st.rerun()
         elif status == "duplicado":
             st.info(mensagem)
@@ -265,9 +273,14 @@ p, span, div, label, li {
     max-width: 80%;
     padding: 0.85rem 1.1rem;
     font-size: 0.95rem;
-    line-height: 1.7;
-    white-space: pre-wrap;
+    line-height: 1.55;
     word-break: break-word;
+}
+.cl-para {
+    margin: 0 0 0.5rem 0;
+}
+.cl-para:last-child {
+    margin-bottom: 0;
 }
 .cl-bubble-user {
     background-color: var(--cl-accent);
@@ -352,6 +365,7 @@ div[data-testid="stButton"] > button {
     padding: 0.55rem 1.5rem;
     border: none;
     width: 100%;
+    white-space: nowrap;
     transition: opacity 0.15s;
 }
 div[data-testid="stButton"] > button:hover {
@@ -368,12 +382,32 @@ div[data-testid="stButton"] > button:disabled {
     background-color: var(--cl-card-bg);
     border: 1px solid var(--cl-border);
     border-radius: 6px;
+    margin-bottom: 4px;
 }
-[data-testid="stTextArea"] textarea {
-    background-color: var(--cl-bg) !important;
-    color: var(--cl-text) !important;
-    border-color: var(--cl-border) !important;
+[data-testid="stExpander"] summary p {
+    font-size: 0.8rem !important;
+    color: var(--cl-text-secondary) !important;
+}
+.cl-doc-content {
+    max-height: 150px;
+    overflow-y: auto;
+    background-color: var(--cl-bg);
+    color: var(--cl-text-secondary);
+    border: 1px solid var(--cl-border);
+    border-radius: 4px;
+    padding: 0.6rem 0.8rem;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.cl-sources-title {
     font-family: var(--cl-mono);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--cl-text-secondary);
+    margin: 1.1rem 0 0.4rem 0;
 }
 
 /* ---- Spinner ---- */
@@ -394,6 +428,7 @@ for key, default in [
     ("retrieved_info", []),
     ("next_step", None),
     ("last_query", ""),
+    ("ingest_msg", None),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -404,6 +439,14 @@ for key, default in [
 
 with st.sidebar:
     st.markdown("### 📂 Adicionar Documento")
+    # Mensagem de ingestão sobrevive ao st.rerun() — exibida e consumida aqui.
+    pending_msg = st.session_state.ingest_msg
+    if pending_msg:
+        tipo, texto = pending_msg
+        st.session_state.ingest_msg = None
+        # Whitelist do tipo — evita dispatch dinâmico para atributo arbitrário de st.
+        if tipo in _INGEST_MSG_TIPOS:
+            getattr(st, tipo)(texto)
     colecoes_existentes = _listar_colecoes()
     opcoes = colecoes_existentes + [NOVA_COLECAO_SENTINEL]
     selecao = st.selectbox("Coleção", opcoes, key="selecao_colecao")
@@ -450,11 +493,29 @@ st.markdown('<div class="cl-subtitle">Especialista em logística e supply chain<
 # Input
 # ---------------------------------------------------------------------------
 
+def _marcar_envio_por_enter() -> None:
+    """Callback do text_input: Enter (ou blur com texto novo) sinaliza envio.
+
+    Streamlit não tem evento 'Enter' fora de st.form; o on_change cobre esse caso
+    sem usar st.form — incompatível com o harness AppTest (vaza form_id entre runs).
+    """
+    st.session_state.enviar_por_enter = True
+
+
 col_input, col_btn = st.columns([5, 1])
 with col_input:
-    query = st.text_input("Pergunta", placeholder="Faça uma pergunta sobre logística…", label_visibility="collapsed")
+    query = st.text_input(
+        "Pergunta",
+        placeholder="Faça uma pergunta sobre logística…",
+        label_visibility="collapsed",
+        key="pergunta_input",
+        on_change=_marcar_envio_por_enter,
+    )
 with col_btn:
-    enviar = st.button("Enviar")
+    enviar_clicado = st.button("Enviar")
+
+# Envio dispara por clique no botão OU por Enter no campo (flag do on_change).
+enviar = enviar_clicado or st.session_state.pop("enviar_por_enter", False)
 
 # ---------------------------------------------------------------------------
 # Envio
@@ -515,18 +576,28 @@ elif st.session_state.ranked_response is not None:
     confidence = float(st.session_state.confidence_score or 0.0)
     next_step = st.session_state.next_step or ""
     rota_label, rota_icon = _ROTAS.get(next_step, ("Desconhecida", "❓"))
-    route_html = f'<span class="cl-badge">{rota_icon} {rota_label}</span>'
+    # rota_label/rota_icon vêm de _ROTAS (constante), mas escapamos por robustez estrutural.
+    route_html = f'<span class="cl-badge">{rota_icon} {html.escape(str(rota_label))}</span>'
+
+    # Divide a resposta em parágrafos (quebras em branco do modelo) e escapa HTML,
+    # evitando os buracos verticais de pre-wrap e quebra de layout por caractere especial.
+    paragrafos = re.split(r"\n\s*\n", str(resposta).strip())
+    resposta_html = "".join(
+        f'<p class="cl-para">{html.escape(p.strip())}</p>' for p in paragrafos if p.strip()
+    )
+    # Fallback para resposta vazia/whitespace — evita bolha invisível (sem texto algum).
+    resposta_html = resposta_html or '<p class="cl-para"><em>(sem resposta)</em></p>'
 
     if st.session_state.last_query:
         st.markdown(
-            f'<div class="cl-chat-row cl-user"><div class="cl-bubble cl-bubble-user">{st.session_state.last_query}</div></div>',
+            f'<div class="cl-chat-row cl-user"><div class="cl-bubble cl-bubble-user">{html.escape(st.session_state.last_query)}</div></div>',
             unsafe_allow_html=True,
         )
 
     st.markdown(f"""
     <div class="cl-chat-row cl-assistant">
         <div class="cl-bubble cl-bubble-assistant">
-            {resposta}
+            {resposta_html}
             <div class="cl-meta">
                 {route_html}
             </div>
@@ -542,9 +613,15 @@ elif st.session_state.ranked_response is not None:
 
     retrieved = st.session_state.retrieved_info or []
     if retrieved:
+        st.markdown(f'<div class="cl-sources-title">Fontes ({len(retrieved)})</div>', unsafe_allow_html=True)
         for i, doc in enumerate(retrieved):
-            source = doc["metadata"].get("source", "Desconhecida") if isinstance(doc.get("metadata"), dict) else "Desconhecida"
-            with st.expander(source):
-                st.text_area("", value=doc["page_content"], disabled=True, key=f"doc_content_{i}")
+            meta = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+            source_raw = meta.get("source", "Desconhecida")
+            # Só o nome do arquivo, sem o caminho; cai para "Desconhecida" se ficar vazio.
+            source = Path(source_raw).name or source_raw or "Desconhecida"
+            # Prefixo com índice garante rótulo único (evita IDs de elemento duplicados no loop).
+            with st.expander(f"{i + 1}. {source}"):
+                conteudo = html.escape(str(doc.get("page_content", "")))
+                st.markdown(f'<div class="cl-doc-content">{conteudo}</div>', unsafe_allow_html=True)
     else:
         st.write("Nenhum documento relacionado encontrado.")

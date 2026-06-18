@@ -59,7 +59,6 @@ class TestStreamlitUI(unittest.TestCase):
             at = AppTest.from_file(_APP_PATH)
             at.run()
             at.text_input[0].set_value("Qual o prazo de entrega?").run()
-            at.button[0].click().run()
 
         self.assertFalse(at.exception, msg=f"Exceção inesperada: {at.exception}")
         self.assertEqual(at.session_state["ranked_response"], "Prazo de entrega é 5 dias úteis.")
@@ -91,7 +90,6 @@ class TestStreamlitUI(unittest.TestCase):
             at = AppTest.from_file(_APP_PATH)
             at.run()
             at.text_input[0].set_value("consulta com documentos").run()
-            at.button[0].click().run()
 
         self.assertFalse(at.exception, msg=f"Exceção inesperada: {at.exception}")
         self.assertGreater(len(at.expander), 0, msg="Nenhum expander de documento encontrado.")
@@ -112,7 +110,6 @@ class TestStreamlitUI(unittest.TestCase):
             at = AppTest.from_file(_APP_PATH)
             at.run()
             at.text_input[0].set_value("consulta sem docs").run()
-            at.button[0].click().run()
 
         self.assertFalse(at.exception, msg=f"Exceção inesperada: {at.exception}")
         markdown_texts = [m.value for m in at.markdown]
@@ -133,7 +130,6 @@ class TestStreamlitUI(unittest.TestCase):
             at = AppTest.from_file(_APP_PATH)
             at.run()
             at.text_input[0].set_value("pergunta qualquer").run()
-            at.button[0].click().run()
 
         self.assertFalse(at.exception, msg=f"Crash com confidence_score=None: {at.exception}")
         self.assertEqual(at.session_state["ranked_response"], "Resposta com confiança nula.")
@@ -149,7 +145,6 @@ class TestStreamlitUI(unittest.TestCase):
             at = AppTest.from_file(_APP_PATH)
             at.run()
             at.text_input[0].set_value("pergunta rota inválida").run()
-            at.button[0].click().run()
 
         self.assertFalse(at.exception, msg=f"Exceção com next_step inválido: {at.exception}")
         info_texts = [i.value for i in at.info]

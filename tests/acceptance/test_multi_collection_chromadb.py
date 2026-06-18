@@ -231,7 +231,12 @@ class TestAC03UploadJsonComColecaoNomeada(unittest.TestCase):
         from app import _ingerir_documento
         _ingerir_documento(uploaded_file, collection_name="fornecedores")
 
-        mock_st.success.assert_called_once()
+        # Sucesso grava ingest_msg (sobrevive ao st.rerun) — não chama st.success direto.
+        self.assertEqual(
+            mock_st.session_state.ingest_msg,
+            ("success", "Arquivo pedido.json adicionado com sucesso. 3 chunks inseridos."),
+        )
+        mock_st.success.assert_not_called()
         mock_st.rerun.assert_called_once()
         mock_st.error.assert_not_called()
 
@@ -284,8 +289,9 @@ class TestAC04UploadPdfComColecaoNomeada(unittest.TestCase):
         from app import _ingerir_documento
         _ingerir_documento(uploaded_file, collection_name="contratos")
 
-        mock_st.success.assert_called_once()
-        success_msg = mock_st.success.call_args[0][0]
+        mock_st.success.assert_not_called()
+        tipo, success_msg = mock_st.session_state.ingest_msg
+        self.assertEqual(tipo, "success")
         self.assertIn("contratos", success_msg)
 
 

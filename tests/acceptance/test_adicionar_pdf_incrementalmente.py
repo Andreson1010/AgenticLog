@@ -838,8 +838,11 @@ class TestAC6AppIntegration:
         mock_adicionar.assert_called_once_with(
             "relatorio.pdf", b"%PDF-1.4 content", DEFAULT_COLLECTION_NAME
         )
-        mock_st.success.assert_called_once()
+        # Sucesso grava ingest_msg (sobrevive ao st.rerun) — não chama st.success direto.
+        tipo, _ = mock_st.session_state.ingest_msg
+        assert tipo == "success"
         mock_st.rerun.assert_called_once()
+        mock_st.success.assert_not_called()
         mock_st.error.assert_not_called()
         mock_st.info.assert_not_called()
         mock_st.warning.assert_not_called()
@@ -886,8 +889,10 @@ class TestAC6AppIntegration:
         from app import _ingerir_documento
         _ingerir_documento(uploaded_file)
 
-        mock_st.success.assert_called_once()
+        tipo, _ = mock_st.session_state.ingest_msg
+        assert tipo == "success"
         mock_st.rerun.assert_called_once()
+        mock_st.success.assert_not_called()
         mock_st.warning.assert_not_called()
 
     @patch("app.st")

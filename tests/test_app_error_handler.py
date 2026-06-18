@@ -55,8 +55,8 @@ class TestAppErrorHandler(unittest.TestCase):
         with patch("app.httpx.post", mock_post):
             at = AppTest.from_file(_APP_PATH)
             at.run()
+            # Envio por Enter (on_change do text_input) — set_value já submete.
             at.text_input[0].set_value("pergunta de teste").run()
-            at.button[0].click().run()
         return at
 
     def teste_1_erro_503_lmstudio(self) -> None:

@@ -122,13 +122,16 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
     # ------------------------------------------------------------------
 
     @patch("agenticlog.agent._get_embedding_model")
+    @patch("agenticlog.agent._get_retriever")
     @patch("agenticlog.agent._invoke_chain")
     def teste_3_caminho_gerar_retorna_ranked_response(
         self,
         mock_invoke_chain,
+        mock_get_retriever,
         mock_get_embedding,
     ):
-        """INTEG-03: rota 'gerar' — ranked_response e confidence_score preenchidos sem retrieval."""
+        """INTEG-03: fallback 'gerar' — retrieve vazio cai para geração direta com ranked_response."""
+        mock_get_retriever.return_value = []
         mock_get_embedding.return_value = _fake_embedding_model()
         mock_invoke_chain.return_value = "Supply chain é o conjunto de processos de produção e distribuição."
 
@@ -141,16 +144,20 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
         ranked = result["ranked_response"]
         self.assertTrue(ranked, "ranked_response não pode ser vazio ou None")
         self.assertIsInstance(result["confidence_score"], float)
+        # Retrieve-first: decisão roteia para retrieve; base vazia faz fallback para gerar.
         self.assertEqual(result["next_step"], "gerar")
 
     @patch("agenticlog.agent._get_embedding_model")
+    @patch("agenticlog.agent._get_retriever")
     @patch("agenticlog.agent._invoke_chain")
     def teste_4_caminho_gerar_retrieved_info_vazio(
         self,
         mock_invoke_chain,
+        mock_get_retriever,
         mock_get_embedding,
     ):
-        """INTEG-04: rota 'gerar' — retrieved_info deve ser lista vazia (sem retrieval vetorial)."""
+        """INTEG-04: fallback 'gerar' — retrieved_info deve ser lista vazia (sem retrieval vetorial)."""
+        mock_get_retriever.return_value = []
         mock_get_embedding.return_value = _fake_embedding_model()
         mock_invoke_chain.return_value = "Explicação do conceito."
 
@@ -256,13 +263,16 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
         )
 
     @patch("agenticlog.agent._get_embedding_model")
+    @patch("agenticlog.agent._get_retriever")
     @patch("agenticlog.agent._invoke_chain")
     def teste_9_caminho_gerar_possible_responses_tem_cinco_itens(
         self,
         mock_invoke_chain,
+        mock_get_retriever,
         mock_get_embedding,
     ):
-        """INTEG-09: rota 'gerar' — possible_responses deve conter exatamente 5 candidatas."""
+        """INTEG-09: fallback 'gerar' — possible_responses deve conter exatamente 5 candidatas."""
+        mock_get_retriever.return_value = []
         mock_get_embedding.return_value = _fake_embedding_model()
         mock_invoke_chain.return_value = "Resposta conceitual."
 
