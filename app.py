@@ -29,6 +29,9 @@ MSG_TIMEOUT = "Tempo limite excedido. O servidor pode estar sobrecarregado."
 MSG_ERRO_VALIDACAO = "Erro de validação na consulta. Verifique o texto enviado."
 MSG_ERRO_INTERNO = "Erro interno do servidor."
 
+# Métodos de feedback de st permitidos para a mensagem de ingestão (whitelist de dispatch).
+_INGEST_MSG_TIPOS = ("success", "info", "warning", "error")
+
 _ROTAS = {
     "retrieve": ("Banco de Dados", "🗄️"),
     "gerar": ("Geração Direta", "✨"),
@@ -441,7 +444,9 @@ with st.sidebar:
     if pending_msg:
         tipo, texto = pending_msg
         st.session_state.ingest_msg = None
-        getattr(st, tipo)(texto)
+        # Whitelist do tipo — evita dispatch dinâmico para atributo arbitrário de st.
+        if tipo in _INGEST_MSG_TIPOS:
+            getattr(st, tipo)(texto)
     colecoes_existentes = _listar_colecoes()
     opcoes = colecoes_existentes + [NOVA_COLECAO_SENTINEL]
     selecao = st.selectbox("Coleção", opcoes, key="selecao_colecao")
