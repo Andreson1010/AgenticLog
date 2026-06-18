@@ -73,7 +73,10 @@ def _ingerir_documento(uploaded_file: Any, collection_name: str = DEFAULT_COLLEC
             st.error(f"Erro ao ingerir documento. Detalhe: {e}")
             return
         if resultado["status"] in ("adicionado", "substituido"):
-            st.success(f"Documento ingerido com sucesso na coleção '{collection_name}'.")
+            st.session_state.ingest_msg = (
+                "success",
+                f"Documento ingerido com sucesso na coleção '{collection_name}'.",
+            )
             st.rerun()
         elif resultado["status"] == "duplicado":
             st.info(resultado["mensagem"])
@@ -91,7 +94,7 @@ def _ingerir_documento(uploaded_file: Any, collection_name: str = DEFAULT_COLLEC
         status = resultado["status"]
         mensagem = resultado["mensagem"]
         if status in ("adicionado", "substituido"):
-            st.success(mensagem)
+            st.session_state.ingest_msg = ("success", mensagem)
             st.rerun()
         elif status == "duplicado":
             st.info(mensagem)
@@ -359,6 +362,7 @@ div[data-testid="stButton"] > button {
     padding: 0.55rem 1.5rem;
     border: none;
     width: 100%;
+    white-space: nowrap;
     transition: opacity 0.15s;
 }
 div[data-testid="stButton"] > button:hover {
@@ -421,6 +425,7 @@ for key, default in [
     ("retrieved_info", []),
     ("next_step", None),
     ("last_query", ""),
+    ("ingest_msg", None),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -431,6 +436,12 @@ for key, default in [
 
 with st.sidebar:
     st.markdown("### 📂 Adicionar Documento")
+    # Mensagem de ingestão sobrevive ao st.rerun() — exibida e consumida aqui.
+    pending_msg = st.session_state.ingest_msg
+    if pending_msg:
+        tipo, texto = pending_msg
+        st.session_state.ingest_msg = None
+        getattr(st, tipo)(texto)
     colecoes_existentes = _listar_colecoes()
     opcoes = colecoes_existentes + [NOVA_COLECAO_SENTINEL]
     selecao = st.selectbox("Coleção", opcoes, key="selecao_colecao")
@@ -477,11 +488,29 @@ st.markdown('<div class="cl-subtitle">Especialista em logística e supply chain<
 # Input
 # ---------------------------------------------------------------------------
 
+def _marcar_envio_por_enter() -> None:
+    """Callback do text_input: Enter (ou blur com texto novo) sinaliza envio.
+
+    Streamlit não tem evento 'Enter' fora de st.form; o on_change cobre esse caso
+    sem usar st.form — incompatível com o harness AppTest (vaza form_id entre runs).
+    """
+    st.session_state.enviar_por_enter = True
+
+
 col_input, col_btn = st.columns([5, 1])
 with col_input:
-    query = st.text_input("Pergunta", placeholder="Faça uma pergunta sobre logística…", label_visibility="collapsed")
+    query = st.text_input(
+        "Pergunta",
+        placeholder="Faça uma pergunta sobre logística…",
+        label_visibility="collapsed",
+        key="pergunta_input",
+        on_change=_marcar_envio_por_enter,
+    )
 with col_btn:
-    enviar = st.button("Enviar")
+    enviar_clicado = st.button("Enviar")
+
+# Envio dispara por clique no botão OU por Enter no campo (flag do on_change).
+enviar = enviar_clicado or st.session_state.pop("enviar_por_enter", False)
 
 # ---------------------------------------------------------------------------
 # Envio

@@ -44,10 +44,12 @@ class TestAgenticRAG(unittest.TestCase):
         new_state = passo_decisao_agente(state)
         self.assertEqual(new_state.next_step, "usar_web")
 
-    def teste_3_passo_decisao_gerar(self):
+    def teste_3_passo_decisao_conceitual_vai_para_retrieve(self):
+        # Consultas conceituais ("Resuma o conceito") NÃO são mais roteadas
+        # direto para "gerar": tentam retrieve primeiro (gerar é só fallback).
         state = AgentState(query="Resuma o conceito de supply chain.")
         new_state = passo_decisao_agente(state)
-        self.assertEqual(new_state.next_step, "gerar")
+        self.assertEqual(new_state.next_step, "retrieve")
 
     @patch("agenticlog.agent._invoke_chain")
     @patch("agenticlog.agent.search")
@@ -65,20 +67,24 @@ class TestAgenticRAG(unittest.TestCase):
         mock_get_retriever.return_value = [
             Document(page_content="Documento sobre cadeia de suprimentos")
         ]
-        state = AgentState(query="fases da cadeia de suprimentos")
+        state = AgentState(query="fases da cadeia de suprimentos", next_step="retrieve")
         new_state = retrieve_info(state)
         mock_get_retriever.assert_called_once_with("fases da cadeia de suprimentos")
         self.assertEqual(len(new_state.retrieved_info), 1)
+        # Recuperação com resultados: mantém rota retrieve (não cai para gerar).
+        self.assertEqual(new_state.next_step, "retrieve")
 
     @patch("agenticlog.agent._get_retriever")
     def teste_5b_retrieve_info_empty(self, mock_get_retriever):
-        """Recuperação vazia: _get_retriever retorna lista vazia."""
+        """Recuperação vazia: cai para fallback 'gerar' (geração direta sem contexto)."""
         mock_get_retriever.return_value = []
-        state = AgentState(query="consulta sem resultados")
+        state = AgentState(query="consulta sem resultados", next_step="retrieve")
         new_state = retrieve_info(state)
         mock_get_retriever.assert_called_once_with("consulta sem resultados")
         self.assertEqual(len(new_state.retrieved_info), 0)
         self.assertEqual(new_state.retrieved_info, [])
+        # Fallback: sem documentos, rota vira "gerar".
+        self.assertEqual(new_state.next_step, "gerar")
 
     @patch("time.sleep")
     @patch("agenticlog.agent.StrOutputParser")

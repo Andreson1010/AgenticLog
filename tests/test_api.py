@@ -21,6 +21,7 @@ from agenticlog.api import (
     DocumentInfo,
     _normalizar_estado,
     _serializar_documentos,
+    _verificar_vectordb,
     app,
 )
 from agenticlog.health import LMStudioUnavailableError
@@ -260,6 +261,67 @@ def teste_13_workflow_executa_em_thread():
     assert mock_invoke.call_count == 1
 
 
+def teste_14_query_tipo_nao_string_retorna_422():
+    """query com tipo nao-string (int) e rejeitada com HTTP 422."""
+    with _client_vectordb_pronto() as (client, _):
+        response = client.post("/query", json={"query": 123})
+    assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Testes do lifespan e de _verificar_vectordb
+# ---------------------------------------------------------------------------
+
+
+def teste_15_verificar_vectordb_diretorio_ausente_lanca_runtimeerror(tmp_path):
+    """_verificar_vectordb levanta RuntimeError quando DIR_VECTORDB nao existe."""
+    caminho_ausente = tmp_path / "vectordb_inexistente"
+    with patch("agenticlog.api.DIR_VECTORDB", caminho_ausente):
+        with pytest.raises(RuntimeError, match=MSG_VECTORDB_AUSENTE):
+            _verificar_vectordb()
+
+
+def teste_16_verificar_vectordb_diretorio_presente_abre_chroma(tmp_path):
+    """_verificar_vectordb abre a colecao Chroma quando DIR_VECTORDB existe."""
+    with patch("agenticlog.api.DIR_VECTORDB", tmp_path), patch(
+        "agenticlog.api.Chroma"
+    ) as mock_chroma, patch(
+        "agenticlog.api._get_rag_embedding_model", return_value="embedding-mock"
+    ):
+        _verificar_vectordb()
+    mock_chroma.assert_called_once()
+
+
+def teste_17_lifespan_erro_generico_marca_vectordb_indisponivel():
+    """Exception generica (nao RuntimeError) na inicializacao marca vectordb_pronto=False."""
+    with patch(
+        "agenticlog.api._verificar_vectordb", side_effect=ValueError("erro inesperado")
+    ), patch("agenticlog.api.inicializar_recursos"), patch(
+        "agenticlog.api.HistoryStore", return_value=_mock_history_store
+    ):
+        with TestClient(app) as client:
+            assert client.app.state.vectordb_pronto is False
+            response = client.post("/query", json={"query": "prazo"})
+    assert response.status_code == 503
+    assert response.json()["detail"] == MSG_VECTORDB_AUSENTE
+
+
+def teste_18_lifespan_historystore_falha_marca_none():
+    """Falha ao construir HistoryStore marca history_store=None; /query continua ok."""
+    estado = _make_estado()
+    with patch("agenticlog.api.inicializar_recursos"), patch(
+        "agenticlog.api._verificar_vectordb"
+    ), patch(
+        "agenticlog.api.agent_workflow.invoke", return_value=estado
+    ), patch(
+        "agenticlog.api.HistoryStore", side_effect=OSError("disco cheio")
+    ):
+        with TestClient(app) as client:
+            assert client.app.state.history_store is None
+            response = client.post("/query", json={"query": "prazo"})
+    assert response.status_code == 200
+
+
 # ---------------------------------------------------------------------------
 # Testes das funções puras de normalização
 # ---------------------------------------------------------------------------
@@ -306,3 +368,46 @@ def teste_serializar_documentos_dict():
     doc = {"page_content": "texto", "metadata": {"origem": "json"}}
     resultado = _serializar_documentos([doc])
     assert resultado == [DocumentInfo(page_content="texto", metadata={"origem": "json"})]
+
+
+def teste_serializar_documentos_item_tipo_nao_suportado_ignorado():
+    """_serializar_documentos ignora itens sem page_content e que nao sao dict."""
+    resultado = _serializar_documentos(["string_qualquer", 123, None])
+    assert resultado == []
+
+
+def teste_normalizar_estado_dict_ranked_string():
+    """_normalizar_estado aceita dict (LangGraph) com ranked_response string."""
+    estado = {
+        "ranked_response": "Resposta direta.",
+        "confidence_score": 0.75,
+        "next_step": "gerar",
+        "retrieved_info": [],
+    }
+    resultado = _normalizar_estado(estado)
+    assert resultado.ranked_response == "Resposta direta."
+    assert resultado.confidence_score == 0.75
+    assert resultado.next_step == "gerar"
+    assert resultado.retrieved_info == []
+
+
+def teste_normalizar_estado_dict_ranked_dict_com_answer():
+    """_normalizar_estado (dict) extrai "answer" quando ranked_response e dict."""
+    estado = {
+        "ranked_response": {"answer": "Resposta extraida."},
+        "confidence_score": 0.6,
+        "next_step": "retrieve",
+        "retrieved_info": [],
+    }
+    resultado = _normalizar_estado(estado)
+    assert resultado.ranked_response == "Resposta extraida."
+
+
+def teste_normalizar_estado_dict_valores_ausentes_usa_defaults():
+    """_normalizar_estado (dict) usa defaults quando chaves opcionais estao ausentes."""
+    estado = {"ranked_response": "Resposta minima."}
+    resultado = _normalizar_estado(estado)
+    assert resultado.ranked_response == "Resposta minima."
+    assert resultado.confidence_score == 0.0
+    assert resultado.next_step == ""
+    assert resultado.retrieved_info == []

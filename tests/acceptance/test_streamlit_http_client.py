@@ -65,17 +65,19 @@ def _error_mock(status_code: int, detail: str) -> MagicMock:
 
 
 def _run_query(mock_post: MagicMock, query: str = "pergunta de teste") -> AppTest:
-    """Run the Streamlit app with a query click and return the AppTest instance.
+    """Run the Streamlit app with a query submit and return the AppTest instance.
 
     mock_post must be a fully configured callable — either MagicMock(return_value=response)
     for HTTP response cases or MagicMock(side_effect=exception) for network-error cases.
-    The patch covers all three .run() calls so every rerun sees the same mock.
+    The patch covers every .run() call so every rerun sees the same mock.
+
+    O envio é disparado por Enter no campo (on_change), não por clique no botão:
+    definir o valor do text_input já submete, evitando submit duplicado.
     """
     with patch("app.httpx.post", mock_post):
         at = AppTest.from_file(_APP_PATH)
         at.run()
         at.text_input[0].set_value(query).run()
-        at.button[0].click().run()
     return at
 
 
@@ -119,8 +121,8 @@ class TestAC01SuccessPath(unittest.TestCase):
         with patch("app.httpx.post", mock_post):
             at = AppTest.from_file(_APP_PATH)
             at.run()
+            # Um único gesto de envio (Enter no campo) → exatamente um POST.
             at.text_input[0].set_value("pergunta").run()
-            at.button[0].click().run()
         mock_post.assert_called_once()
         call_kwargs = mock_post.call_args
         # URL must contain /query
