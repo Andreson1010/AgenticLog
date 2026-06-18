@@ -321,6 +321,26 @@ def _reverter_disco(saved_path: Path, backup_path: Path | None) -> None:
         saved_path.unlink(missing_ok=True)
 
 
+def _resetar_colecao(collection_name: str) -> None:
+    """Descarta a coleção existente para garantir reconstrução do zero (cria_vectordb).
+
+    Sem esta etapa, ``Chroma.from_documents`` anexa os novos chunks à coleção
+    persistida em vez de recriá-la — rodar ``--rebuild`` N vezes duplicaria todo o
+    índice silenciosamente. Coleção inexistente é tratada como no-op.
+
+    Entrada: collection_name — nome da coleção ChromaDB a remover.
+    Saída: nenhuma — efeito colateral: coleção removida do diretório persistido.
+    """
+    import chromadb  # lazy — evita side-effects na importação do módulo
+
+    client = chromadb.PersistentClient(path=str(DIR_VECTORDB))
+    try:
+        client.delete_collection(collection_name)
+        logger.info("Coleção '%s' descartada para reconstrução do zero.", collection_name)
+    except Exception as exc:  # coleção inexistente → nada a descartar
+        logger.debug("Coleção '%s' não descartada (provavelmente inexistente): %s", collection_name, exc)
+
+
 def adicionar_documento_incrementalmente(
     filename: str,
     conteudo: bytes,
@@ -816,6 +836,10 @@ def cria_vectordb(collection_name: str = DEFAULT_COLLECTION_NAME) -> None:
         _enriquecer_metadados_chunks(group, fh, METADATA_DOC_TYPE_PDF)
 
     chunks = json_chunks + pdf_chunks
+
+    # Reconstrução do zero: descarta a coleção antiga antes de gravar, senão
+    # from_documents anexa e duplica o índice a cada --rebuild.
+    _resetar_colecao(collection_name)
 
     vectordb = Chroma.from_documents(
         chunks,
