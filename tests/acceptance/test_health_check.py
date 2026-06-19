@@ -19,9 +19,17 @@ from unittest.mock import patch, MagicMock
 
 import httpx
 
-from agenticlog import check_lmstudio_health, LMStudioUnavailableError
+from agenticlog import (
+    check_lmstudio_health,
+    LMStudioUnavailableError,
+    ModeloNaoCarregadoError,
+)
 from agenticlog.health import reset_health_check_sentinel
-from agenticlog.config import LLM_HEALTH_CHECK_TIMEOUT_SECONDS, LLM_API_BASE
+from agenticlog.config import (
+    LLM_HEALTH_CHECK_TIMEOUT_SECONDS,
+    LLM_API_BASE,
+    LLM_MODEL,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -44,9 +52,10 @@ class TestACHC01HappyPath(unittest.TestCase):
     def test_ac_hc_01_healthy_lmstudio_does_not_raise(
         self, mock_client_class: MagicMock
     ) -> None:
-        """AC-HC-01: 2xx response → no exception raised, function returns normally."""
+        """AC-HC-01: 2xx response + modelo carregado → no exception raised, function returns normally."""
         mock_response = MagicMock()
         mock_response.is_success = True
+        mock_response.json.return_value = {"data": [{"id": LLM_MODEL}]}
 
         mock_client_instance = MagicMock()
         mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
@@ -196,6 +205,52 @@ class TestACHC04NonSuccessStatusBlocksWorkflow(unittest.TestCase):
             check_lmstudio_health()
 
         self.assertIn("500", str(ctx.exception))
+
+
+# ---------------------------------------------------------------------------
+# AC-HC-05: Servidor responde 2xx mas o modelo configurado não está carregado
+# ---------------------------------------------------------------------------
+
+class TestACHC05ModeloNaoCarregadoBlocksWorkflow(unittest.TestCase):
+    """
+    AC-HC-05: WHEN LMStudio responds 2xx but LLM_MODEL is absent from /models
+    THEN check_lmstudio_health() SHALL raise ModeloNaoCarregadoError
+    (subclass of LMStudioUnavailableError) AND the message SHALL contain LLM_MODEL.
+    """
+
+    def setUp(self) -> None:
+        reset_health_check_sentinel()
+
+    def tearDown(self) -> None:
+        reset_health_check_sentinel()
+
+    @patch("agenticlog.health.logger")
+    @patch("agenticlog.agent.agent_workflow")
+    @patch("agenticlog.health.httpx.Client")
+    def test_ac_hc_05_modelo_ausente_raises_and_blocks_workflow(
+        self,
+        mock_client_class: MagicMock,
+        mock_agent_workflow: MagicMock,
+        mock_logger: MagicMock,
+    ) -> None:
+        """AC-HC-05: 2xx + modelo ausente → ModeloNaoCarregadoError, workflow não invocado."""
+        mock_response = MagicMock()
+        mock_response.is_success = True
+        mock_response.json.return_value = {"data": [{"id": "outro-modelo"}]}
+
+        mock_client_instance = MagicMock()
+        mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
+        mock_client_instance.__exit__ = MagicMock(return_value=False)
+        mock_client_instance.get.return_value = mock_response
+        mock_client_class.return_value = mock_client_instance
+
+        with self.assertRaises(ModeloNaoCarregadoError) as ctx:
+            check_lmstudio_health()
+
+        self.assertIsInstance(ctx.exception, LMStudioUnavailableError)
+        self.assertIn(LLM_MODEL, str(ctx.exception))
+        mock_agent_workflow.invoke.assert_not_called()
+        mock_logger.error.assert_called_once()
 
 
 if __name__ == "__main__":
