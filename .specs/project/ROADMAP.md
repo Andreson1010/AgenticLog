@@ -45,13 +45,19 @@
 - [x] REC-01 — Unificar metadados de chunks (`source`, `file_hash`, `chunk_index`, `page`, `doc_type`) — PR #38
 - [x] REC-02 — Implementar `adicionar_pdf_incrementalmente()` — PR #39
 - [x] REC-03 — Upsert pattern (deleção de chunks antigos antes de re-ingestão; upsert atômico) — PRs #42, #43
-- [x] REC-04 — CLI incremental por padrão (`python -m agenticlog.rag` sem flags; `--rebuild` para reconstrução)
+- [x] REC-04 — CLI incremental por padrão (`python -m agenticlog.rag` sem flags; `--rebuild` para reconstrução) — PR #44
+
+### Chunking & Retrieval
+- [x] Semantic chunking (`SemanticChunker`, breakpoint percentile) — ADR-013 — PR #41
+- [x] Roteamento retrieve-first (`gerar` vira fallback; decisão só `usar_web` vs `retrieve`) — PR #45
+- [x] Rebuild sem duplicação (`_resetar_colecao` antes de gravar; `--rebuild` deixa de anexar) — PR #45
+- [x] UI compacta (parágrafos, fontes só com nome do arquivo, Enter via `on_change`, XSS corrigido) — PR #45
 
 ---
 
 ## Backlog
 
-_Nenhum item pendente na trilha de Ingestão Incremental (REC-01 a REC-04 entregues)._
+_Vazio — trilha de Ingestão Incremental (REC-01 a REC-04) entregue; aguardando nova direção do usuário._
 
 ---
 
@@ -72,3 +78,5 @@ _Nenhum item pendente na trilha de Ingestão Incremental (REC-01 a REC-04 entreg
 | LLM provider portability | .specs/features/llm-provider-portability/spec.md | #32 | Done |
 | Unificar metadados de chunks | .specs/features/unificar-metadados-chunks/spec.md | #38 | Done |
 | Ingestão incremental PDF | .specs/features/adicionar-pdf-incrementalmente/spec.md | #39 | Done |
+| Semantic chunking | .specs/features/semantic-chunking/spec.md | #41 | Done |
+| Roteamento retrieve-first + UI compacta | — | #45 | Done |
