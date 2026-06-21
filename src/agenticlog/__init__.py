@@ -7,18 +7,24 @@ Roteia cada consulta entre recuperação vetorial (ChromaDB), geração conceitu
 Exportações públicas:
 - AgentState                  — modelo Pydantic de estado imutável por convenção; carregado entre nós do grafo.
 - agent_workflow              — grafo LangGraph compilado; invocar com AgentState(query=...) para obter resposta.
-- check_lmstudio_health       — GET /v1/models antes do workflow; fast-fail sem retry.
+- check_lmstudio_health       — GET /v1/models antes do workflow; fast-fail sem retry; valida LLM_MODEL carregado.
 - LMStudioUnavailableError    — LMStudio inacessível ou HTTP não-2xx no health check.
+- ModeloNaoCarregadoError     — LMStudio responde mas LLM_MODEL não está na lista de /models.
 
 Para detalhes do fluxo completo de nós e roteamento, consulte agent.py.
 """
 
 from agenticlog.agent import AgentState, agent_workflow
-from agenticlog.health import LMStudioUnavailableError, check_lmstudio_health
+from agenticlog.health import (
+    LMStudioUnavailableError,
+    ModeloNaoCarregadoError,
+    check_lmstudio_health,
+)
 
 __all__ = [
     "AgentState",
     "agent_workflow",
     "check_lmstudio_health",
     "LMStudioUnavailableError",
+    "ModeloNaoCarregadoError",
 ]
