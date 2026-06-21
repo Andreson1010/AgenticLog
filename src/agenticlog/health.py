@@ -19,6 +19,10 @@ from agenticlog.config import (
 
 logger = logging.getLogger(__name__)
 
+# Limite de ids de modelo logados no erro ModeloNaoCarregadoError (evita log verboso
+# em instâncias LMStudio com muitos modelos).
+MAX_MODELOS_LOG = 10
+
 _health_checked = False
 
 
@@ -59,10 +63,12 @@ def check_lmstudio_health() -> None:
     """Verifica se o LMStudio responde em GET {LLM_API_BASE}/models.
 
     Raises:
-        LMStudioUnavailableError: conexão recusada, timeout ou status HTTP não-2xx.
+        LMStudioUnavailableError: conexão recusada, timeout, status HTTP não-2xx
+            ou corpo JSON inválido.
+        ModeloNaoCarregadoError: servidor responde, mas LLM_MODEL não consta na
+            lista de /models (subclasse de LMStudioUnavailableError).
     """
     global _health_checked
-    _health_checked = True
 
     url = f"{LLM_API_BASE.rstrip('/')}/models"
     try:
@@ -97,7 +103,7 @@ def check_lmstudio_health() -> None:
 
     try:
         payload = response.json()
-    except ValueError as exc:
+    except (ValueError, httpx.DecodingError) as exc:
         logger.error(
             "LMStudio health check falhou: url=%s exception_type=%s",
             url,
@@ -114,9 +120,11 @@ def check_lmstudio_health() -> None:
             "modelo_esperado=%s modelos_disponiveis=%s",
             url,
             LLM_MODEL,
-            model_ids,
+            model_ids[:MAX_MODELOS_LOG],
         )
         raise ModeloNaoCarregadoError(
             f"O modelo '{LLM_MODEL}' não está carregado no LMStudio. "
             f"Modelos disponíveis: {model_ids or 'nenhum'}."
         )
+
+    _health_checked = True
