@@ -10,6 +10,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
     env:
       OPENAI_API_KEY: hermes
       OPENAI_API_BASE: http://127.0.0.1:1234/v1
@@ -18,24 +23,34 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python 3.12
+      - name: Setup Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install uv
         run: pip install uv
+
+      - name: Cache uv
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ matrix.python-version }}-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-${{ matrix.python-version }}-
 
       - name: Install dependencies
         run: |
           uv pip install -r requirements-dev.txt --system
           uv pip install -e . --system
 
-      - name: Create .env for tests
-        run: cp .env.example .env
+      - name: Create runtime dirs and .env for tests
+        run: |
+          mkdir -p data/documents data/vectordb
+          cp .env.example .env
 
       - name: Run tests with coverage gate (80%)
-        run: pytest --cov=agenticlog --cov-report=term-missing --cov-fail-under=80 -v
+        run: pytest --cov=agenticlog --cov-report=term-missing --cov-report=xml --cov-fail-under=80 -v
 
   lint:
     runs-on: ubuntu-latest

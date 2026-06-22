@@ -25,6 +25,9 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*", "teste_*"]
 addopts = "-v --tb=short"
+markers = [
+    "integration: testes que usam ChromaDB real (requerem hnswlib; pulados quando o .pyd nativo não carrega, ex. Smart App Control no Windows).",
+]
 filterwarnings = [
     "ignore::DeprecationWarning:langchain_experimental",
 ]

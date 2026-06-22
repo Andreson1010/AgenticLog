@@ -137,10 +137,13 @@ def test_ac05_json_format_produces_valid_json_lines(monkeypatch, capsys):
 
     import agenticlog.rag as rag  # noqa: PLC0415
 
-    with _patch("agenticlog.rag._valida_path_documentos"), \
-         _patch("agenticlog.rag._valida_arquivos_json"), \
-         _patch("agenticlog.rag.DirectoryLoader") as mock_loader:
-        mock_loader.return_value.load.return_value = []
+    def _fake_rebuild() -> None:
+        # cria_vectordb é a origem do log no fluxo --rebuild. Emitimos uma linha
+        # representativa para validar a FORMATAÇÃO JSON do logging CLI sem disparar
+        # um rebuild real (carregaria o modelo de ~1GB e exigiria ChromaDB/hnswlib).
+        rag.logger.info("Banco de Dados Vetorial Criado com sucesso!")
+
+    with _patch("agenticlog.rag.cria_vectordb", side_effect=_fake_rebuild):
         rag._executar_main(["--rebuild"])
 
     captured = capsys.readouterr()

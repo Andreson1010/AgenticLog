@@ -55,6 +55,7 @@ class TestAC01JsonFullRebuild(unittest.TestCase):
     @patch("agenticlog.rag.DirectoryLoader")
     @patch("agenticlog.rag._valida_arquivos_json")
     @patch("agenticlog.rag._valida_path_documentos")
+    @patch("agenticlog.rag._resetar_colecao", new=MagicMock())
     def teste_1_chunks_json_tem_5_campos_metadados(
         self,
         mock_valida_path: MagicMock,
@@ -114,6 +115,7 @@ class TestAC01JsonFullRebuild(unittest.TestCase):
     @patch("agenticlog.rag.DirectoryLoader")
     @patch("agenticlog.rag._valida_arquivos_json")
     @patch("agenticlog.rag._valida_path_documentos")
+    @patch("agenticlog.rag._resetar_colecao", new=MagicMock())
     def teste_2_chunk_index_e_sequencial_e_zero_based(
         self,
         mock_valida_path: MagicMock,
@@ -164,6 +166,7 @@ class TestAC02PdfFullRebuild(unittest.TestCase):
     @patch("agenticlog.rag.DirectoryLoader")
     @patch("agenticlog.rag._valida_arquivos_json")
     @patch("agenticlog.rag._valida_path_documentos")
+    @patch("agenticlog.rag._resetar_colecao", new=MagicMock())
     def teste_1_chunks_pdf_tem_5_campos_metadados(
         self,
         mock_valida_path: MagicMock,
@@ -223,6 +226,7 @@ class TestAC02PdfFullRebuild(unittest.TestCase):
     @patch("agenticlog.rag.DirectoryLoader")
     @patch("agenticlog.rag._valida_arquivos_json")
     @patch("agenticlog.rag._valida_path_documentos")
+    @patch("agenticlog.rag._resetar_colecao", new=MagicMock())
     def teste_2_page_pdf_preservada_do_document_pai(
         self,
         mock_valida_path: MagicMock,
