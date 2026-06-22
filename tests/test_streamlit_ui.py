@@ -27,6 +27,7 @@ def _make_success_response(
     confidence_score: float | None = 0.85,
     retrieved_info: list | None = None,
     next_step: str = "retrieve",
+    degraded: bool = False,
 ) -> MagicMock:
     """Cria um MagicMock representando uma resposta HTTP 200 bem-sucedida."""
     mock_response = MagicMock()
@@ -36,6 +37,7 @@ def _make_success_response(
         "confidence_score": confidence_score,
         "next_step": next_step,
         "retrieved_info": retrieved_info if retrieved_info is not None else [],
+        "degraded": degraded,
     }
     mock_response.raise_for_status.return_value = None
     return mock_response
@@ -151,6 +153,73 @@ class TestStreamlitUI(unittest.TestCase):
         self.assertFalse(
             any("rota_inexistente" in t for t in info_texts),
             msg="Badge de rota inexistente foi renderizado quando deveria ser suprimido.",
+        )
+
+
+    def teste_6_degraded_true_exibe_badge_modo_seguro(self) -> None:
+        """Mock 200 com degraded=True: badge 'modo seguro' presente no HTML renderizado."""
+        mock_response = _make_success_response(
+            ranked_response="Serviço de IA indisponível no momento. Tente novamente mais tarde.",
+            confidence_score=0.0,
+            retrieved_info=[],
+            next_step="",
+            degraded=True,
+        )
+        with patch("app.httpx.post", return_value=mock_response):
+            at = AppTest.from_file(_APP_PATH)
+            at.run()
+            at.text_input[0].set_value("pergunta qualquer").run()
+
+        self.assertFalse(at.exception, msg=f"Exceção inesperada: {at.exception}")
+        markdown_texts = [m.value for m in at.markdown]
+        self.assertTrue(
+            any("modo seguro" in t for t in markdown_texts),
+            msg=f"Badge 'modo seguro' não encontrado no markdown. Textos: {markdown_texts}",
+        )
+
+    def teste_7_degraded_false_nao_exibe_badge_modo_seguro(self) -> None:
+        """Mock 200 com degraded=False: badge 'modo seguro' NÃO renderizado."""
+        mock_response = _make_success_response(
+            ranked_response="Resposta normal do workflow.",
+            confidence_score=0.80,
+            next_step="retrieve",
+            degraded=False,
+        )
+        with patch("app.httpx.post", return_value=mock_response):
+            at = AppTest.from_file(_APP_PATH)
+            at.run()
+            at.text_input[0].set_value("pergunta qualquer").run()
+
+        self.assertFalse(at.exception, msg=f"Exceção inesperada: {at.exception}")
+        markdown_texts = [m.value for m in at.markdown]
+        self.assertFalse(
+            any("modo seguro" in t for t in markdown_texts),
+            msg=f"Badge 'modo seguro' inesperadamente presente. Textos: {markdown_texts}",
+        )
+
+    def teste_8_degraded_ausente_nao_exibe_badge_modo_seguro(self) -> None:
+        """Mock 200 sem campo degraded (API antiga): badge 'modo seguro' NÃO renderizado."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "ranked_response": "Resposta de API antiga.",
+            "confidence_score": 0.75,
+            "next_step": "gerar",
+            "retrieved_info": [],
+            # 'degraded' ausente — simula API anterior ao FR-9
+        }
+        mock_response.raise_for_status.return_value = None
+
+        with patch("app.httpx.post", return_value=mock_response):
+            at = AppTest.from_file(_APP_PATH)
+            at.run()
+            at.text_input[0].set_value("pergunta qualquer").run()
+
+        self.assertFalse(at.exception, msg=f"Exceção inesperada: {at.exception}")
+        markdown_texts = [m.value for m in at.markdown]
+        self.assertFalse(
+            any("modo seguro" in t for t in markdown_texts),
+            msg=f"Badge 'modo seguro' inesperadamente presente sem campo degraded. Textos: {markdown_texts}",
         )
 
 

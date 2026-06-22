@@ -13,18 +13,24 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from openai import APIConnectionError
 
 from agenticlog.agent import AgentState
 from agenticlog.api import (
-    MSG_LMSTUDIO_INDISPONIVEL,
     MSG_VECTORDB_AUSENTE,
     DocumentInfo,
     _normalizar_estado,
+    _resposta_segura,
     _serializar_documentos,
     _verificar_vectordb,
     app,
 )
-from agenticlog.health import LMStudioUnavailableError
+from agenticlog.config import RESPOSTA_PADRAO_SEGURA
+from agenticlog.health import (
+    LMStudioUnavailableError,
+    ModeloNaoCarregadoError,
+    reset_health_check_sentinel,
+)
 
 # Injeta mock do history_store antes de qualquer TestClient ser criado,
 # para que o lifespan não tente criar o HistoryStore real em disco.
@@ -56,11 +62,11 @@ def _make_estado(**kwargs) -> AgentState:
 
 @contextmanager
 def _client_vectordb_pronto(estado: AgentState | None = None):
-    """Cria TestClient com vectordb_pronto=True e agent_workflow mockado."""
+    """Cria TestClient com vectordb_pronto=True, pre-flight saudável e workflow mockado."""
     estado_retornado = estado or _make_estado()
     with patch("agenticlog.api.inicializar_recursos"), patch(
         "agenticlog.api._verificar_vectordb"
-    ), patch(
+    ), patch("agenticlog.api.check_lmstudio_health"), patch(
         "agenticlog.api.agent_workflow.invoke", return_value=estado_retornado
     ) as mock_invoke, patch(
         "agenticlog.api.HistoryStore", return_value=_mock_history_store
@@ -97,6 +103,7 @@ def teste_1_query_valida_retorna_200():
     assert "confidence_score" in data
     assert "next_step" in data
     assert "retrieved_info" in data
+    assert data["degraded"] is False
 
 
 def teste_2_ranked_response_dict_normalizado():
@@ -109,7 +116,9 @@ def teste_2_ranked_response_dict_normalizado():
     mock_estado.retrieved_info = []
     with patch("agenticlog.api.inicializar_recursos"), patch(
         "agenticlog.api._verificar_vectordb"
-    ), patch("agenticlog.api.agent_workflow.invoke", return_value=mock_estado), patch(
+    ), patch("agenticlog.api.check_lmstudio_health"), patch(
+        "agenticlog.api.agent_workflow.invoke", return_value=mock_estado
+    ), patch(
         "agenticlog.api.HistoryStore", return_value=_mock_history_store
     ):
         with TestClient(app) as client:
@@ -127,7 +136,9 @@ def teste_3_confidence_score_none_normalizado():
     mock_estado.retrieved_info = []
     with patch("agenticlog.api.inicializar_recursos"), patch(
         "agenticlog.api._verificar_vectordb"
-    ), patch("agenticlog.api.agent_workflow.invoke", return_value=mock_estado), patch(
+    ), patch("agenticlog.api.check_lmstudio_health"), patch(
+        "agenticlog.api.agent_workflow.invoke", return_value=mock_estado
+    ), patch(
         "agenticlog.api.HistoryStore", return_value=_mock_history_store
     ):
         with TestClient(app) as client:
@@ -181,43 +192,149 @@ def teste_8_body_malformado_retorna_422():
     assert response.status_code == 422
 
 
-def teste_9_lmstudio_indisponivel_retorna_503():
-    """LMStudioUnavailableError retorna HTTP 503 com mensagem padrão."""
-    with patch("agenticlog.api.inicializar_recursos"), patch(
-        "agenticlog.api._verificar_vectordb"
-    ), patch(
-        "agenticlog.api.agent_workflow.invoke",
-        side_effect=LMStudioUnavailableError("LMStudio offline"),
-    ), patch(
-        "agenticlog.api.HistoryStore", return_value=_mock_history_store
-    ):
-        with TestClient(app) as client:
-            response = client.post("/query", json={"query": "prazo"})
-    assert response.status_code == 503
-    assert response.json()["detail"] == MSG_LMSTUDIO_INDISPONIVEL
+def _assert_degradado(data: dict) -> None:
+    """Valida os invariantes da resposta degradada (modo seguro)."""
+    assert data["degraded"] is True
+    assert data["ranked_response"] == RESPOSTA_PADRAO_SEGURA
+    assert data["confidence_score"] == 0.0
+    assert data["retrieved_info"] == []
 
 
-def teste_10_connect_error_retorna_503():
-    """httpx.ConnectError retorna HTTP 503 com mensagem padrão."""
-    with patch("agenticlog.api.inicializar_recursos"), patch(
-        "agenticlog.api._verificar_vectordb"
-    ), patch(
-        "agenticlog.api.agent_workflow.invoke",
-        side_effect=httpx.ConnectError("Connection refused"),
-    ), patch(
-        "agenticlog.api.HistoryStore", return_value=_mock_history_store
-    ):
-        with TestClient(app) as client:
-            response = client.post("/query", json={"query": "prazo"})
-    assert response.status_code == 503
-    assert response.json()["detail"] == MSG_LMSTUDIO_INDISPONIVEL
+def teste_9_pre_flight_lmstudio_indisponivel_retorna_200_degradado():
+    """Pre-flight LMStudioUnavailableError → 200-degraded (não mais 503)."""
+    reset_health_check_sentinel()
+    try:
+        with patch("agenticlog.api.inicializar_recursos"), patch(
+            "agenticlog.api._verificar_vectordb"
+        ), patch(
+            "agenticlog.api.check_lmstudio_health",
+            side_effect=LMStudioUnavailableError("LMStudio offline"),
+        ), patch(
+            "agenticlog.api.HistoryStore", return_value=_mock_history_store
+        ):
+            with TestClient(app) as client:
+                response = client.post("/query", json={"query": "prazo"})
+        assert response.status_code == 200
+        _assert_degradado(response.json())
+    finally:
+        reset_health_check_sentinel()
+
+
+def teste_10_mid_call_connect_error_retorna_200_degradado():
+    """invoke re-levanta httpx.ConnectError após pre-flight ok → 200-degraded."""
+    reset_health_check_sentinel()
+    try:
+        with patch("agenticlog.api.inicializar_recursos"), patch(
+            "agenticlog.api._verificar_vectordb"
+        ), patch("agenticlog.api.check_lmstudio_health"), patch(
+            "agenticlog.api.agent_workflow.invoke",
+            side_effect=httpx.ConnectError("Connection refused"),
+        ), patch(
+            "agenticlog.api.HistoryStore", return_value=_mock_history_store
+        ):
+            with TestClient(app) as client:
+                response = client.post("/query", json={"query": "prazo"})
+        assert response.status_code == 200
+        _assert_degradado(response.json())
+    finally:
+        reset_health_check_sentinel()
+
+
+def teste_10b_mid_call_api_connection_error_retorna_200_degradado():
+    """invoke re-levanta openai.APIConnectionError após pre-flight ok → 200-degraded."""
+    reset_health_check_sentinel()
+    try:
+        with patch("agenticlog.api.inicializar_recursos"), patch(
+            "agenticlog.api._verificar_vectordb"
+        ), patch("agenticlog.api.check_lmstudio_health"), patch(
+            "agenticlog.api.agent_workflow.invoke",
+            side_effect=APIConnectionError(request=httpx.Request("POST", "http://x")),
+        ), patch(
+            "agenticlog.api.HistoryStore", return_value=_mock_history_store
+        ):
+            with TestClient(app) as client:
+                response = client.post("/query", json={"query": "prazo"})
+        assert response.status_code == 200
+        _assert_degradado(response.json())
+    finally:
+        reset_health_check_sentinel()
+
+
+def teste_9b_pre_flight_modelo_nao_carregado_retorna_200_degradado():
+    """Pre-flight ModeloNaoCarregadoError (modelo errado) → 200-degraded (caso novo)."""
+    reset_health_check_sentinel()
+    try:
+        with patch("agenticlog.api.inicializar_recursos"), patch(
+            "agenticlog.api._verificar_vectordb"
+        ), patch(
+            "agenticlog.api.check_lmstudio_health",
+            side_effect=ModeloNaoCarregadoError("modelo X não carregado"),
+        ), patch(
+            "agenticlog.api.HistoryStore", return_value=_mock_history_store
+        ):
+            with TestClient(app) as client:
+                response = client.post("/query", json={"query": "prazo"})
+        assert response.status_code == 200
+        _assert_degradado(response.json())
+    finally:
+        reset_health_check_sentinel()
+
+
+def teste_9c_resposta_degradada_gravada_no_historico():
+    """Resposta degradada é gravada no history_store com confidence_score=0.0 e a query."""
+    reset_health_check_sentinel()
+    store = MagicMock()
+    store.append.return_value = None
+    store.read_all.return_value = []
+    try:
+        with patch("agenticlog.api.inicializar_recursos"), patch(
+            "agenticlog.api._verificar_vectordb"
+        ), patch(
+            "agenticlog.api.check_lmstudio_health",
+            side_effect=LMStudioUnavailableError("offline"),
+        ), patch(
+            "agenticlog.api.HistoryStore", return_value=store
+        ):
+            with TestClient(app) as client:
+                response = client.post("/query", json={"query": "prazo SP-RJ"})
+        assert response.status_code == 200
+        store.append.assert_called_once()
+        registro = store.append.call_args[0][0]
+        assert registro["query"] == "prazo SP-RJ"
+        assert registro["confidence_score"] == 0.0
+        assert registro["ranked_response"] == RESPOSTA_PADRAO_SEGURA
+    finally:
+        reset_health_check_sentinel()
+
+
+def teste_9d_falha_historico_nao_quebra_resposta_degradada():
+    """Falha na gravação do histórico não quebra a resposta 200-degraded."""
+    reset_health_check_sentinel()
+    store = MagicMock()
+    store.append.side_effect = OSError("disco cheio")
+    store.read_all.return_value = []
+    try:
+        with patch("agenticlog.api.inicializar_recursos"), patch(
+            "agenticlog.api._verificar_vectordb"
+        ), patch(
+            "agenticlog.api.check_lmstudio_health",
+            side_effect=LMStudioUnavailableError("offline"),
+        ), patch(
+            "agenticlog.api.HistoryStore", return_value=store
+        ):
+            with TestClient(app) as client:
+                response = client.post("/query", json={"query": "prazo"})
+        assert response.status_code == 200
+        _assert_degradado(response.json())
+    finally:
+        reset_health_check_sentinel()
 
 
 def teste_11_excecao_generica_retorna_500():
     """RuntimeError inesperado retorna HTTP 500 com mensagem genérica sem stack trace."""
     with patch("agenticlog.api.inicializar_recursos"), patch(
         "agenticlog.api._verificar_vectordb"
-    ), patch(
+    ), patch("agenticlog.api.check_lmstudio_health"), patch(
         "agenticlog.api.agent_workflow.invoke",
         side_effect=RuntimeError("boom interno"),
     ), patch(
@@ -245,7 +362,7 @@ def teste_13_workflow_executa_em_thread():
     estado = _make_estado()
     with patch("agenticlog.api.inicializar_recursos"), patch(
         "agenticlog.api._verificar_vectordb"
-    ), patch(
+    ), patch("agenticlog.api.check_lmstudio_health"), patch(
         "agenticlog.api.agent_workflow.invoke", return_value=estado
     ) as mock_invoke, patch(
         "agenticlog.api.asyncio.to_thread", wraps=asyncio.to_thread
@@ -311,7 +428,7 @@ def teste_18_lifespan_historystore_falha_marca_none():
     estado = _make_estado()
     with patch("agenticlog.api.inicializar_recursos"), patch(
         "agenticlog.api._verificar_vectordb"
-    ), patch(
+    ), patch("agenticlog.api.check_lmstudio_health"), patch(
         "agenticlog.api.agent_workflow.invoke", return_value=estado
     ), patch(
         "agenticlog.api.HistoryStore", side_effect=OSError("disco cheio")
@@ -347,6 +464,22 @@ def teste_normalizar_estado_ranked_dict_sem_answer():
     estado.retrieved_info = []
     resultado = _normalizar_estado(estado)
     assert resultado.ranked_response == '{"outro": "valor"}'
+
+
+def teste_resposta_segura_invariantes():
+    """_resposta_segura retorna QueryResponse degradado com invariantes fixos."""
+    resultado = _resposta_segura("qualquer query")
+    assert resultado.ranked_response == RESPOSTA_PADRAO_SEGURA
+    assert resultado.confidence_score == 0.0
+    assert resultado.retrieved_info == []
+    assert resultado.next_step == ""
+    assert resultado.degraded is True
+
+
+def teste_normalizar_estado_normal_degraded_false():
+    """Caminho normal de _normalizar_estado produz degraded=False (default)."""
+    resultado = _normalizar_estado(_make_estado())
+    assert resultado.degraded is False
 
 
 def teste_serializar_documentos_vazio():

@@ -7,7 +7,6 @@ LMStudio e ChromaDB são mockados onde necessário.
 """
 
 import datetime
-import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -63,8 +62,8 @@ class TestHistoryEndpoint(unittest.TestCase):
         """HIST-01: POST /query bem-sucedido persiste 1 registro com campos corretos."""
         estado = _make_estado()
         with patch("agenticlog.api.agent_workflow.invoke", return_value=estado), patch(
-            "agenticlog.api.inicializar_recursos"
-        ):
+            "agenticlog.api.check_lmstudio_health"
+        ), patch("agenticlog.api.inicializar_recursos"):
             response = self.client.post("/query", json={"query": "prazo SP-RJ"})
 
         assert response.status_code == 200
@@ -91,8 +90,8 @@ class TestHistoryEndpoint(unittest.TestCase):
 
         estado = _make_estado()
         with patch("agenticlog.api.agent_workflow.invoke", return_value=estado), patch(
-            "agenticlog.api.inicializar_recursos"
-        ):
+            "agenticlog.api.check_lmstudio_health"
+        ), patch("agenticlog.api.inicializar_recursos"):
             response = self.client.post("/query", json={"query": "prazo"})
 
         assert response.status_code == 200

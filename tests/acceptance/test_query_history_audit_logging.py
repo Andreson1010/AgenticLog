@@ -89,8 +89,8 @@ class TestQueryHistoryAuditLogging(unittest.TestCase):
         """
         estado = _make_estado()
         with patch("agenticlog.api.agent_workflow.invoke", return_value=estado), patch(
-            "agenticlog.api.inicializar_recursos"
-        ):
+            "agenticlog.api.check_lmstudio_health"
+        ), patch("agenticlog.api.inicializar_recursos"):
             response = self.client.post("/query", json={"query": "prazo SP-RJ"})
 
         assert response.status_code == 200
@@ -125,8 +125,8 @@ class TestQueryHistoryAuditLogging(unittest.TestCase):
 
         estado = _make_estado()
         with patch("agenticlog.api.agent_workflow.invoke", return_value=estado), patch(
-            "agenticlog.api.inicializar_recursos"
-        ):
+            "agenticlog.api.check_lmstudio_health"
+        ), patch("agenticlog.api.inicializar_recursos"):
             response = self.client.post("/query", json={"query": "prazo"})
 
         assert response.status_code == 200
