@@ -27,12 +27,14 @@ def _hnswlib_importavel() -> bool:
     """
     try:
         import hnswlib  # noqa: F401
-    except Exception:
+    except ImportError:
         return False
     return True
 
 
-def pytest_collection_modifyitems(config, items):
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
     """Pula testes @integration quando hnswlib (ChromaDB real) não está disponível."""
     if _hnswlib_importavel():
         return
