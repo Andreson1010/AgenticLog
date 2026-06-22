@@ -137,10 +137,14 @@ def test_ac05_json_format_produces_valid_json_lines(monkeypatch, capsys):
 
     import agenticlog.rag as rag  # noqa: PLC0415
 
-    with _patch("agenticlog.rag._valida_path_documentos"), \
-         _patch("agenticlog.rag._valida_arquivos_json"), \
-         _patch("agenticlog.rag.DirectoryLoader") as mock_loader:
-        mock_loader.return_value.load.return_value = []
+    def _fake_rebuild(*_args: object, **_kwargs: object) -> None:
+        # cria_vectordb é a origem do log no fluxo --rebuild. Emitimos uma linha
+        # representativa para validar a FORMATAÇÃO JSON do logging CLI sem disparar
+        # um rebuild real (carregaria o modelo de ~1GB e exigiria ChromaDB/hnswlib).
+        # *_args/**_kwargs: tolera qualquer assinatura com que cria_vectordb seja chamado.
+        rag.logger.info("Banco de Dados Vetorial Criado com sucesso!")
+
+    with _patch("agenticlog.rag.cria_vectordb", side_effect=_fake_rebuild):
         rag._executar_main(["--rebuild"])
 
     captured = capsys.readouterr()
@@ -161,6 +165,17 @@ def test_ac05_json_format_produces_valid_json_lines(monkeypatch, capsys):
         assert not missing, (
             f"Log line missing required fields {missing}: {parsed}"
         )
+        # Valores precisam ser significativos — não apenas chaves presentes (evita falso-verde).
+        assert parsed["level"] in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"), (
+            f"Unexpected log level {parsed['level']!r}: {parsed}"
+        )
+        assert parsed["message"], f"Empty message field in log line: {parsed}"
+
+    # Pelo menos uma linha deve ser a emitida pelo fluxo --rebuild (contrato do teste).
+    assert any(
+        "Banco de Dados Vetorial Criado com sucesso!" in json.loads(line)["message"]
+        for line in lines
+    ), "Expected the rebuild log line to appear among the captured JSON lines"
 
 
 # ---------------------------------------------------------------------------

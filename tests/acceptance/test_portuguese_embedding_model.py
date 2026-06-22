@@ -93,6 +93,7 @@ class TestAC02RagEmbeddingCallSitesUsamConfig(unittest.TestCase):
     @patch("agenticlog.rag.DirectoryLoader")
     @patch("agenticlog.rag._valida_arquivos_json")
     @patch("agenticlog.rag._valida_path_documentos")
+    @patch("agenticlog.rag._resetar_colecao", new=MagicMock())
     def teste_2_cria_vectordb_usa_embedding_model_do_config(
         self,
         mock_valida_path: MagicMock,
@@ -434,6 +435,7 @@ class TestAC09ModelKwargsEncodeKwargsInalterados(unittest.TestCase):
     @patch("agenticlog.rag.DirectoryLoader")
     @patch("agenticlog.rag._valida_arquivos_json")
     @patch("agenticlog.rag._valida_path_documentos")
+    @patch("agenticlog.rag._resetar_colecao", new=MagicMock())
     def teste_4_cria_vectordb_kwargs_completos_via_mock(
         self,
         mock_valida_path: MagicMock,

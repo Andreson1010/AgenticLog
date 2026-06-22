@@ -39,6 +39,7 @@ class TestAC1CriaVectordbUsaSemanticChunker(unittest.TestCase):
     @patch("agenticlog.rag.DirectoryLoader")
     @patch("agenticlog.rag._valida_arquivos_json")
     @patch("agenticlog.rag._valida_path_documentos")
+    @patch("agenticlog.rag._resetar_colecao", new=MagicMock())
     def teste_1_chunks_tem_doc_type_e_file_hash(
         self, _vp, _vj, mock_loader, mock_dir, mock_splitter, mock_emb, mock_chroma, _hash
     ):
@@ -71,6 +72,7 @@ class TestAC1CriaVectordbUsaSemanticChunker(unittest.TestCase):
     @patch("agenticlog.rag.DirectoryLoader")
     @patch("agenticlog.rag._valida_arquivos_json")
     @patch("agenticlog.rag._valida_path_documentos")
+    @patch("agenticlog.rag._resetar_colecao", new=MagicMock())
     def teste_2_semantic_chunker_inicializado_com_embedding_e_config(
         self, _vp, _vj, mock_loader, mock_dir, mock_splitter, mock_emb, mock_chroma, _hash
     ):
