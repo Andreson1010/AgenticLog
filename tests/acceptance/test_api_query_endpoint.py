@@ -7,19 +7,21 @@ LMStudio e ChromaDB são mockados — nenhuma chamada real é feita.
 """
 
 from contextlib import contextmanager
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import httpx
-import pytest
 from fastapi.testclient import TestClient
 
 from agenticlog.agent import AgentState
 from agenticlog.api import (
-    MSG_LMSTUDIO_INDISPONIVEL,
     MSG_VECTORDB_AUSENTE,
     app,
 )
-from agenticlog.health import LMStudioUnavailableError
+from agenticlog.config import RESPOSTA_PADRAO_SEGURA
+from agenticlog.health import (
+    LMStudioUnavailableError,
+    reset_health_check_sentinel,
+)
 
 # Injeta mock do history_store antes de qualquer TestClient ser criado,
 # para que o lifespan não tente criar o HistoryStore real em disco.
@@ -56,7 +58,7 @@ def _client(estado: AgentState | None = None, *, vectordb_ok: bool = True):
 
     with patch("agenticlog.api.inicializar_recursos") as mock_init, patch(
         "agenticlog.api._verificar_vectordb", side_effect=verificar_side_effect
-    ), patch(
+    ), patch("agenticlog.api.check_lmstudio_health"), patch(
         "agenticlog.api.agent_workflow.invoke", return_value=estado_ret
     ) as mock_invoke, patch(
         "agenticlog.api.HistoryStore", return_value=_mock_history_store
@@ -100,7 +102,9 @@ def test_ac_api_02_ranked_response_dict_normalization():
 
     with patch("agenticlog.api.inicializar_recursos"), patch(
         "agenticlog.api._verificar_vectordb"
-    ), patch("agenticlog.api.agent_workflow.invoke", return_value=mock_estado):
+    ), patch("agenticlog.api.check_lmstudio_health"), patch(
+        "agenticlog.api.agent_workflow.invoke", return_value=mock_estado
+    ):
         with TestClient(app) as client:
             response = client.post("/query", json={"query": "prazo"})
 
@@ -133,36 +137,50 @@ def test_ac_api_03_retrieved_info_document_serialization():
 
 
 # ---------------------------------------------------------------------------
-# AC-API-04: LMStudio indisponível → 503
+# AC-API-04: LMStudio indisponível → 200-degraded (modo seguro)
 # ---------------------------------------------------------------------------
 
 
-def test_ac_api_04_lmstudio_unavailable_503():
-    """AC-API-04: LMStudioUnavailableError ou httpx.ConnectError → HTTP 503 com mensagem exata."""
-    with patch("agenticlog.api.inicializar_recursos"), patch(
-        "agenticlog.api._verificar_vectordb"
-    ), patch(
-        "agenticlog.api.agent_workflow.invoke",
-        side_effect=LMStudioUnavailableError("LMStudio offline"),
-    ):
-        with TestClient(app) as client:
-            response = client.post("/query", json={"query": "prazo"})
+def test_ac_api_04_lmstudio_unavailable_200_degraded():
+    """AC-API-04 (re-escopado): LMStudioUnavailableError (pre-flight) e httpx.ConnectError
+    (mid-call) → HTTP 200 com modo seguro (degraded=True, RESPOSTA_PADRAO_SEGURA)."""
+    reset_health_check_sentinel()
+    try:
+        # Pre-flight levanta LMStudioUnavailableError
+        with patch("agenticlog.api.inicializar_recursos"), patch(
+            "agenticlog.api._verificar_vectordb"
+        ), patch(
+            "agenticlog.api.check_lmstudio_health",
+            side_effect=LMStudioUnavailableError("LMStudio offline"),
+        ):
+            with TestClient(app) as client:
+                response = client.post("/query", json={"query": "prazo"})
 
-    assert response.status_code == 503
-    assert response.json()["detail"] == MSG_LMSTUDIO_INDISPONIVEL
+        assert response.status_code == 200
+        data = response.json()
+        assert data["degraded"] is True
+        assert data["ranked_response"] == RESPOSTA_PADRAO_SEGURA
+        assert data["confidence_score"] == 0.0
+        assert data["retrieved_info"] == []
 
-    # Testa também via httpx.ConnectError
-    with patch("agenticlog.api.inicializar_recursos"), patch(
-        "agenticlog.api._verificar_vectordb"
-    ), patch(
-        "agenticlog.api.agent_workflow.invoke",
-        side_effect=httpx.ConnectError("Connection refused"),
-    ):
-        with TestClient(app) as client:
-            response2 = client.post("/query", json={"query": "prazo"})
+        # Mid-call: pre-flight passa, invoke re-levanta httpx.ConnectError
+        with patch("agenticlog.api.inicializar_recursos"), patch(
+            "agenticlog.api._verificar_vectordb"
+        ), patch("agenticlog.api.check_lmstudio_health"), patch(
+            "agenticlog.api.agent_workflow.invoke",
+            side_effect=httpx.ConnectError("Connection refused"),
+        ):
+            with TestClient(app) as client:
+                response2 = client.post("/query", json={"query": "prazo"})
 
-    assert response2.status_code == 503
-    assert response2.json()["detail"] == MSG_LMSTUDIO_INDISPONIVEL
+        assert response2.status_code == 200
+        data2 = response2.json()
+        assert data2["degraded"] is True
+        assert data2["ranked_response"] == RESPOSTA_PADRAO_SEGURA
+        assert data2["confidence_score"] == 0.0
+        assert data2["retrieved_info"] == []
+    finally:
+        reset_health_check_sentinel()
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +234,7 @@ def test_ac_api_08_unexpected_exception_500_no_stacktrace():
     """AC-API-08: RuntimeError inesperado retorna 500 sem expor stack trace no body."""
     with patch("agenticlog.api.inicializar_recursos"), patch(
         "agenticlog.api._verificar_vectordb"
-    ), patch(
+    ), patch("agenticlog.api.check_lmstudio_health"), patch(
         "agenticlog.api.agent_workflow.invoke",
         side_effect=RuntimeError("erro interno secreto"),
     ):
@@ -243,7 +261,7 @@ def test_ac_api_09_workflow_in_threadpool():
     estado = _make_estado()
     with patch("agenticlog.api.inicializar_recursos"), patch(
         "agenticlog.api._verificar_vectordb"
-    ), patch(
+    ), patch("agenticlog.api.check_lmstudio_health"), patch(
         "agenticlog.api.agent_workflow.invoke", return_value=estado
     ) as mock_invoke, patch(
         "agenticlog.api.asyncio.to_thread", wraps=_asyncio.to_thread
@@ -271,7 +289,9 @@ def test_ac_api_10_singletons_initialized_at_startup():
     estado = _make_estado()
     with patch("agenticlog.api.inicializar_recursos") as mock_init, patch(
         "agenticlog.api._verificar_vectordb"
-    ), patch("agenticlog.api.agent_workflow.invoke", return_value=estado):
+    ), patch("agenticlog.api.check_lmstudio_health"), patch(
+        "agenticlog.api.agent_workflow.invoke", return_value=estado
+    ):
         with TestClient(app) as client:
             # Faz duas requisições para confirmar que init não é chamado por req
             client.post("/query", json={"query": "prazo 1"})

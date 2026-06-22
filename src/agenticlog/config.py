@@ -36,6 +36,10 @@ LLM_MAX_RETRY_ATTEMPTS: int = 3              # número máximo de tentativas com
 LLM_RETRY_WAIT_INITIAL_SECONDS: float = 1.0  # espera inicial do backoff exponencial em segundos
 LLM_RETRY_WAIT_MAX_SECONDS: float = 4.0      # espera máxima do backoff exponencial em segundos
 LLM_HEALTH_CHECK_TIMEOUT_SECONDS: float = 5.0  # timeout do GET /v1/models antes do workflow
+# Mensagem fixa do modo seguro (200-degraded quando o modelo LMStudio está indisponível)
+RESPOSTA_PADRAO_SEGURA: str = (
+    "Serviço de IA indisponível no momento. Tente novamente mais tarde."
+)
 
 # RAG — Semantic Chunking (ADR-013)
 SEMANTIC_BREAKPOINT_TYPE: str = "percentile"  # método de detecção de breakpoints semânticos

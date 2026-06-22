@@ -429,6 +429,7 @@ for key, default in [
     ("next_step", None),
     ("last_query", ""),
     ("ingest_msg", None),
+    ("degraded", False),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -529,6 +530,7 @@ if enviar and query.strip():
             st.session_state.confidence_score = output.get("confidence_score", 0.0)
             st.session_state.retrieved_info = output.get("retrieved_info", [])
             st.session_state.next_step = output.get("next_step", None)
+            st.session_state.degraded = output.get("degraded", False)
             st.session_state.last_query = query
 
         except httpx.HTTPStatusError as e:
@@ -578,6 +580,13 @@ elif st.session_state.ranked_response is not None:
     rota_label, rota_icon = _ROTAS.get(next_step, ("Desconhecida", "❓"))
     # rota_label/rota_icon vêm de _ROTAS (constante), mas escapamos por robustez estrutural.
     route_html = f'<span class="cl-badge">{rota_icon} {html.escape(str(rota_label))}</span>'
+    # Badge de modo seguro: texto estático escapado por robustez estrutural (padrão route_html).
+    degraded = st.session_state.get("degraded", False)
+    degraded_html = (
+        f'<span class="cl-badge">{html.escape("⚠️ modo seguro")}</span>'
+        if degraded
+        else ""
+    )
 
     # Divide a resposta em parágrafos (quebras em branco do modelo) e escapa HTML,
     # evitando os buracos verticais de pre-wrap e quebra de layout por caractere especial.
@@ -600,6 +609,7 @@ elif st.session_state.ranked_response is not None:
             {resposta_html}
             <div class="cl-meta">
                 {route_html}
+                {degraded_html}
             </div>
         </div>
     </div>
