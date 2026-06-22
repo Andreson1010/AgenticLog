@@ -468,7 +468,7 @@ def teste_normalizar_estado_ranked_dict_sem_answer():
 
 def teste_resposta_segura_invariantes():
     """_resposta_segura retorna QueryResponse degradado com invariantes fixos."""
-    resultado = _resposta_segura("qualquer query")
+    resultado = _resposta_segura()
     assert resultado.ranked_response == RESPOSTA_PADRAO_SEGURA
     assert resultado.confidence_score == 0.0
     assert resultado.retrieved_info == []

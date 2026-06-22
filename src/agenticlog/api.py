@@ -50,7 +50,7 @@ MSG_VECTORDB_AUSENTE = (
 # é subclasse de LMStudioUnavailableError mas listada explicitamente por clareza do contrato.
 _ERROS_MODO_SEGURO: tuple[type[Exception], ...] = (
     LMStudioUnavailableError,
-    ModeloNaoCarregadoError,
+    ModeloNaoCarregadoError,  # redundante (subclasse) — NÃO remover: sinaliza o contrato
     APIConnectionError,
     httpx.ConnectError,
 )
@@ -253,13 +253,12 @@ def _normalizar_estado(estado: AgentState | dict) -> QueryResponse:
     )
 
 
-def _resposta_segura(query: str) -> QueryResponse:
+def _resposta_segura() -> QueryResponse:
     """Constrói a resposta do modo seguro quando o LMStudio está indisponível.
 
-    Entrada: query original (usada apenas para simetria com _normalizar_estado;
-             a mensagem segura é fixa e não varia por query).
-    Saída: QueryResponse degradado com a constante RESPOSTA_PADRAO_SEGURA,
-           confidence_score 0.0, retrieved_info [], degraded True e next_step "".
+    A mensagem segura é fixa (RESPOSTA_PADRAO_SEGURA) e não varia por query.
+    Saída: QueryResponse degradado com confidence_score 0.0, retrieved_info [],
+           degraded True e next_step "".
     """
     return QueryResponse(
         ranked_response=RESPOSTA_PADRAO_SEGURA,
@@ -319,7 +318,7 @@ async def consultar(body: QueryRequest, req: Request) -> QueryResponse:
         response = _normalizar_estado(estado)
     except _ERROS_MODO_SEGURO as exc:
         logger.warning("Modo seguro ativado em /query: %s", exc)
-        response = _resposta_segura(body.query)
+        response = _resposta_segura()
 
     # Audit write — falha nunca propaga para o cliente (vale também para o degradado)
     registro = _construir_registro(body.query, response)
@@ -359,12 +358,17 @@ async def listar_historico(
 
 # ---------------------------------------------------------------------------
 # Exception handlers
+#
+# Backstop (decisão D2): /query trata LMStudioUnavailableError/ModeloNaoCarregadoError
+# e httpx.ConnectError localmente via modo seguro (200-degraded, ver _ERROS_MODO_SEGURO),
+# então estes handlers NÃO disparam mais para /query. São mantidos de propósito como
+# rede de segurança caso essas exceções escapem de outro endpoint futuro — aí valem 503.
 # ---------------------------------------------------------------------------
 
 
 @app.exception_handler(LMStudioUnavailableError)
 async def handler_lmstudio(request: Request, exc: LMStudioUnavailableError) -> JSONResponse:
-    """Captura LMStudioUnavailableError e retorna HTTP 503."""
+    """Backstop 503 para LMStudioUnavailableError fora de /query (ver nota acima)."""
     logger.error("LMStudio indisponível: %s", exc)
     return JSONResponse(
         status_code=503,
@@ -374,7 +378,7 @@ async def handler_lmstudio(request: Request, exc: LMStudioUnavailableError) -> J
 
 @app.exception_handler(httpx.ConnectError)
 async def handler_connect_error(request: Request, exc: httpx.ConnectError) -> JSONResponse:
-    """Captura httpx.ConnectError (falha de rede ao LMStudio) e retorna HTTP 503."""
+    """Backstop 503 para httpx.ConnectError fora de /query (ver nota acima)."""
     logger.error("Erro de conexão com LMStudio: %s", exc)
     return JSONResponse(
         status_code=503,

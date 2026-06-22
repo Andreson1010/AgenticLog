@@ -12,12 +12,7 @@ Todos os chamados ao LLM, ChromaDB e rede são mockados — nenhuma chamada real
 a serviços externos é feita nestes testes.
 """
 
-import sys
 from pathlib import Path
-
-_root = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(_root / "src"))
-
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -33,6 +28,9 @@ from agenticlog.health import (
     ModeloNaoCarregadoError,
     reset_health_check_sentinel,
 )
+
+# Raiz do repositório — usada para localizar app.py nos testes de AppTest.
+_root = Path(__file__).resolve().parent.parent.parent
 
 # ---------------------------------------------------------------------------
 # Shared mock history store — injected before any TestClient is created so
@@ -269,7 +267,7 @@ def test_ac_modo_seguro_06_fr5_safe_mode_invariants(trigger):
     data = response.json()
     assert data["degraded"] is True, "degraded must be True in safe mode"
     assert data["ranked_response"] == RESPOSTA_PADRAO_SEGURA, (
-        f"ranked_response must equal RESPOSTA_PADRAO_SEGURA constant. Got: {data['ranked_response']!r}"
+        f"ranked_response must equal RESPOSTA_PADRAO_SEGURA. Got: {data['ranked_response']!r}"
     )
     assert data["confidence_score"] == 0.0, (
         f"confidence_score must be 0.0 in safe mode. Got: {data['confidence_score']}"
@@ -352,7 +350,7 @@ def test_ac_modo_seguro_09_fr9_ui_degraded_true_renders_modo_seguro_badge():
     render a visible 'modo seguro' badge in the response area."""
     from streamlit.testing.v1 import AppTest
 
-    _APP_PATH = str(_root / "app.py")
+    app_path = str(_root / "app.py")
 
     mock_response = MagicMock()
     mock_response.status_code = 200
@@ -366,7 +364,7 @@ def test_ac_modo_seguro_09_fr9_ui_degraded_true_renders_modo_seguro_badge():
     mock_response.raise_for_status.return_value = None
 
     with patch("app.httpx.post", return_value=mock_response):
-        at = AppTest.from_file(_APP_PATH)
+        at = AppTest.from_file(app_path)
         at.run()
         at.text_input[0].set_value("pergunta com modelo indisponivel").run()
 
@@ -388,7 +386,7 @@ def test_ac_modo_seguro_10_fr9_ui_degraded_false_no_modo_seguro_badge():
     render a 'modo seguro' badge — normal answer renders without it."""
     from streamlit.testing.v1 import AppTest
 
-    _APP_PATH = str(_root / "app.py")
+    app_path = str(_root / "app.py")
 
     mock_response = MagicMock()
     mock_response.status_code = 200
@@ -402,7 +400,7 @@ def test_ac_modo_seguro_10_fr9_ui_degraded_false_no_modo_seguro_badge():
     mock_response.raise_for_status.return_value = None
 
     with patch("app.httpx.post", return_value=mock_response):
-        at = AppTest.from_file(_APP_PATH)
+        at = AppTest.from_file(app_path)
         at.run()
         at.text_input[0].set_value("pergunta normal").run()
 
