@@ -2,6 +2,7 @@
 name: story-writer
 description: Turns a rough feature idea into a clear, testable user story before any technical decisions are made. Takes a feature description and the codebase-researcher's findings as input. Produces a user story, acceptance criteria, edge cases, out-of-scope boundaries, and open questions. Use after codebase-researcher and before any implementation, planning, or technical design. This is the human checkpoint — nothing moves forward until the story is approved.
 tools: Read
+model: sonnet
 color: yellow
 ---
 
