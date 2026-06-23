@@ -60,6 +60,19 @@ ROUTING_KEYWORDS_WEB: tuple[str, ...] = (
     "busque na web", "notícias", "atualizado", "recente", "últimas informações",
 )
 
+# ChromaDB — métrica de distância do índice HNSW.
+# Default do Chroma é "l2"; com embeddings normalizados (normalize_embeddings=True) a
+# ordem por L2 e por cosseno coincide, mas "cosine" torna os scores interpretáveis (0..1)
+# e alinhados ao cosseno usado no ranqueamento de respostas (agent.avalia_similaridade).
+CHROMA_DISTANCE_SPACE: str = "cosine"
+CHROMA_COLLECTION_METADATA: dict[str, str] = {"hnsw:space": CHROMA_DISTANCE_SPACE}
+
+# Geração — nº de respostas candidatas geradas por consulta antes do ranqueamento.
+# Com LLM_TEMPERATURE=0 a geração é determinística: N candidatas seriam idênticas e o
+# ranqueamento escolheria entre clones (N× custo de LLM sem ganho). Por isso o default é 1.
+# Aumente apenas se LLM_TEMPERATURE > 0 (aí as candidatas divergem e o ranqueamento agrega valor).
+NUM_CANDIDATE_RESPONSES: int = 1
+
 # ChromaDB — nomes de coleção
 DEFAULT_COLLECTION_NAME: str = "logistica"
 COLLECTION_NAME_MIN_LEN: int = 3

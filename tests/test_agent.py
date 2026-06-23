@@ -4,7 +4,7 @@
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 _root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_root / "src"))
@@ -31,7 +31,11 @@ class TestGetEmbeddingModel(unittest.TestCase):
         """_get_embedding_model() constrói HuggingFaceEmbeddings com model_name=EMBEDDING_MODEL."""
         agent_mod._get_embedding_model()
 
-        mock_emb.assert_called_once_with(model_name=config.EMBEDDING_MODEL)
+        mock_emb.assert_called_once_with(
+            model_name=config.EMBEDDING_MODEL,
+            model_kwargs={"device": ANY},
+            encode_kwargs={"normalize_embeddings": True},
+        )
 
     @patch("agenticlog.agent.HuggingFaceEmbeddings")
     def test_get_embedding_model_singleton_reusa_instancia(self, mock_emb):
@@ -40,7 +44,11 @@ class TestGetEmbeddingModel(unittest.TestCase):
         segunda = agent_mod._get_embedding_model()
 
         self.assertIs(primeira, segunda)
-        mock_emb.assert_called_once_with(model_name=config.EMBEDDING_MODEL)
+        mock_emb.assert_called_once_with(
+            model_name=config.EMBEDDING_MODEL,
+            model_kwargs={"device": ANY},
+            encode_kwargs={"normalize_embeddings": True},
+        )
 
 
 class TestInvalidarVectorDb(unittest.TestCase):

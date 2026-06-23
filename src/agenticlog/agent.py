@@ -43,6 +43,7 @@ torch.classes.__path__ = []
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 from agenticlog.config import (  # noqa: E402
+    CHROMA_COLLECTION_METADATA,
     DEFAULT_COLLECTION_NAME,
     DIR_VECTORDB,
     EMBEDDING_MODEL,
@@ -55,6 +56,7 @@ from agenticlog.config import (  # noqa: E402
     LLM_RETRY_WAIT_MAX_SECONDS,
     LLM_TEMPERATURE,
     LLM_TIMEOUT_SECONDS,
+    NUM_CANDIDATE_RESPONSES,
     RETRIEVAL_K_DEFAULT,
     RETRIEVAL_K_PER_COLLECTION,
     RETRIEVAL_K_TOTAL,
@@ -125,7 +127,15 @@ def _get_embedding_model() -> HuggingFaceEmbeddings:
     """
     global _embedding_model
     if _embedding_model is None:
-        _embedding_model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        # normalize_embeddings=True para coincidir com o espaço vetorial da ingestão
+        # (rag.cria_vectordb / _get_rag_embedding_model) — embeddings de query e de chunk
+        # precisam da mesma norma para a similaridade ser comparável.
+        _embedding_model = HuggingFaceEmbeddings(
+            model_name=EMBEDDING_MODEL,
+            model_kwargs={"device": device},
+            encode_kwargs={"normalize_embeddings": True},
+        )
     return _embedding_model
 
 
@@ -140,6 +150,7 @@ def _get_vector_db(collection_name: str = DEFAULT_COLLECTION_NAME) -> Chroma:
             persist_directory=str(DIR_VECTORDB),
             collection_name=collection_name,
             embedding_function=_get_embedding_model(),
+            collection_metadata=CHROMA_COLLECTION_METADATA,
         )
     return _vector_dbs[collection_name]
 
@@ -271,7 +282,7 @@ class AgentState(BaseModel):
     query: str                          # pergunta original do usuário
     next_step: str = ""                 # rota decidida: "retrieve", "gerar" ou "usar_web"
     retrieved_info: list = []           # documentos retornados pelo retriever vetorial
-    possible_responses: list = []       # 5 respostas geradas pelo LLM para ranqueamento
+    possible_responses: list = []       # NUM_CANDIDATE_RESPONSES respostas do LLM para ranqueamento
     similarity_scores: list = []        # scores de cosseno de cada resposta vs. contexto recuperado
     ranked_response: str = ""           # melhor resposta após ranqueamento por similaridade
     confidence_score: float = 0.0       # score de confiança da resposta ranqueada (0.0–1.0)
@@ -336,16 +347,25 @@ def retrieve_info(state: AgentState) -> AgentState:
     """
     retrieved_docs = _get_retriever(state.query)
     if not retrieved_docs:
+        # Fail-loud: retrieval vazio costuma indicar base não populada (coleção vazia/órfã),
+        # não apenas ausência de match. Logamos WARNING para que a degradação não passe
+        # silenciosa — o fallback para 'gerar' produz resposta SEM contexto da base.
+        logger.warning(
+            "Retrieval retornou 0 documentos para a query; caindo para geração direta "
+            "(sem contexto). Verifique se o vector DB está populado."
+        )
         return state.model_copy(update={"retrieved_info": [], "next_step": "gerar"})
+    logger.debug("Retrieval retornou %d documentos.", len(retrieved_docs))
     return state.model_copy(update={"retrieved_info": retrieved_docs})
 
 
 def gera_multiplas_respostas(state: AgentState) -> AgentState:
-    """Nó de geração: produz 5 respostas candidatas usando o LLM para posterior ranqueamento.
+    """Nó de geração: produz NUM_CANDIDATE_RESPONSES respostas candidatas via LLM para ranqueamento.
 
     Entrada: state.next_step (determina o prompt usado), state.retrieved_info (se "retrieve"),
              state.query.
-    Saída:   state.possible_responses — lista de 5 dicts {"answer": str}.
+    Saída:   state.possible_responses — lista de NUM_CANDIDATE_RESPONSES dicts {"answer": str}.
+             Com LLM_TEMPERATURE=0 o default é 1 candidata (gerar N idênticas seria desperdício).
     """
     def format_docs(docs):
         if not docs:
@@ -364,7 +384,7 @@ def gera_multiplas_respostas(state: AgentState) -> AgentState:
     qa_chain_dynamic = current_prompt | _get_llm() | StrOutputParser()
 
     responses = []
-    for _ in range(5):
+    for _ in range(NUM_CANDIDATE_RESPONSES):
         if state.next_step == "retrieve":
             response = _invoke_chain(qa_chain_dynamic, {"context": context_text, "input": state.query})
         else:

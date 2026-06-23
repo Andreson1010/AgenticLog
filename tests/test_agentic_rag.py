@@ -28,6 +28,7 @@ from agenticlog.agent import (
     _get_vector_db,
 )
 import agenticlog.agent as agent_module
+import agenticlog.config as config
 from agenticlog.config import LLM_MAX_RETRY_ATTEMPTS, LLM_TIMEOUT_SECONDS
 
 
@@ -79,12 +80,15 @@ class TestAgenticRAG(unittest.TestCase):
         """Recuperação vazia: cai para fallback 'gerar' (geração direta sem contexto)."""
         mock_get_retriever.return_value = []
         state = AgentState(query="consulta sem resultados", next_step="retrieve")
-        new_state = retrieve_info(state)
+        # Fail-loud: retrieval vazio deve logar WARNING (não passar silencioso).
+        with self.assertLogs("agenticlog.agent", level="WARNING") as log_ctx:
+            new_state = retrieve_info(state)
         mock_get_retriever.assert_called_once_with("consulta sem resultados")
         self.assertEqual(len(new_state.retrieved_info), 0)
         self.assertEqual(new_state.retrieved_info, [])
         # Fallback: sem documentos, rota vira "gerar".
         self.assertEqual(new_state.next_step, "gerar")
+        self.assertTrue(any("0 documentos" in m for m in log_ctx.output))
 
     @patch("time.sleep")
     @patch("agenticlog.agent.StrOutputParser")
@@ -109,7 +113,7 @@ class TestAgenticRAG(unittest.TestCase):
         )
         state.retrieved_info = [Document(page_content="Documento teste")]
         new_state = gera_multiplas_respostas(state)
-        self.assertEqual(len(new_state.possible_responses), 5)
+        self.assertEqual(len(new_state.possible_responses), config.NUM_CANDIDATE_RESPONSES)
         self.assertIn("answer", new_state.possible_responses[0])
         self.assertEqual(new_state.possible_responses[0]["answer"], "Resposta gerada")
 
@@ -135,7 +139,7 @@ class TestAgenticRAG(unittest.TestCase):
         state = AgentState(query="consulta inexistente", next_step="retrieve")
         state.retrieved_info = []
         new_state = gera_multiplas_respostas(state)
-        self.assertEqual(len(new_state.possible_responses), 5)
+        self.assertEqual(len(new_state.possible_responses), config.NUM_CANDIDATE_RESPONSES)
         mock_chain.invoke.assert_called()
         invoke_arg = mock_chain.invoke.call_args[0][0]
         self.assertEqual(invoke_arg.get("context", ""), "")
