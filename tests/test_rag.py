@@ -8,6 +8,8 @@ import importlib
 import io
 import json
 import logging
+import shutil
+import sqlite3
 import sys
 import tempfile
 from pathlib import Path
@@ -563,27 +565,106 @@ class TestCriaVectordb(unittest.TestCase):
 
 
 class TestResetarColecao(unittest.TestCase):
-    """Testes para _resetar_colecao (purga do diretório no rebuild do zero)."""
+    """Testes para _resetar_colecao (purga segura no rebuild do zero)."""
 
+    @patch("agenticlog.rag._outras_colecoes_existem", return_value=False)
     @patch("agenticlog.rag.shutil.rmtree")
     @patch("agenticlog.rag.DIR_VECTORDB")
-    def test_resetar_colecao_remove_diretorio_quando_existe(self, mock_dir, mock_rmtree):
-        """Diretório presente: rmtree do DIR_VECTORDB inteiro (elimina segmentos órfãos)."""
+    def test_resetar_colecao_unica_remove_diretorio(self, mock_dir, mock_rmtree, mock_outras):
+        """Coleção única e diretório presente: rmtree do DIR_VECTORDB (elimina órfãos)."""
         mock_dir.exists.return_value = True
 
         rag._resetar_colecao("logistica")
 
         mock_rmtree.assert_called_once_with(mock_dir, ignore_errors=True)
 
+    @patch("agenticlog.rag._outras_colecoes_existem", return_value=False)
     @patch("agenticlog.rag.shutil.rmtree")
     @patch("agenticlog.rag.DIR_VECTORDB")
-    def test_resetar_colecao_inexistente_e_no_op(self, mock_dir, mock_rmtree):
+    def test_resetar_colecao_inexistente_e_no_op(self, mock_dir, mock_rmtree, mock_outras):
         """Diretório ausente: nada a remover (no-op), sem levantar."""
         mock_dir.exists.return_value = False
 
         rag._resetar_colecao("inexistente")  # não deve levantar
 
         mock_rmtree.assert_not_called()
+
+    @patch("chromadb.PersistentClient")
+    @patch("agenticlog.rag._outras_colecoes_existem", return_value=True)
+    @patch("agenticlog.rag.shutil.rmtree")
+    def test_resetar_colecao_multi_preserva_irmas(
+        self, mock_rmtree, mock_outras, mock_client_cls
+    ):
+        """Multi-coleção: descarta só a coleção alvo (não apaga o diretório/irmãs)."""
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+
+        rag._resetar_colecao("logistica")
+
+        mock_rmtree.assert_not_called()
+        mock_client.delete_collection.assert_called_once_with("logistica")
+
+    @patch("chromadb.PersistentClient")
+    @patch("agenticlog.rag._outras_colecoes_existem", return_value=True)
+    @patch("agenticlog.rag.shutil.rmtree")
+    def test_resetar_colecao_multi_colecao_inexistente_e_no_op(
+        self, mock_rmtree, mock_outras, mock_client_cls
+    ):
+        """Multi-coleção: exceção de delete_collection (coleção ausente) é engolida."""
+        mock_client = MagicMock()
+        mock_client.delete_collection.side_effect = ValueError("Collection not found")
+        mock_client_cls.return_value = mock_client
+
+        rag._resetar_colecao("inexistente")  # não deve levantar
+
+        mock_rmtree.assert_not_called()
+        mock_client.delete_collection.assert_called_once_with("inexistente")
+
+
+class TestOutrasColecoesExistem(unittest.TestCase):
+    """Testes para _outras_colecoes_existem (decisão wipe-completo vs delete por coleção)."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.mkdtemp()
+        self._db = Path(self._tmp) / "chroma.sqlite3"
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _criar_db_com_colecoes(self, nomes: list[str]) -> None:
+        con = sqlite3.connect(self._db)
+        try:
+            con.execute("CREATE TABLE collections (name TEXT)")
+            con.executemany("INSERT INTO collections (name) VALUES (?)", [(n,) for n in nomes])
+            con.commit()
+        finally:
+            con.close()
+
+    def test_db_inexistente_retorna_false(self) -> None:
+        """Sem arquivo SQLite: nenhuma coleção irmã → False (caminho de wipe seguro)."""
+        with patch("agenticlog.rag.DIR_VECTORDB", Path(self._tmp)):
+            self.assertFalse(rag._outras_colecoes_existem("logistica"))
+
+    def test_apenas_a_colecao_alvo_retorna_false(self) -> None:
+        """Só a coleção alvo presente: não há irmãs → False."""
+        self._criar_db_com_colecoes(["logistica"])
+        with patch("agenticlog.rag.DIR_VECTORDB", Path(self._tmp)):
+            self.assertFalse(rag._outras_colecoes_existem("logistica"))
+
+    def test_outra_colecao_presente_retorna_true(self) -> None:
+        """Existe coleção com nome diferente → True (preservar irmãs)."""
+        self._criar_db_com_colecoes(["logistica", "outra"])
+        with patch("agenticlog.rag.DIR_VECTORDB", Path(self._tmp)):
+            self.assertTrue(rag._outras_colecoes_existem("logistica"))
+
+    def test_schema_ilegivel_retorna_false(self) -> None:
+        """Schema sem tabela collections: degrada para False (wipe seguro)."""
+        con = sqlite3.connect(self._db)
+        con.execute("CREATE TABLE algo_diferente (x TEXT)")
+        con.commit()
+        con.close()
+        with patch("agenticlog.rag.DIR_VECTORDB", Path(self._tmp)):
+            self.assertFalse(rag._outras_colecoes_existem("logistica"))
 
 
 class TestGetRagEmbeddingModel(unittest.TestCase):

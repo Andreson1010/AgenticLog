@@ -330,23 +330,68 @@ def _reverter_disco(saved_path: Path, backup_path: Path | None) -> None:
         saved_path.unlink(missing_ok=True)
 
 
-def _resetar_colecao(collection_name: str) -> None:
-    """Remove TODO o diretório do vector DB antes do rebuild para garantir índice limpo.
+def _outras_colecoes_existem(collection_name: str) -> bool:
+    """Retorna True se o vector DB contém alguma coleção DIFERENTE de ``collection_name``.
 
-    ``delete_collection`` do ChromaDB **não** apaga os segmentos/embeddings órfãos em
-    disco: rebuilds sucessivos acumulavam segmentos mortos e a coleção recriada podia
-    ficar VAZIA (RAG silenciosamente offline — toda query retornava 0 docs). Remover
-    ``DIR_VECTORDB`` inteiro elimina órfãos por construção; ``from_documents`` recria a
-    coleção do zero. Diretório inexistente é no-op.
+    Lê a tabela ``collections`` do SQLite do Chroma em modo read-only — sem abrir um
+    cliente Chroma, que seguraria um lock sobre o arquivo e faria o ``rmtree`` falhar no
+    Windows. Schema ausente/ilegível ou DB inexistente é tratado como "sem coleções irmãs"
+    (False) — o caminho seguro de wipe completo (que purga órfãos).
 
-    Entrada: collection_name — coleção alvo (usado só para log; o rebuild é single-collection).
-    Saída: nenhuma — efeito colateral: diretório persistido removido.
+    Entrada: collection_name — coleção alvo do rebuild.
+    Saída: True se há ao menos uma coleção com nome diferente; False caso contrário.
     """
-    if DIR_VECTORDB.exists():
-        shutil.rmtree(DIR_VECTORDB, ignore_errors=True)
+    db_file = DIR_VECTORDB / "chroma.sqlite3"
+    if not db_file.exists():
+        return False
+    import sqlite3  # lazy — leitura pontual, sem lock do cliente Chroma
+
+    con = sqlite3.connect(f"file:{db_file}?mode=ro", uri=True)
+    try:
+        nomes = [row[0] for row in con.execute("SELECT name FROM collections").fetchall()]
+    except sqlite3.Error:
+        return False
+    finally:
+        con.close()
+    return any(nome != collection_name for nome in nomes)
+
+
+def _resetar_colecao(collection_name: str) -> None:
+    """Descarta o estado da coleção alvo antes do rebuild, sem destruir coleções irmãs.
+
+    Caso comum (a coleção alvo é a única, ou o DB ainda não existe): remove
+    ``DIR_VECTORDB`` inteiro — isso purga os segmentos/embeddings ÓRFÃOS que o
+    ``delete_collection`` do Chroma deixa para trás (causa-raiz da coleção vazia / RAG
+    silenciosamente offline). Caso multi-coleção: descarta apenas a coleção alvo via
+    ``delete_collection``, preservando as demais; a integridade do rebuild é garantida
+    pelo guardrail de contagem em ``cria_vectordb`` (aborta se persistir 0 chunks).
+    Diretório/coleção inexistente é no-op.
+
+    Entrada: collection_name — coleção ChromaDB alvo do rebuild.
+    Saída: nenhuma — efeito colateral: estado da coleção alvo removido do disco.
+    """
+    if not _outras_colecoes_existem(collection_name):
+        if DIR_VECTORDB.exists():
+            shutil.rmtree(DIR_VECTORDB, ignore_errors=True)
+            logger.info(
+                "Diretório do vector DB removido para rebuild limpo (coleção '%s'): %s",
+                collection_name, DIR_VECTORDB,
+            )
+        return
+
+    import chromadb  # lazy — evita side-effects na importação do módulo
+
+    client = chromadb.PersistentClient(path=str(DIR_VECTORDB))
+    try:
+        client.delete_collection(collection_name)
         logger.info(
-            "Diretório do vector DB removido para rebuild limpo (coleção '%s'): %s",
-            collection_name, DIR_VECTORDB,
+            "Coleção '%s' descartada (coleções irmãs preservadas no vector DB).",
+            collection_name,
+        )
+    except Exception as exc:  # coleção inexistente → nada a descartar
+        logger.debug(
+            "Coleção '%s' não descartada (provavelmente inexistente): %s",
+            collection_name, exc,
         )
 
 
