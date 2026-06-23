@@ -53,11 +53,47 @@
 - [x] Rebuild sem duplicação (`_resetar_colecao` antes de gravar; `--rebuild` deixa de anexar) — PR #45
 - [x] UI compacta (parágrafos, fontes só com nome do arquivo, Enter via `on_change`, XSS corrigido) — PR #45
 
+### Auditoria RAG — Correções P0 (relatório `docs/rag-audit-2026-06-23.md`)
+- [x] Purga de segmentos órfãos no rebuild (reset por coleção, wipe condicional) — ADR-014 — PR #51
+- [x] Guardrail fail-loud no rebuild + WARNING em retrieval vazio — ADR-015 — PR #51
+- [x] Distância cosine + normalização de embeddings unificada — ADR-016 — PR #51
+- [x] Geração única de candidata (`NUM_CANDIDATE_RESPONSES=1`, temp 0) — ADR-017 — PR #51
+
 ---
 
 ## Backlog
 
-_Vazio — trilha de Ingestão Incremental (REC-01 a REC-04) entregue; aguardando nova direção do usuário._
+Recomendações priorizadas da auditoria RAG (`docs/rag-audit-2026-06-23.md`) ainda não
+realizadas. Prioridade pela rubrica do relatório (impacto ÷ esforço); evidência ancorada nas
+métricas da Fase 2 (baseline sintético n=6) quando disponível.
+
+### P1 — mensurar e ampliar recall
+- [ ] **Golden set de avaliação + `rag_eval` no CI** — criar `evals/rag_golden.json` (perguntas
+  + ground-truth) e plugar `scripts/rag_eval.py` no CI. Destrava Context Recall e Answer
+  Correctness (hoje "requer golden set") e cria rede de regressão. *Evidência:* métricas só
+  mensuráveis em baseline sintético; sem trava de regressão para a coleção-vazia voltar.
+- [ ] **Aumentar top-k (3→5–8) + guardrails de tamanho de chunk** — `RETRIEVAL_K_TOTAL` maior e
+  min/max + overlap no `SemanticChunker`. *Evidência:* Hit Rate 0.83 (< 0.9); chunks sem teto
+  de tamanho.
+
+### P2 — qualidade de retrieval (estrutural)
+- [ ] **Re-ranking cross-encoder no top-N** — re-ordenar os candidatos do retriever antes da
+  geração. *Evidência:* 1 caso real com Context Precision 0.0 (chunks errados no topo);
+  priorizar se MRR cair < 0.7 no golden set.
+- [ ] **Hybrid search (BM25 + denso)** — combinar busca lexical e semântica. *Evidência:*
+  logística usa códigos/termos exatos que a busca densa pura erra.
+
+### P3 — refinamentos
+- [ ] **Filtro por metadado na consulta (doc_type/page)** — usar os metadados já gravados
+  (REC-01) como filtro no retriever; hoje são peso morto no query-time.
+- [ ] **Query transformation (rewriting / multi-query / HyDE)** — hoje a query vai literal ao
+  retriever.
+- [ ] **Parsing JSON estruturado + cleaning de boilerplate PDF** — preservar aninhamento em vez
+  de `tostring`; remover cabeçalhos/rodapés repetidos.
+
+### Dívida técnica (achado menor da auditoria)
+- [ ] **Contrato de `AgentState.ranked_response`** — tipado `str` mas `rank_respostas` atribui
+  dict `{"answer": ...}`. Normalizar para `str` (ou ajustar o tipo + consumidores).
 
 ---
 
