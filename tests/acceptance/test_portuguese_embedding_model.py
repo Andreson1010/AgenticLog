@@ -83,7 +83,11 @@ class TestAC02RagEmbeddingCallSitesUsamConfig(unittest.TestCase):
         """AC2: _get_rag_embedding_model() constrói HuggingFaceEmbeddings(model_name=config.EMBEDDING_MODEL)."""
         self._rag_mod._get_rag_embedding_model()
 
-        mock_emb.assert_called_once_with(model_name=config.EMBEDDING_MODEL)
+        mock_emb.assert_called_once_with(
+            model_name=config.EMBEDDING_MODEL,
+            model_kwargs={"device": ANY},
+            encode_kwargs={"normalize_embeddings": True},
+        )
 
     @patch("agenticlog.rag._hash_arquivo", return_value="a" * 64)
     @patch("agenticlog.rag.Chroma")
@@ -151,7 +155,11 @@ class TestAC02AgentEmbeddingCallSiteUsaConfig(unittest.TestCase):
         """AC2: _get_embedding_model() constrói HuggingFaceEmbeddings(model_name=config.EMBEDDING_MODEL)."""
         self._agent_mod._get_embedding_model()
 
-        mock_emb.assert_called_once_with(model_name=config.EMBEDDING_MODEL)
+        mock_emb.assert_called_once_with(
+            model_name=config.EMBEDDING_MODEL,
+            model_kwargs={"device": ANY},
+            encode_kwargs={"normalize_embeddings": True},
+        )
 
     @patch("agenticlog.agent.HuggingFaceEmbeddings")
     def teste_2_get_embedding_model_singleton_reusa_instancia(
@@ -162,7 +170,11 @@ class TestAC02AgentEmbeddingCallSiteUsaConfig(unittest.TestCase):
         segunda = self._agent_mod._get_embedding_model()
 
         self.assertIs(primeira, segunda)
-        mock_emb.assert_called_once_with(model_name=config.EMBEDDING_MODEL)
+        mock_emb.assert_called_once_with(
+            model_name=config.EMBEDDING_MODEL,
+            model_kwargs={"device": ANY},
+            encode_kwargs={"normalize_embeddings": True},
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -393,11 +405,12 @@ class TestAC08SemLogicaDePrefixoQueryPassage(unittest.TestCase):
 
 class TestAC09ModelKwargsEncodeKwargsInalterados(unittest.TestCase):
     """
-    AC9: WHEN o diff desta feature é revisado
-    THEN SHALL ser config-only para comportamento — model_kwargs/encode_kwargs
-    (normalize_embeddings, device) em rag.py/agent.py SHALL permanecer
-    inalterados, incluindo a inconsistência pré-existente entre cria_vectordb()
-    e os singleton getters.
+    Normalização de embeddings UNIFICADA (auditoria RAG 2026-06-23, P0-3).
+
+    A inconsistência pré-existente — cria_vectordb() normalizava, mas os singleton
+    getters (_get_rag_embedding_model / agent._get_embedding_model) não — produzia
+    normas diferentes no mesmo espaço vetorial. Os três call sites agora passam
+    model_kwargs={"device": ...} e encode_kwargs={"normalize_embeddings": True}.
     """
 
     @classmethod
@@ -406,24 +419,30 @@ class TestAC09ModelKwargsEncodeKwargsInalterados(unittest.TestCase):
         cls.agent_source = (_root / "src" / "agenticlog" / "agent.py").read_text(encoding="utf-8")
 
     def teste_1_cria_vectordb_passa_model_kwargs_device_e_encode_kwargs_normalize(self) -> None:
-        """AC9: cria_vectordb() ainda passa model_kwargs={"device": device} e
-        encode_kwargs={"normalize_embeddings": True} — kwargs preservados byte-for-byte."""
+        """cria_vectordb() passa model_kwargs={"device": device} e
+        encode_kwargs={"normalize_embeddings": True}."""
         self.assertIn('model_kwargs={"device": device}', self.rag_source)
         self.assertIn('encode_kwargs={"normalize_embeddings": True}', self.rag_source)
 
-    def teste_2_get_rag_embedding_model_nao_passa_model_kwargs_ou_encode_kwargs(self) -> None:
-        """AC9: _get_rag_embedding_model() continua sem model_kwargs/encode_kwargs
-        (inconsistência pré-existente preservada — fora de escopo alterar)."""
-        self.assertIn(
+    def teste_2_get_rag_embedding_model_normaliza(self) -> None:
+        """_get_rag_embedding_model() agora normaliza (sem a inconsistência pré-existente)."""
+        self.assertNotIn(
             "_rag_embedding_model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)",
             self.rag_source,
         )
+        self.assertEqual(
+            self.rag_source.count('encode_kwargs={"normalize_embeddings": True}'), 2,
+            "rebuild e ingestão incremental devem ambos normalizar embeddings",
+        )
 
-    def teste_3_get_embedding_model_nao_passa_model_kwargs_ou_encode_kwargs(self) -> None:
-        """AC9: _get_embedding_model() (agent.py) continua sem model_kwargs/encode_kwargs
-        (inconsistência pré-existente preservada — fora de escopo alterar)."""
-        self.assertIn(
+    def teste_3_get_embedding_model_normaliza(self) -> None:
+        """agent._get_embedding_model() agora normaliza (espaço vetorial consistente com a ingestão)."""
+        self.assertNotIn(
             "_embedding_model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)",
+            self.agent_source,
+        )
+        self.assertIn(
+            'encode_kwargs={"normalize_embeddings": True}',
             self.agent_source,
         )
 

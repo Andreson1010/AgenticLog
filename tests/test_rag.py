@@ -497,30 +497,93 @@ class TestCriaVectordb(unittest.TestCase):
 
         mock_resetar.assert_not_called()
 
+    @patch("agenticlog.rag._resetar_colecao")
+    @patch("agenticlog.rag._hash_arquivo", return_value="a" * 64)
+    @patch("agenticlog.rag.Chroma")
+    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.rag.DirectoryLoader")
+    @patch("agenticlog.rag._valida_arquivos_json")
+    @patch("agenticlog.rag._valida_path_documentos")
+    def test_cria_vectordb_coleção_vazia_pos_rebuild_levanta(
+        self, mock_valida_path, mock_valida_json, mock_loader, mock_dir,
+        mock_splitter, mock_emb, mock_chroma, mock_hash, mock_resetar
+    ):
+        """Guardrail fail-loud: se from_documents persistir 0 chunks, levanta RuntimeError."""
+        from langchain_core.documents import Document
+
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load.return_value = [Document(page_content="X: y")]
+        mock_loader.return_value = mock_loader_instance
+        mock_dir.glob.return_value = []
+
+        mock_splitter_instance = MagicMock()
+        mock_splitter_instance.split_documents.side_effect = lambda docs: docs
+        mock_splitter.return_value = mock_splitter_instance
+
+        # coleção persistida reporta 0 chunks → degradação silenciosa que o guardrail deve pegar
+        mock_chroma.from_documents.return_value._collection.count.return_value = 0
+
+        with self.assertRaises(RuntimeError):
+            cria_vectordb()
+
+    @patch("agenticlog.rag._resetar_colecao")
+    @patch("agenticlog.rag._hash_arquivo", return_value="a" * 64)
+    @patch("agenticlog.rag.Chroma")
+    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.rag.DirectoryLoader")
+    @patch("agenticlog.rag._valida_arquivos_json")
+    @patch("agenticlog.rag._valida_path_documentos")
+    def test_cria_vectordb_seta_metrica_cosine_na_colecao(
+        self, mock_valida_path, mock_valida_json, mock_loader, mock_dir,
+        mock_splitter, mock_emb, mock_chroma, mock_hash, mock_resetar
+    ):
+        """from_documents recebe collection_metadata com hnsw:space=cosine."""
+        from langchain_core.documents import Document
+
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load.return_value = [Document(page_content="X: y")]
+        mock_loader.return_value = mock_loader_instance
+        mock_dir.glob.return_value = []
+
+        mock_splitter_instance = MagicMock()
+        mock_splitter_instance.split_documents.side_effect = lambda docs: docs
+        mock_splitter.return_value = mock_splitter_instance
+        mock_chroma.from_documents.return_value._collection.count.return_value = 1
+
+        cria_vectordb()
+
+        _, kwargs = mock_chroma.from_documents.call_args
+        self.assertEqual(
+            kwargs["collection_metadata"], config.CHROMA_COLLECTION_METADATA
+        )
+
 
 class TestResetarColecao(unittest.TestCase):
-    """Testes para _resetar_colecao (descarte de coleção no rebuild do zero)."""
+    """Testes para _resetar_colecao (purga do diretório no rebuild do zero)."""
 
-    @patch("chromadb.PersistentClient")
-    def test_resetar_colecao_deleta_colecao_alvo(self, mock_client_cls):
-        """_resetar_colecao chama delete_collection com o nome da coleção."""
-        mock_client = MagicMock()
-        mock_client_cls.return_value = mock_client
+    @patch("agenticlog.rag.shutil.rmtree")
+    @patch("agenticlog.rag.DIR_VECTORDB")
+    def test_resetar_colecao_remove_diretorio_quando_existe(self, mock_dir, mock_rmtree):
+        """Diretório presente: rmtree do DIR_VECTORDB inteiro (elimina segmentos órfãos)."""
+        mock_dir.exists.return_value = True
 
         rag._resetar_colecao("logistica")
 
-        mock_client.delete_collection.assert_called_once_with("logistica")
+        mock_rmtree.assert_called_once_with(mock_dir, ignore_errors=True)
 
-    @patch("chromadb.PersistentClient")
-    def test_resetar_colecao_inexistente_e_no_op(self, mock_client_cls):
-        """Coleção inexistente: exceção de delete_collection é engolida (no-op)."""
-        mock_client = MagicMock()
-        mock_client.delete_collection.side_effect = ValueError("Collection not found")
-        mock_client_cls.return_value = mock_client
+    @patch("agenticlog.rag.shutil.rmtree")
+    @patch("agenticlog.rag.DIR_VECTORDB")
+    def test_resetar_colecao_inexistente_e_no_op(self, mock_dir, mock_rmtree):
+        """Diretório ausente: nada a remover (no-op), sem levantar."""
+        mock_dir.exists.return_value = False
 
         rag._resetar_colecao("inexistente")  # não deve levantar
 
-        mock_client.delete_collection.assert_called_once_with("inexistente")
+        mock_rmtree.assert_not_called()
 
 
 class TestGetRagEmbeddingModel(unittest.TestCase):
@@ -539,7 +602,11 @@ class TestGetRagEmbeddingModel(unittest.TestCase):
         """_get_rag_embedding_model() constrói HuggingFaceEmbeddings com model_name=config.EMBEDDING_MODEL."""
         rag._get_rag_embedding_model()
 
-        mock_emb.assert_called_once_with(model_name=config.EMBEDDING_MODEL)
+        mock_emb.assert_called_once_with(
+            model_name=config.EMBEDDING_MODEL,
+            model_kwargs={"device": ANY},
+            encode_kwargs={"normalize_embeddings": True},
+        )
 
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     def test_get_rag_embedding_model_singleton_reusa_instancia(self, mock_emb):
@@ -548,7 +615,11 @@ class TestGetRagEmbeddingModel(unittest.TestCase):
         segunda = rag._get_rag_embedding_model()
 
         self.assertIs(primeira, segunda)
-        mock_emb.assert_called_once_with(model_name=config.EMBEDDING_MODEL)
+        mock_emb.assert_called_once_with(
+            model_name=config.EMBEDDING_MODEL,
+            model_kwargs={"device": ANY},
+            encode_kwargs={"normalize_embeddings": True},
+        )
 
 
 class TestLogging(unittest.TestCase):

@@ -18,6 +18,7 @@ from unittest.mock import patch, MagicMock
 from langchain_core.documents import Document
 
 from agenticlog.agent import AgentState, agent_workflow
+from agenticlog.config import NUM_CANDIDATE_RESPONSES
 
 
 # ---------------------------------------------------------------------------
@@ -265,13 +266,13 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
     @patch("agenticlog.agent._get_embedding_model")
     @patch("agenticlog.agent._get_retriever")
     @patch("agenticlog.agent._invoke_chain")
-    def teste_9_caminho_gerar_possible_responses_tem_cinco_itens(
+    def teste_9_caminho_gerar_possible_responses_tem_n_itens(
         self,
         mock_invoke_chain,
         mock_get_retriever,
         mock_get_embedding,
     ):
-        """INTEG-09: fallback 'gerar' — possible_responses deve conter exatamente 5 candidatas."""
+        """INTEG-09: fallback 'gerar' — possible_responses tem NUM_CANDIDATE_RESPONSES candidatas."""
         mock_get_retriever.return_value = []
         mock_get_embedding.return_value = _fake_embedding_model()
         mock_invoke_chain.return_value = "Resposta conceitual."
@@ -280,7 +281,7 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
 
         result = agent_workflow.invoke(state)
 
-        self.assertEqual(len(result["possible_responses"]), 5)
+        self.assertEqual(len(result["possible_responses"]), NUM_CANDIDATE_RESPONSES)
         for item in result["possible_responses"]:
             self.assertIn("answer", item)
 

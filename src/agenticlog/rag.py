@@ -44,6 +44,7 @@ from agenticlog.config import (
     LOG_LEVEL,
     LOG_FORMAT,
     _JsonFormatter,
+    CHROMA_COLLECTION_METADATA,
     DEFAULT_COLLECTION_NAME,
     COLLECTION_NAME_MIN_LEN,
     COLLECTION_NAME_MAX_LEN,
@@ -71,7 +72,15 @@ def _get_rag_embedding_model() -> HuggingFaceEmbeddings:
     """
     global _rag_embedding_model
     if _rag_embedding_model is None:
-        _rag_embedding_model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        # normalize_embeddings=True garante o MESMO espaço vetorial do rebuild (cria_vectordb)
+        # e do agente — sem isso, chunks ingeridos incrementalmente teriam normas diferentes
+        # dos do rebuild, degradando a similaridade silenciosamente.
+        _rag_embedding_model = HuggingFaceEmbeddings(
+            model_name=EMBEDDING_MODEL,
+            model_kwargs={"device": device},
+            encode_kwargs={"normalize_embeddings": True},
+        )
     return _rag_embedding_model
 
 
@@ -322,23 +331,23 @@ def _reverter_disco(saved_path: Path, backup_path: Path | None) -> None:
 
 
 def _resetar_colecao(collection_name: str) -> None:
-    """Descarta a coleção existente para garantir reconstrução do zero (cria_vectordb).
+    """Remove TODO o diretório do vector DB antes do rebuild para garantir índice limpo.
 
-    Sem esta etapa, ``Chroma.from_documents`` anexa os novos chunks à coleção
-    persistida em vez de recriá-la — rodar ``--rebuild`` N vezes duplicaria todo o
-    índice silenciosamente. Coleção inexistente é tratada como no-op.
+    ``delete_collection`` do ChromaDB **não** apaga os segmentos/embeddings órfãos em
+    disco: rebuilds sucessivos acumulavam segmentos mortos e a coleção recriada podia
+    ficar VAZIA (RAG silenciosamente offline — toda query retornava 0 docs). Remover
+    ``DIR_VECTORDB`` inteiro elimina órfãos por construção; ``from_documents`` recria a
+    coleção do zero. Diretório inexistente é no-op.
 
-    Entrada: collection_name — nome da coleção ChromaDB a remover.
-    Saída: nenhuma — efeito colateral: coleção removida do diretório persistido.
+    Entrada: collection_name — coleção alvo (usado só para log; o rebuild é single-collection).
+    Saída: nenhuma — efeito colateral: diretório persistido removido.
     """
-    import chromadb  # lazy — evita side-effects na importação do módulo
-
-    client = chromadb.PersistentClient(path=str(DIR_VECTORDB))
-    try:
-        client.delete_collection(collection_name)
-        logger.info("Coleção '%s' descartada para reconstrução do zero.", collection_name)
-    except Exception as exc:  # coleção inexistente → nada a descartar
-        logger.debug("Coleção '%s' não descartada (provavelmente inexistente): %s", collection_name, exc)
+    if DIR_VECTORDB.exists():
+        shutil.rmtree(DIR_VECTORDB, ignore_errors=True)
+        logger.info(
+            "Diretório do vector DB removido para rebuild limpo (coleção '%s'): %s",
+            collection_name, DIR_VECTORDB,
+        )
 
 
 def adicionar_documento_incrementalmente(
@@ -387,6 +396,7 @@ def adicionar_documento_incrementalmente(
         persist_directory=str(DIR_VECTORDB),
         collection_name=collection_name,
         embedding_function=embedding_model,
+        collection_metadata=CHROMA_COLLECTION_METADATA,
     )
 
     existing = vectordb_instance.get(
@@ -539,6 +549,7 @@ def adicionar_pdf_incrementalmente(
         persist_directory=str(DIR_VECTORDB),
         collection_name=collection_name,
         embedding_function=embedding_model,
+        collection_metadata=CHROMA_COLLECTION_METADATA,
     )
 
     existing = vectordb_instance.get(
@@ -846,9 +857,22 @@ def cria_vectordb(collection_name: str = DEFAULT_COLLECTION_NAME) -> None:
         embedding_model,
         persist_directory=str(DIR_VECTORDB),
         collection_name=collection_name,
+        collection_metadata=CHROMA_COLLECTION_METADATA,
     )
 
-    logger.info("Banco de Dados Vetorial Criado com sucesso!")
+    # Guardrail fail-loud: o rebuild já deixou a coleção ativa vazia no passado (órfãos).
+    # Se nada foi persistido, aborta com erro em vez de deixar o RAG offline silenciosamente.
+    persistidos = vectordb._collection.count()
+    if persistidos == 0:
+        raise RuntimeError(
+            f"Rebuild gerou coleção vazia ('{collection_name}'): {len(chunks)} chunks "
+            "preparados, 0 persistidos. Vector DB não confiável — verifique o ChromaDB."
+        )
+
+    logger.info(
+        "Banco de Dados Vetorial Criado com sucesso! %s chunks na coleção '%s'.",
+        persistidos, collection_name,
+    )
 
 
 def ingerir_incrementalmente(collection_name: str = DEFAULT_COLLECTION_NAME) -> dict[str, int]:
