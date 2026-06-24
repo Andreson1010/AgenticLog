@@ -95,7 +95,7 @@ data/documents/*.json → rag.py → data/vectordb/ (ChromaDB)
 - Commit messages follow **Conventional Commits** in **Portuguese**: `feat:`, `fix:`, `docs:`, `refactor:`
 - Run `git pull origin main` after merging PRs
 - ALWAYS create a feature branch before committing — never commit directly to main. Branch first, then commit, then open a PR.
-- After opening a PR, ALWAYS run the code review phase before merging — do not skip it.
+- After opening a PR, ALWAYS run the code review phase before merging — do not skip it. Use the **`code-review` plugin** (`/code-review` for the working diff, or `/code-review <PR#>` to review a GitHub PR) as the code-review step — not an ad-hoc agent.
 
 ## Environment
 
