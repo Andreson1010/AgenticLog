@@ -15,7 +15,7 @@ None currently.
 
 - [x] Fix SPOF: lazy LLM init — merged PR #8 (2026-05-27)
 - [ ] Load LLM credentials from .env instead of config.py hardcodes
-- [ ] Add GitHub Actions CI with coverage gate
+- [x] Add GitHub Actions CI with coverage gate — `test` job (3.11+3.12, `--cov-fail-under=80`) + `lint` job (PR #50) + `rag-eval` job de regressão de qualidade RAG sobre `evals/rag_golden.json` (golden-eval-ci)
 
 ## Deferred Ideas
 

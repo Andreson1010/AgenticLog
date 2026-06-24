@@ -50,7 +50,68 @@ jobs:
           cp .env.example .env
 
       - name: Run tests with coverage gate (80%)
-        run: pytest --cov=agenticlog --cov-report=term-missing --cov-report=xml --cov-fail-under=80 -v
+        # -m "not rag_eval": o harness de avaliação (scripts/rag_eval.py) tem testes
+        # próprios que rodam no job rag-eval, FORA de --cov=agenticlog (HARN-01).
+        run: pytest -m "not rag_eval" --cov=agenticlog --cov-report=term-missing --cov-report=xml --cov-fail-under=80 -v
+
+  rag-eval:
+    runs-on: ubuntu-latest
+
+    env:
+      OPENAI_API_KEY: hermes
+      OPENAI_API_BASE: http://127.0.0.1:1234/v1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Cache uv
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-3.12-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-3.12-
+
+      - name: Cache HuggingFace embedding model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: ${{ runner.os }}-hf-paraphrase-multilingual-mpnet-base-v2
+
+      - name: Install dependencies
+        run: |
+          uv pip install -r requirements-dev.txt --system
+          uv pip install -e . --system
+
+      - name: Create .env for harness
+        run: cp .env.example .env
+
+      - name: Run harness unit tests (outside --cov=agenticlog)
+        run: pytest tests/test_rag_eval.py -m rag_eval -v
+
+      - name: Build vector DB (full rebuild from committed corpus)
+        # --rebuild (não incremental) garante que o índice casa com a config atual
+        # de chunking/embedding — evita silent-degradation (CLAUDE.md).
+        run: python -m agenticlog.rag --rebuild
+
+      - name: Run RAG eval gate against golden set
+        run: python scripts/rag_eval.py --golden evals/rag_golden.json --out rag_eval_results.json --k 3 --gate
+
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-eval-results
+          path: rag_eval_results.json
 
   lint:
     runs-on: ubuntu-latest
