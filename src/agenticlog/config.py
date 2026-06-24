@@ -91,6 +91,26 @@ RETRIEVAL_K_PER_COLLECTION: dict[str, int] = {
 }
 RETRIEVAL_K_TOTAL: int = 3  # limite final de docs únicos após mesclar todas as coleções
 
+# RAG Eval — thresholds do gate de qualidade no CI (ajustáveis; frouxos no início).
+RAG_EVAL_MIN_HIT_RATE: float = 0.7    # Hit Rate mínimo para o CI passar
+RAG_EVAL_MIN_MRR: float = 0.6         # MRR mínimo para o CI passar
+RAG_EVAL_MATCH_THRESHOLD: float = 0.6  # cosseno mínimo chunk↔contexto_ref p/ contar "hit"
+RAG_EVAL_K: int = 3                   # top-k avaliado (limitado por RETRIEVAL_K_TOTAL)
+# Validação fail-fast (mesma convenção de LOG_LEVEL/HISTORY_MAX_ENTRIES).
+for _nome, _valor in (
+    ("RAG_EVAL_MIN_HIT_RATE", RAG_EVAL_MIN_HIT_RATE),
+    ("RAG_EVAL_MIN_MRR", RAG_EVAL_MIN_MRR),
+    ("RAG_EVAL_MATCH_THRESHOLD", RAG_EVAL_MATCH_THRESHOLD),
+):
+    if not 0.0 <= _valor <= 1.0:
+        raise ValueError(
+            f"{_nome}={_valor!r} must be within [0.0, 1.0]."
+        )
+if RAG_EVAL_K < 1:
+    raise ValueError(
+        f"RAG_EVAL_K={RAG_EVAL_K!r} must be >= 1."
+    )
+
 # Metadados unificados de chunks (REC-01)
 METADATA_FILE_HASH: str = "file_hash"
 METADATA_CHUNK_INDEX: str = "chunk_index"

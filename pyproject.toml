@@ -27,6 +27,7 @@ python_functions = ["test_*", "teste_*"]
 addopts = "-v --tb=short"
 markers = [
     "integration: testes que usam ChromaDB real (requerem hnswlib; pulados quando o .pyd nativo não carrega, ex. Smart App Control no Windows).",
+    "rag_eval: testes do harness de avaliação RAG (scripts/rag_eval.py); rodam em invocação separada e ficam FORA de --cov=agenticlog.",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning:langchain_experimental",

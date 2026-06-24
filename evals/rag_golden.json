@@ -1,0 +1,61 @@
+[
+  {
+    "pergunta": "Qual a finalidade do controle de estoques na logística?",
+    "resposta_ref": "O controle de estoques tem a finalidade de avaliar e ajustar os níveis de estoque, prever a demanda, dimensionar custos e realizar inventário físico, garantindo precisão de estoque e disponibilidade de materiais.",
+    "contexto_ref": "Princípios básicos para controle de estoques. Tipos de estoque. Previsão para os estoques. Custos de estoques. Avaliação dos níveis de estoques. Inventário físico. Armazenagem e controle de materiais.",
+    "categoria": "controle de estoque"
+  },
+  {
+    "pergunta": "Qual é o objetivo do Processamento de Pedidos na cadeia logística?",
+    "resposta_ref": "O processamento de pedidos é uma das atividades centrais da logística, ao lado do transporte, do armazenamento e do gerenciamento de informações, e impacta diretamente os resultados da organização e o nível de serviço prestado ao cliente.",
+    "contexto_ref": "A logística envolve o transporte de materiais, o armazenamento, o processamento de pedidos e o gerenciamento de informações. Um dos principais desafios da logística empresarial é gerenciar adequadamente a relação entre os custos e o nível de serviço.",
+    "categoria": "processamento de pedidos"
+  },
+  {
+    "pergunta": "Qual é a definição de operador logístico?",
+    "resposta_ref": "Operador logístico é o agente eficiente escolhido para administrar a cadeia produtiva, capaz de integrar atividades como transporte de cargas e armazenagem, operar tecnologia de informação sofisticada e infraestruturas complexas para executar atividades logísticas.",
+    "contexto_ref": "A escolha de um operador logístico eficiente para administrar a cadeia produtiva. Empresas têm agilidade para efetuar o processamento de pedidos e possuem recursos humanos e materiais para investir e operar tecnologia de informação sofisticada e infraestruturas complexas, como o transporte de cargas ou simplesmente a armazenagem.",
+    "categoria": "definição de operador logístico"
+  },
+  {
+    "pergunta": "O que envolve a gestão de logística e supply chain?",
+    "resposta_ref": "A gestão de logística e supply chain envolve o planejamento, a implementação e o controle eficiente dos fluxos de mercadorias, informações e recursos.",
+    "contexto_ref": "A gestão de logística e supply chain envolve planejamento, implementação e controle eficiente dos fluxos de mercadorias, informações e recursos.",
+    "categoria": "supply chain"
+  },
+  {
+    "pergunta": "Quais são as modalidades de transporte na logística?",
+    "resposta_ref": "As modalidades de transporte são rodoviário, ferroviário, marítimo, aéreo e intermodal.",
+    "contexto_ref": "MODALIDADES DE TRANSPORTE: Rodoviário, ferroviário, marítimo, aéreo e intermodal.",
+    "categoria": "transporte"
+  },
+  {
+    "pergunta": "Quais são as fases do processo logístico?",
+    "resposta_ref": "As fases do processo logístico são planejamento, aquisição, transporte, armazenagem, distribuição e entrega ao cliente final.",
+    "contexto_ref": "FASES DO PROCESSO LOGÍSTICO: Planejamento, aquisição, transporte, armazenagem, distribuição e entrega ao cliente final.",
+    "categoria": "processo logístico"
+  },
+  {
+    "pergunta": "Quais são as modalidades de armazenagem no gerenciamento da cadeia de suprimentos?",
+    "resposta_ref": "As modalidades de armazenagem são cross-docking, armazenagem convencional, fulfillment, armazenagem temporária e armazenagem automatizada.",
+    "contexto_ref": "MODALIDADES DE ARMAZENAGEM: Cross-docking, armazenagem convencional, fulfillment, armazenagem temporária e armazenagem automatizada.",
+    "categoria": "armazenagem"
+  },
+  {
+    "pergunta": "Quais são as modalidades de distribuição na gestão logística?",
+    "resposta_ref": "As modalidades de distribuição são distribuição direta, indireta, intensiva, seletiva e exclusiva.",
+    "contexto_ref": "MODALIDADES DE DISTRIBUIÇÃO: Distribuição direta, indireta, intensiva, seletiva e exclusiva.",
+    "categoria": "distribuição"
+  },
+  {
+    "pergunta": "O que inclui o gerenciamento da cadeia de suprimentos?",
+    "resposta_ref": "O gerenciamento da cadeia de suprimentos inclui atividades integradas para otimizar fluxos desde fornecedores até o cliente final, aumentando a eficiência e reduzindo custos operacionais.",
+    "contexto_ref": "O gerenciamento da cadeia de suprimentos inclui atividades integradas para otimizar fluxos desde fornecedores até o cliente final, aumentando a eficiência e reduzindo custos operacionais.",
+    "categoria": "supply chain"
+  },
+  {
+    "pergunta": "Quais são os critérios de desempenho usados na logística?",
+    "resposta_ref": "Os critérios de desempenho incluem tempo de entrega, custo operacional, nível de serviço, taxa de erros e confiabilidade das operações.",
+    "categoria": "critérios de desempenho"
+  }
+]
