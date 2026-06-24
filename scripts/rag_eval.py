@@ -102,7 +102,7 @@ def _bootstrap() -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # Cliente LLM (juiz) — OpenAI-compat (LMStudio)
 # --------------------------------------------------------------------------- #
-def _criar_llm(config: Any):
+def _criar_llm(config: Any) -> tuple[Any, str]:
     """Retorna (client, model) ou (None, motivo)."""
     try:
         from openai import OpenAI  # type: ignore[import-not-found]
@@ -185,7 +185,9 @@ def _checar_indice(h: dict) -> dict | None:
     """Sentinela de erro quando o índice está vazio; None se há chunks recuperáveis.
 
     Estratégia (sem depender de helpers internos do agent): faz um retrieve com uma
-    consulta-sonda; se nenhum chunk volta, o índice está vazio (collection.count()==0).
+    consulta-sonda. Depende de `_get_retriever` usar search_type="similarity" (sem
+    score_threshold), que sempre retorna resultados quando collection.count() > 0; se
+    o retriever mudar para "similarity_score_threshold", trocar por collection.count().
     """
     try:
         docs = h["_get_retriever"]("teste")
@@ -225,13 +227,13 @@ def _coagir_resposta(estado: Any) -> str:
 
 def _bloco_juiz(client: Any, model: str, q: str, contextos: list[str], resposta: str) -> dict:
     """Bloco de métricas de juiz (report-only); só chamado quando há LLM."""
+    ctx_txt = "\n".join(contextos)[:2500]
     faith = _juiz_json(
         client, model,
-        f'Contexto:\n{chr(10).join(contextos)[:2500]}\n\nResposta:\n{resposta[:1200]}\n\n'
+        f'Contexto:\n{ctx_txt}\n\nResposta:\n{resposta[:1200]}\n\n'
         'Que fração das afirmações da resposta é sustentada pelo contexto? '
         'Responda JSON {"score": 0..1, "motivo": "..."}.',
     )["score"] if resposta else 0.0
-    ctx_txt = chr(10).join(contextos)[:2500]
     util = _juiz_json(
         client, model,
         f'Pergunta: {q}\nContexto:\n{ctx_txt}\nResposta:\n{resposta[:1200]}\n\n'
@@ -247,6 +249,8 @@ def _bloco_juiz(client: Any, model: str, q: str, contextos: list[str], resposta:
 def _avaliar_pergunta(h: dict, client: Any, model: str, item: dict, k: int) -> dict:
     """Avalia UMA entrada: retrieval embedding-only + Answer Correctness + juiz opcional."""
     q = item["pergunta"]
+    # _get_rag_embedding_model() é um singleton global (rag.py): o modelo é
+    # carregado uma vez e reaproveitado em todas as perguntas — chamada barata.
     emb = h["_get_rag_embedding_model"]()
     try:
         docs = h["_get_retriever"](q)[:k]
@@ -413,20 +417,28 @@ def main(argv: list[str] | None = None) -> int:
 
     linhas = [_avaliar_pergunta(h, client, model, it, args.k) for it in itens]
     agregados = _agregar(linhas, judge_skipped, judge_motivo)
-    code = 0
-    if args.gate and not portao(agregados, h["config"]):
-        code = 1
-    gravar({
+
+    # GATE: com --gate mas nenhuma entrada gated (sem contexto_ref), não há o que
+    # medir — erro explícito em vez de um "ok" enganoso com exit 1 (review HIGH).
+    if args.gate and agregados["retrieval"]["n_entradas_gated"] == 0:
+        return gravar({
+            "status": "error",
+            "motivo": "gate solicitado mas nenhuma entrada do golden tem contexto_ref",
+            "severidade": "alta",
+        }, code=1)
+
+    gate_passou = portao(agregados, h["config"]) if args.gate else None
+    code = 0 if (gate_passou is None or gate_passou) else 1
+    return gravar({
         "status": "ok",
         "origem_perguntas": origem,
         "n_perguntas": len(linhas),
         "top_k": args.k,
         "gate_aplicado": args.gate,
-        "gate_passou": portao(agregados, h["config"]) if args.gate else None,
+        "gate_passou": gate_passou,
         "agregados": agregados,
         "detalhe": linhas,
     }, code=code)
-    return code
 
 
 if __name__ == "__main__":

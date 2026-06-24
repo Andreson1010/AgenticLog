@@ -40,58 +40,37 @@ def _normalizar_contexto_ref(item: dict) -> list[str] | None:
     return refs or None
 
 
-def _melhor_sim_por_ref(
-    emb: Any, chunks: list[str], refs: list[str]
-) -> list[float]:
-    """Para cada ref, retorna a maior similaridade cosseno entre a ref e algum chunk."""
-    if not chunks:
-        return [0.0 for _ in refs]
-    chunk_vecs = [emb.embed_query(c) for c in chunks]
-    melhores: list[float] = []
-    for r in refs:
-        rv = emb.embed_query(r)
-        melhores.append(max(_cosine(cv, rv) for cv in chunk_vecs))
-    return melhores
-
-
-def _rels_por_chunk(
-    emb: Any, chunks: list[str], refs: list[str], thr: float
-) -> list[int]:
-    """Para cada chunk (em ordem de rank), 1 se casa com alguma ref acima do threshold."""
-    ref_vecs = [emb.embed_query(r) for r in refs]
-    rels: list[int] = []
-    for c in chunks:
-        cv = emb.embed_query(c)
-        melhor = max((_cosine(cv, rv) for rv in ref_vecs), default=0.0)
-        rels.append(1 if melhor >= thr else 0)
-    return rels
-
-
 def _metrica_retrieval(
     emb: Any, chunks: list[str], refs: list[str], thr: float
 ) -> dict[str, float]:
     """Métricas de retrieval embedding-only para UMA entrada.
 
-    Retorna {hit, mrr, precision, recall} numéricos (design §3.2):
+    Embeda cada chunk e cada ref UMA vez e deriva tudo da mesma matriz de
+    similaridade (evita recomputar embeddings — HIGH do review):
       - precision = nº de chunks que casam / nº de chunks
       - hit = 1.0 se algum chunk casa, senão 0.0
       - mrr = 1/(rank do 1º chunk que casa), senão 0.0
       - recall = nº de refs cobertas por algum chunk / nº de refs
     """
-    rels = _rels_por_chunk(emb, chunks, refs, thr)
+    chunk_vecs = [emb.embed_query(c) for c in chunks]
+    ref_vecs = [emb.embed_query(r) for r in refs]
+    # sim[i][j] = cosseno entre o chunk i (rank i) e a ref j.
+    sim = [[_cosine(cv, rv) for rv in ref_vecs] for cv in chunk_vecs]
+
+    # Relevância por chunk: casa se a melhor ref desse chunk passa do threshold.
+    rels = [1 if (max(linha, default=0.0) >= thr) else 0 for linha in sim]
     n = len(rels)
     precision = sum(rels) / n if n else 0.0
     hit = 1.0 if any(rels) else 0.0
-    mrr = 0.0
-    for i, r in enumerate(rels):
-        if r:
-            mrr = 1.0 / (i + 1)
-            break
-    sims_ref = _melhor_sim_por_ref(emb, chunks, refs)
-    cobertas = sum(1 for s in sims_ref if s >= thr)
+    mrr = next((1.0 / (i + 1) for i, r in enumerate(rels) if r), 0.0)
+
+    # Recall: fração de refs cobertas por algum chunk acima do threshold.
+    cobertas = sum(
+        1 for j in range(len(refs)) if max((sim[i][j] for i in range(n)), default=0.0) >= thr
+    )
     recall = cobertas / len(refs) if refs else 0.0
     return {
-        "hit": hit,
+        "hit": round(hit, 3),
         "mrr": round(mrr, 3),
         "precision": round(precision, 3),
         "recall": round(recall, 3),

@@ -221,18 +221,18 @@ def teste_12_portao_passa_e_reprova() -> None:
 # --------------------------------------------------------------------------- #
 # T7 — failure modes via main() (GATE-03, GATE-04)
 # --------------------------------------------------------------------------- #
-def teste_13_golden_ausente_exit_nao_zero(tmp_path: Path, monkeypatch) -> None:
+def teste_13_golden_ausente_exit_nao_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         rag_eval, "_bootstrap", lambda: _harness_stub(StubEmbedding({}), [StubDoc("x")])
     )
     monkeypatch.setattr(rag_eval, "_criar_llm", lambda cfg: (None, "sem LLM"))
     out = tmp_path / "r.json"
     code = rag_eval.main(["--out", str(out), "--golden", str(tmp_path / "nao_existe.json")])
-    assert code != 0
+    assert code == 1
     assert json.loads(out.read_text(encoding="utf-8"))["status"] == "error"
 
 
-def teste_14_golden_vazio_exit_nao_zero(tmp_path: Path, monkeypatch) -> None:
+def teste_14_golden_vazio_exit_nao_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         rag_eval, "_bootstrap", lambda: _harness_stub(StubEmbedding({}), [StubDoc("x")])
     )
@@ -241,16 +241,16 @@ def teste_14_golden_vazio_exit_nao_zero(tmp_path: Path, monkeypatch) -> None:
     g.write_text("[]", encoding="utf-8")
     out = tmp_path / "r.json"
     code = rag_eval.main(["--out", str(out), "--golden", str(g)])
-    assert code != 0
+    assert code == 1
     assert json.loads(out.read_text(encoding="utf-8"))["status"] == "error"
 
 
-def teste_15_indice_vazio_exit_nao_zero(tmp_path: Path, monkeypatch) -> None:
+def teste_15_indice_vazio_exit_nao_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     h_vazio = _harness_stub(StubEmbedding({}), [])  # retriever retorna [] -> índice vazio
     monkeypatch.setattr(rag_eval, "_bootstrap", lambda: h_vazio)
     out = tmp_path / "r.json"
     code = rag_eval.main(["--out", str(out), "--golden", str(tmp_path / "x.json")])
-    assert code != 0
+    assert code == 1
     payload = json.loads(out.read_text(encoding="utf-8"))
     assert payload["status"] == "error"
     assert payload["severidade"] == "alta"
@@ -265,7 +265,9 @@ def teste_16_checar_indice_ok_retorna_none() -> None:
 # T8 — integração: harness completo, juiz UNAVAILABLE, retrieval acima -> pass
 # --------------------------------------------------------------------------- #
 @pytest.mark.integration
-def teste_17_harness_completo_juiz_skipped_gate_passa(tmp_path: Path, monkeypatch) -> None:
+def teste_17_harness_completo_juiz_skipped_gate_passa(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     emb = StubEmbedding({
         "ref": [1.0, 0.0, 0.0],
         "chunk": [1.0, 0.0, 0.0],
@@ -295,7 +297,9 @@ def teste_17_harness_completo_juiz_skipped_gate_passa(tmp_path: Path, monkeypatc
 
 
 @pytest.mark.integration
-def teste_18_gate_reprova_abaixo_do_threshold(tmp_path: Path, monkeypatch) -> None:
+def teste_18_gate_reprova_abaixo_do_threshold(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     emb = StubEmbedding({
         "ref": [1.0, 0.0, 0.0],
         "miss": [0.0, 1.0, 0.0],  # nunca casa
@@ -310,7 +314,7 @@ def teste_18_gate_reprova_abaixo_do_threshold(tmp_path: Path, monkeypatch) -> No
                  encoding="utf-8")
     out = tmp_path / "r.json"
     code = rag_eval.main(["--out", str(out), "--golden", str(g), "--gate"])
-    assert code != 0
+    assert code == 1
 
 
 def teste_19_golden_curado_cobre_3_categorias() -> None:

@@ -55,7 +55,9 @@ jobs:
         run: pytest -m "not rag_eval" --cov=agenticlog --cov-report=term-missing --cov-report=xml --cov-fail-under=80 -v
 
   rag-eval:
+    needs: [test]  # só roda se o pacote importa limpo (evita índice quebrado em silêncio)
     runs-on: ubuntu-latest
+    timeout-minutes: 30  # 1º run baixa ~1.1 GB do modelo; trava de segurança
 
     env:
       OPENAI_API_KEY: hermes
@@ -85,7 +87,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/huggingface
-          key: ${{ runner.os }}-hf-paraphrase-multilingual-mpnet-base-v2
+          # Invalida quando EMBEDDING_MODEL muda (config.py) — evita silent-degradation.
+          key: ${{ runner.os }}-hf-${{ hashFiles('src/agenticlog/config.py') }}
 
       - name: Install dependencies
         run: |
