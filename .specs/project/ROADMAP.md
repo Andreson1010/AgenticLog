@@ -59,6 +59,9 @@
 - [x] Distância cosine + normalização de embeddings unificada — ADR-016 — PR #51
 - [x] Geração única de candidata (`NUM_CANDIDATE_RESPONSES=1`, temp 0) — ADR-017 — PR #51
 
+### Auditoria RAG — P1 (mensurar recall)
+- [x] Golden set de avaliação + `rag_eval` no CI (`evals/rag_golden.json`, job `rag-eval`, gate Hit≥0.7/MRR≥0.6, métricas embedding-only) — PR #53
+
 ---
 
 ## Backlog
@@ -68,10 +71,7 @@ realizadas. Prioridade pela rubrica do relatório (impacto ÷ esforço); evidên
 métricas da Fase 2 (baseline sintético n=6) quando disponível.
 
 ### P1 — mensurar e ampliar recall
-- [ ] **Golden set de avaliação + `rag_eval` no CI** — criar `evals/rag_golden.json` (perguntas
-  + ground-truth) e plugar `scripts/rag_eval.py` no CI. Destrava Context Recall e Answer
-  Correctness (hoje "requer golden set") e cria rede de regressão. *Evidência:* métricas só
-  mensuráveis em baseline sintético; sem trava de regressão para a coleção-vazia voltar.
+- [x] ~~**Golden set de avaliação + `rag_eval` no CI**~~ — entregue na PR #53 (ver Done acima).
 - [ ] **Aumentar top-k (3→5–8) + guardrails de tamanho de chunk** — `RETRIEVAL_K_TOTAL` maior e
   min/max + overlap no `SemanticChunker`. *Evidência:* Hit Rate 0.83 (< 0.9); chunks sem teto
   de tamanho.
@@ -94,6 +94,38 @@ métricas da Fase 2 (baseline sintético n=6) quando disponível.
 ### Dívida técnica (achado menor da auditoria)
 - [ ] **Contrato de `AgentState.ranked_response`** — tipado `str` mas `rank_respostas` atribui
   dict `{"answer": ...}`. Normalizar para `str` (ou ajustar o tipo + consumidores).
+
+### Manutenibilidade (feature-factory)
+- [ ] **Split de `src/agenticlog/rag.py` (1013 linhas) → pacote `rag/`** — refactor puro, **zero
+  mudança de comportamento**. O módulo único viola o teto de 800 linhas do coding-style; quebrar
+  em submódulos coesos. *Tarefa pronta para o pipeline feature-factory.*
+
+  **Módulos propostos** (cada um < 400 linhas):
+  | Módulo | Funções | Responsabilidade |
+  |--------|---------|------------------|
+  | `errors.py` | `RAGSecurityError` | Exceção compartilhada |
+  | `embeddings.py` | `_get_rag_embedding_model` + singleton | Modelo de embedding (1/processo) |
+  | `security.py` | `_valida_path_documentos`, `_valida_json_sem_chaves_proibidas`, `_valida_arquivos_json`, `_sanitizar_nome_arquivo`, `_sanitizar_nome_colecao`, `sanitizar_nome_colecao` | Validação/sanitização |
+  | `metadata.py` | `_computar_hash_conteudo`, `_hash_arquivo`, `_enriquecer_metadados_chunks` | Hash + metadados (REC-01) |
+  | `pdf.py` | `extrair_texto_pdf` | Extração de texto PDF (PyMuPDF) |
+  | `uploads.py` | `salvar_documento_enviado`, `salvar_pdf_enviado` | Persistir upload do operador |
+  | `incremental.py` | `_backup_arquivo`, `_reverter_disco`, `adicionar_documento_incrementalmente`, `adicionar_pdf_incrementalmente`, `ingerir_incrementalmente` | Ingestão incremental + upsert atômico |
+  | `build.py` | `_outras_colecoes_existem`, `_resetar_colecao`, `cria_vectordb`, `reconstruir_vectordb` | Rebuild completo |
+  | `cli.py` | `_configurar_logging_cli`, `_executar_main`, entrypoint | CLI `python -m agenticlog.rag` |
+  | `__init__.py` | re-export da API pública | Compat: `from agenticlog.rag import X` segue válido |
+
+  **Dedup incluído:** `adicionar_documento_incrementalmente` e `adicionar_pdf_incrementalmente` são
+  ~90% idênticas — extrair `_upsert_atomico(...)` compartilhado (cai `incremental.py` de ~360 → ~200).
+
+  **⚠️ Risco crítico (testes):** ~8 testes usam `@patch("agenticlog.rag._resetar_colecao")` e outros
+  patches em `agenticlog.rag.X`. Após o split, o alvo do patch muda para o submódulo onde a função é
+  **usada** (ex.: `agenticlog.rag.build._resetar_colecao`) — o re-export do `__init__` cobre *imports*
+  mas **não** referências internas/patches. Migrar todos os `@patch` em `tests/test_rag.py`. Mesma
+  atenção em `agent.py`, `app.py` e `scripts/rag_eval.py` (imports cobertos; patches/refs internos não).
+
+  *Critérios de aceite:* suíte verde sem mudança de comportamento; cada módulo < 400 linhas;
+  `ruff`/`mypy`/`bandit` (escopo `src/`) limpos; `python -m agenticlog.rag [--rebuild]` inalterado;
+  API pública importável de `agenticlog.rag` preservada.
 
 ---
 
