@@ -85,11 +85,31 @@ métricas da Fase 2 (baseline sintético n=6) quando disponível.
 
 ### P3 — refinamentos
 - [ ] **Filtro por metadado na consulta (doc_type/page)** — usar os metadados já gravados
-  (REC-01) como filtro no retriever; hoje são peso morto no query-time.
+  (REC-01) como filtro no retriever; hoje são peso morto no query-time. *Evidência:*
+  `_get_retriever` (`agent.py:197`) chama `as_retriever(search_type="similarity",
+  search_kwargs={"k": k})` sem cláusula `filter`/`where` — os metadados (`source`, `page`,
+  `doc_type`, `file_hash`, `chunk_index`) só servem para dedup/exibição de fonte, nunca filtram
+  a busca (ex.: "só PDFs", "página > 10").
 - [ ] **Query transformation (rewriting / multi-query / HyDE)** — hoje a query vai literal ao
-  retriever.
+  retriever. *Evidência:* `passo_decisao_agente` (`agent.py:291`) só faz roteamento por keyword
+  (`usar_web` vs `retrieve`), não reescreve/expande a pergunta; `retrieve_info` (`agent.py:340`)
+  embeda `state.query` como veio. Sem rewriting, expansão, multi-query ou HyDE.
 - [ ] **Parsing JSON estruturado + cleaning de boilerplate PDF** — preservar aninhamento em vez
   de `tostring`; remover cabeçalhos/rodapés repetidos.
+
+### Observabilidade (dívida — gap dos 12 estágios do pipeline)
+Hoje há **observabilidade básica**: logging estruturado em JSON (`_JsonFormatter`,
+`config.py:166`), audit log de toda query (`HistoryStore`, `api.py:161/326`) e logs de
+estágio (`agent.py:358` — "Retrieval retornou N documentos"). **Faltam** os sinais que
+permitem diagnosticar *por que* uma resposta saiu ruim:
+- [ ] **Tracing por estágio (span)** — instrumentar cada nó do grafo (decision → retrieve →
+  generate → rank) com spans para ver latência e dados de entrada/saída por estágio.
+  Candidatos: LangSmith ou OpenTelemetry/Phoenix.
+- [ ] **Métricas de latência e custo** — tempo por estágio, nº de tokens, nº de chunks
+  recuperados por query; expor em logs/endpoint para acompanhar regressão de performance.
+- [ ] **Persistir scores de retrieval no audit log** — gravar no `HistoryStore` os chunks
+  recuperados e seus scores de cosseno (hoje só a resposta final é auditada), permitindo
+  depuração offline de retrieval ruim sem reproduzir a query.
 
 ### Dívida técnica (achado menor da auditoria)
 - [ ] **Contrato de `AgentState.ranked_response`** — tipado `str` mas `rank_respostas` atribui
