@@ -116,9 +116,21 @@ permitem diagnosticar *por que* uma resposta saiu ruim:
   dict `{"answer": ...}`. Normalizar para `str` (ou ajustar o tipo + consumidores).
 
 ### Manutenibilidade (feature-factory)
-- [ ] **Split de `src/agenticlog/rag.py` (1013 linhas) → pacote `rag/`** — refactor puro, **zero
-  mudança de comportamento**. O módulo único viola o teto de 800 linhas do coding-style; quebrar
-  em submódulos coesos. *Tarefa pronta para o pipeline feature-factory.*
+
+> **DECISÃO 2026-06-25 ([ADR-018](../../docs/adr/ADR-018-redesign-arquitetura-offline-online.md)):**
+> o split por coesão abaixo foi **substituído** por um **redesign por fronteira offline/online**.
+> Árvore-alvo e faseamento em [`docs/arquitetura-alvo-rag.md`](../../docs/arquitetura-alvo-rag.md).
+> Motivos: o split barato só reorganizava (não reflete os estágios RAG nem o corte offline/online)
+> e a migração de ~638 patches não trazia ganho arquitetural. O item abaixo fica como histórico.
+
+- [ ] **Redesign por fronteira offline/online** — `ingestion/` (security/extraction/cleaning/
+  chunking/embeddings/metadata/store/orchestrator/cli) + `retrieval/` (retriever/generation/
+  graph/state) + `observability/`/`serving/`/`shared/`. **Não é refactor puro** (decompõe as
+  funções verticais de ingestão; reprojeta atomicidade do upsert; testes reescritos com injeção
+  de dependência). Ver ADR-018 e `docs/arquitetura-alvo-rag.md`. *Pronto para feature-factory.*
+
+- [ ] ~~**Split de `src/agenticlog/rag.py` (1013 linhas) → pacote `rag/`** (refactor puro por
+  coesão)~~ — **superado pelo redesign acima** (ADR-018). Mantido como histórico:
 
   **Módulos propostos** (cada um < 400 linhas):
   | Módulo | Funções | Responsabilidade |
