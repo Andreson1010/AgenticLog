@@ -212,6 +212,7 @@ def teste_3_rota_web_alcanca_end(rag_caracterizacao_env, monkeypatch):
     query_web = f"{ROUTING_KEYWORDS_WEB[0]} sobre logistica"
     estado = _invoke(query_web)
 
+    assert _CHAVES_ESTADO_ESPERADAS.issubset(estado.keys())
     assert estado["next_step"] == "usar_web"
     assert mock_search.chamado_com == [query_web], "search.run deveria ter sido chamado"
     assert estado["ranked_response"], "o ramo web deveria ter produzido uma resposta"
@@ -234,6 +235,7 @@ def teste_4_doc_incremental_em_base_populada_e_recuperavel(rag_caracterizacao_en
     # invalidar_vector_db() rodou de verdade na ingestão (R6) → cache do agente limpo.
     estado = _invoke("informacoes do fornecedor Beta SA")
 
+    assert _CHAVES_ESTADO_ESPERADAS.issubset(estado.keys())
     assert estado["retrieved_info"], "o novo doc deveria estar recuperável"
     assert "Beta SA" in _conteudo_recuperado(estado)
 
@@ -267,5 +269,11 @@ def teste_5_upsert_falho_no_embedding_reverte_disco_e_colecao(
 
     # Rollback (PRs #42/#43): disco restaurado E coleção intacta.
     assert arquivo.read_bytes() == bytes_antes, "arquivo em disco deveria ser inalterado"
+    # Limitação conhecida: com o gatilho no embedding boundary, embed_documents
+    # levanta dentro de SemanticChunker.split_documents — ANTES de add_documents —
+    # logo a coleção nunca é tocada e esta assertion de ids é não-load-bearing
+    # (passaria mesmo se o rollback INTERNO do Chroma — delete(ids) — quebrasse).
+    # O detector real do rollback é a assertion de disco acima. Mantida como
+    # oráculo do invariante observável (coleção inalterada), não do ramo Chroma.
     ids_depois = _colecao_ids(env.vdb, DEFAULT_COLLECTION_NAME, env.emb)
     assert ids_depois == ids_antes, "ids da coleção Chroma deveriam ser inalterados"
