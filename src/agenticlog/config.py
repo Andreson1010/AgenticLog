@@ -1,9 +1,6 @@
 # AgenticLog - Configurações centralizadas
 """Constantes, paths e parâmetros de modelos."""
 
-import datetime
-import json
-import logging
 import os
 import re
 from pathlib import Path
@@ -163,15 +160,4 @@ if LOG_FORMAT not in _VALID_LOG_FORMATS:
     )
 
 
-class _JsonFormatter(logging.Formatter):
-    """Serializa cada LogRecord como uma linha JSON com campos padronizados."""
-
-    def format(self, record: logging.LogRecord) -> str:
-        return json.dumps({
-            "timestamp": datetime.datetime.fromtimestamp(
-                record.created, tz=datetime.UTC
-            ).isoformat(),
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-        })
+from agenticlog.observability.logging import _JsonFormatter  # noqa: E402,F401,I001  # Re-export shim (ADR-018 Fase 2) — remover na Fase 6

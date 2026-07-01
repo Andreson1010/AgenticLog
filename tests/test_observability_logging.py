@@ -9,6 +9,7 @@ Valida:
 """
 
 import datetime
+import importlib
 import inspect
 import json
 import logging
@@ -21,8 +22,10 @@ _src = str(_root / "src")
 if _src not in sys.path:
     sys.path.insert(0, _src)
 
+import agenticlog.config as config_module
 import agenticlog.observability as obs_pkg
 import agenticlog.observability.logging as obs_logging
+import agenticlog.rag as rag_module
 from agenticlog.observability.logging import _JsonFormatter
 
 
@@ -36,6 +39,25 @@ def test_reexport_pacote_observability_e_mesmo_objeto() -> None:
     """OBS-08/OBS-09: `agenticlog.observability` re-exporta o MESMO objeto canônico."""
     assert obs_pkg._JsonFormatter is obs_logging._JsonFormatter
     assert "_JsonFormatter" in obs_pkg.__all__
+
+
+def test_shim_config_e_rag_sao_mesmo_objeto() -> None:
+    """OBS-07/OBS-09: config-shim E rag-namespace IS o objeto canônico."""
+    assert config_module._JsonFormatter is obs_logging._JsonFormatter
+    assert rag_module._JsonFormatter is obs_logging._JsonFormatter
+
+
+def test_reload_config_e_rag_preserva_identidade() -> None:
+    """OBS-19: reload de config+rag (NÃO de observability.logging) preserva identidade.
+
+    Espelha o helper `_reload_rag` de test_structured_log_config: o shim re-vincula
+    ao atributo do módulo canônico já carregado, então a identidade sobrevive.
+    """
+    canonical = obs_logging._JsonFormatter
+    importlib.reload(config_module)
+    importlib.reload(rag_module)
+    assert config_module._JsonFormatter is canonical
+    assert rag_module._JsonFormatter is canonical
 
 
 def test_logging_nao_importa_config() -> None:
