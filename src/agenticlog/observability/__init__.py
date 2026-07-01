@@ -5,9 +5,10 @@ Somente submódulos stdlib-only; NÃO importa `agenticlog.config`, mantendo o gr
 de imports acíclico (config -> observability.logging é aresta unidirecional).
 
 Re-exporta para import ergonômico:
-`from agenticlog.observability import _JsonFormatter`.
+`from agenticlog.observability import _JsonFormatter, HistoryStore`.
 """
 
+from agenticlog.observability.history import HistoryStore
 from agenticlog.observability.logging import _JsonFormatter
 
-__all__ = ["_JsonFormatter"]
+__all__ = ["_JsonFormatter", "HistoryStore"]
