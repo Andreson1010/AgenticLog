@@ -84,11 +84,7 @@ def _get_rag_embedding_model() -> HuggingFaceEmbeddings:
     return _rag_embedding_model
 
 
-class RAGSecurityError(Exception):
-    """Exceção lançada quando uma violação de segurança é detectada no pipeline RAG.
-
-    Exemplos de violações: path traversal, chaves JSON proibidas, arquivo muito grande.
-    """
+from agenticlog.shared.errors import RAGSecurityError  # noqa: E402  # Re-export shim (ADR-018 Fase 2) — remover na Fase 6
 
 
 def _valida_path_documentos() -> None:

@@ -17,6 +17,7 @@ _src = str(_root / "src")
 if _src not in sys.path:
     sys.path.insert(0, _src)
 
+import agenticlog.rag as rag_module
 import agenticlog.shared as shared_pkg
 import agenticlog.shared.errors as shared_errors
 from agenticlog.shared.errors import RAGSecurityError
@@ -34,14 +35,19 @@ def test_reexport_pacote_shared_e_mesmo_objeto() -> None:
     assert "RAGSecurityError" in shared_pkg.__all__
 
 
+def test_shim_rag_e_mesmo_objeto() -> None:
+    """OBS-02/OBS-04: `agenticlog.rag.RAGSecurityError` IS o objeto canônico."""
+    assert rag_module.RAGSecurityError is shared_errors.RAGSecurityError
+
+
 def test_raise_catch_round_trip_atraves_de_ambos_os_nomes() -> None:
     """OBS-05: uma exceção levantada por um nome é capturada pelo outro (mesma MRO)."""
     try:
-        raise shared_errors.RAGSecurityError("violação")
-    except RAGSecurityError as exc:
+        raise rag_module.RAGSecurityError("violação")
+    except shared_errors.RAGSecurityError as exc:
         assert str(exc) == "violação"
 
     try:
-        raise RAGSecurityError("outra")
-    except shared_errors.RAGSecurityError as exc:
+        raise shared_errors.RAGSecurityError("outra")
+    except rag_module.RAGSecurityError as exc:
         assert str(exc) == "outra"
