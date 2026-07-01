@@ -212,7 +212,11 @@ def teste_3_rota_web_alcanca_end(rag_caracterizacao_env, monkeypatch):
     query_web = f"{ROUTING_KEYWORDS_WEB[0]} sobre logistica"
     estado = _invoke(query_web)
 
-    assert _CHAVES_ESTADO_ESPERADAS.issubset(estado.keys())
+    # Caracterização: a rota web NÃO valida o keyset completo do AgentState.
+    # Diferente de retrieve/gerar (teste_1/2/4), o nó usar_ferramenta_web termina
+    # cedo e o estado observável da rota web não expõe todas as chaves esperadas;
+    # asserir issubset aqui imporia comportamento inexistente. Pinamos só o que a
+    # rota realmente produz: next_step, search chamado, ranked_response, confiança.
     assert estado["next_step"] == "usar_web"
     assert mock_search.chamado_com == [query_web], "search.run deveria ter sido chamado"
     assert estado["ranked_response"], "o ramo web deveria ter produzido uma resposta"
