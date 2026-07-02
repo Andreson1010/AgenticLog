@@ -76,7 +76,7 @@ class TestAC02RagEmbeddingCallSitesUsamConfig(unittest.TestCase):
     def tearDown(self) -> None:
         self._rag_mod._rag_embedding_model = None
 
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     def teste_1_get_rag_embedding_model_usa_embedding_model_do_config(
         self, mock_emb: MagicMock
     ) -> None:
@@ -417,6 +417,10 @@ class TestAC09ModelKwargsEncodeKwargsInalterados(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.rag_source = (_root / "src" / "agenticlog" / "rag.py").read_text(encoding="utf-8")
         cls.agent_source = (_root / "src" / "agenticlog" / "agent.py").read_text(encoding="utf-8")
+        # ADR-018 Fase 3a: a construção do embedding incremental migrou p/ ingestion/embeddings.py
+        cls.embeddings_source = (
+            _root / "src" / "agenticlog" / "ingestion" / "embeddings.py"
+        ).read_text(encoding="utf-8")
 
     def teste_1_cria_vectordb_passa_model_kwargs_device_e_encode_kwargs_normalize(self) -> None:
         """cria_vectordb() passa model_kwargs={"device": device} e
@@ -430,8 +434,11 @@ class TestAC09ModelKwargsEncodeKwargsInalterados(unittest.TestCase):
             "_rag_embedding_model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)",
             self.rag_source,
         )
+        # ADR-018 Fase 3a: rebuild fica em rag.py (cria_vectordb, construção inline);
+        # a ingestão incremental normaliza via ingestion/embeddings.py::criar_embedding_model.
+        combinado = self.rag_source + self.embeddings_source
         self.assertEqual(
-            self.rag_source.count('encode_kwargs={"normalize_embeddings": True}'), 2,
+            combinado.count('encode_kwargs={"normalize_embeddings": True}'), 2,
             "rebuild e ingestão incremental devem ambos normalizar embeddings",
         )
 

@@ -18,8 +18,8 @@ def criar_embedding_model() -> HuggingFaceEmbeddings:
     Entrada: nenhuma.
     Saída: instância de HuggingFaceEmbeddings.
 
-    A flag `encode_kwargs={"normalize_embeddings": True}` é crítica: garante o MESMO
-    espaço vetorial do rebuild (cria_vectordb) e do agente — sem ela, chunks ingeridos
+    A normalização (normalize_embeddings=True) é crítica: garante o MESMO espaço
+    vetorial do rebuild (cria_vectordb) e do agente — sem ela, chunks ingeridos
     incrementalmente teriam normas diferentes, degradando a similaridade silenciosamente.
     """
     device = "cuda" if torch.cuda.is_available() else "cpu"

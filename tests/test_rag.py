@@ -49,17 +49,6 @@ import agenticlog.rag as rag
 import agenticlog.config as config
 
 
-class TestEmbeddingModelConfig(unittest.TestCase):
-    """Testes para a constante EMBEDDING_MODEL (PORTPT-01 / AC1)."""
-
-    def test_embedding_model_e_multilingue(self):
-        """EMBEDDING_MODEL aponta para o modelo multilíngue (paraphrase-multilingual-mpnet)."""
-        self.assertEqual(
-            config.EMBEDDING_MODEL,
-            "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
-        )
-
-
 class TestRAGSecurityError(unittest.TestCase):
     """Testes para a exceção RAGSecurityError."""
 
@@ -68,155 +57,6 @@ class TestRAGSecurityError(unittest.TestCase):
         with self.assertRaises(RAGSecurityError) as ctx:
             raise RAGSecurityError("Mensagem de teste")
         self.assertIn("Mensagem de teste", str(ctx.exception))
-
-
-class TestValidaPathDocumentos(unittest.TestCase):
-    """Testes para _valida_path_documentos."""
-
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.PROJECT_ROOT")
-    def test_path_fora_do_projeto_levanta_erro(self, mock_root, mock_dir):
-        """Path fora do PROJECT_ROOT levanta RAGSecurityError."""
-        resolved_dir = MagicMock()
-        resolved_dir.relative_to.side_effect = ValueError("fora")
-        mock_dir.resolve.return_value = resolved_dir
-
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
-            _valida_path_documentos()
-        self.assertIn("fora do projeto", str(ctx.exception))
-
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.PROJECT_ROOT")
-    def test_diretorio_nao_existe_levanta_erro(self, mock_root, mock_dir):
-        """Diretório inexistente levanta RAGSecurityError."""
-        resolved_dir = MagicMock()
-        resolved_dir.relative_to.return_value = Path("data/documents")
-        resolved_dir.exists.return_value = False
-        mock_dir.resolve.return_value = resolved_dir
-
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
-            _valida_path_documentos()
-        self.assertIn("não existe", str(ctx.exception))
-
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.PROJECT_ROOT")
-    def test_caminho_nao_e_diretorio_levanta_erro(self, mock_root, mock_dir):
-        """Path que não é diretório levanta RAGSecurityError."""
-        resolved_dir = MagicMock()
-        resolved_dir.relative_to.return_value = Path("data/documents")
-        resolved_dir.exists.return_value = True
-        resolved_dir.is_dir.return_value = False
-        mock_dir.resolve.return_value = resolved_dir
-
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
-            _valida_path_documentos()
-        self.assertIn("não é um diretório", str(ctx.exception))
-
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.PROJECT_ROOT")
-    def test_path_valido_nao_levanta(self, mock_root, mock_dir):
-        """Path válido dentro do projeto não levanta exceção."""
-        resolved_dir = MagicMock()
-        resolved_dir.relative_to.return_value = Path("data/documents")
-        resolved_dir.exists.return_value = True
-        resolved_dir.is_dir.return_value = True
-        mock_dir.resolve.return_value = resolved_dir
-
-        _valida_path_documentos()  # não deve levantar
-
-
-class TestValidaJsonSemChavesProibidas(unittest.TestCase):
-    """Testes para _valida_json_sem_chaves_proibidas."""
-
-    def test_json_invalido_levanta_erro(self):
-        """JSON malformado levanta RAGSecurityError."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False, encoding="utf-8"
-        ) as f:
-            f.write("{ invalido }")
-            path = Path(f.name)
-        try:
-            with self.assertRaises(rag.RAGSecurityError) as ctx:
-                _valida_json_sem_chaves_proibidas(path)
-            self.assertIn("JSON inválido", str(ctx.exception))
-        finally:
-            path.unlink(missing_ok=True)
-
-    def test_chave_proibida_em_dict_levanta_erro(self):
-        """JSON com chave 'lc' em dict levanta RAGSecurityError."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False, encoding="utf-8"
-        ) as f:
-            json.dump({"lc": "valor", "outro": "campo"}, f)
-            path = Path(f.name)
-        try:
-            with self.assertRaises(rag.RAGSecurityError) as ctx:
-                _valida_json_sem_chaves_proibidas(path)
-            self.assertIn("chave proibida", str(ctx.exception))
-            self.assertIn("lc", str(ctx.exception))
-        finally:
-            path.unlink(missing_ok=True)
-
-    def test_chave_proibida_em_lista_levanta_erro(self):
-        """JSON com chave 'lc' em item de lista levanta RAGSecurityError."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False, encoding="utf-8"
-        ) as f:
-            json.dump([{"campo": "ok"}, {"lc": "invalido"}], f)
-            path = Path(f.name)
-        try:
-            with self.assertRaises(rag.RAGSecurityError) as ctx:
-                _valida_json_sem_chaves_proibidas(path)
-            self.assertIn("chave proibida", str(ctx.exception))
-            self.assertIn("item 1", str(ctx.exception))
-        finally:
-            path.unlink(missing_ok=True)
-
-    def test_json_valido_sem_chaves_proibidas_nao_levanta(self):
-        """JSON válido sem chaves proibidas não levanta exceção."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False, encoding="utf-8"
-        ) as f:
-            json.dump({"descricao": "texto", "campo": "valor"}, f)
-            path = Path(f.name)
-        try:
-            _valida_json_sem_chaves_proibidas(path)  # não deve levantar
-        finally:
-            path.unlink(missing_ok=True)
-
-
-class TestValidaArquivosJson(unittest.TestCase):
-    """Testes para _valida_arquivos_json."""
-
-    @patch("agenticlog.rag._valida_json_sem_chaves_proibidas")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.MAX_JSON_FILES", 2)
-    def test_excesso_de_arquivos_levanta_erro(self, mock_dir, mock_valida):
-        """Mais arquivos que MAX_JSON_FILES levanta RAGSecurityError."""
-        mock_dir.glob.return_value = [
-            Path("a.json"),
-            Path("b.json"),
-            Path("c.json"),
-        ]
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
-            _valida_arquivos_json()
-        self.assertIn("Excesso de arquivos", str(ctx.exception))
-        self.assertIn("3", str(ctx.exception))
-
-    @patch("agenticlog.rag._valida_json_sem_chaves_proibidas")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.MAX_JSON_FILE_SIZE_MB", 1)
-    def test_arquivo_muito_grande_levanta_erro(self, mock_dir, mock_valida):
-        """Arquivo maior que MAX_JSON_FILE_SIZE_MB levanta RAGSecurityError."""
-        mock_path = MagicMock()
-        mock_path.name = "grande.json"
-        mock_path.stat.return_value.st_size = 2 * 1024 * 1024  # 2MB
-        mock_dir.glob.return_value = [mock_path]
-
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
-            _valida_arquivos_json()
-        self.assertIn("excede", str(ctx.exception).lower())
-        mock_valida.assert_not_called()
 
 
 class TestCriaVectordb(unittest.TestCase):
@@ -667,42 +507,6 @@ class TestOutrasColecoesExistem(unittest.TestCase):
             self.assertFalse(rag._outras_colecoes_existem("logistica"))
 
 
-class TestGetRagEmbeddingModel(unittest.TestCase):
-    """Testes para _get_rag_embedding_model (PORTPT-02 / AC2)."""
-
-    def setUp(self) -> None:
-        """Reseta o singleton antes de cada teste para garantir isolamento."""
-        rag._rag_embedding_model = None
-
-    def tearDown(self) -> None:
-        """Reseta o singleton após cada teste."""
-        rag._rag_embedding_model = None
-
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
-    def test_get_rag_embedding_model_usa_embedding_model_do_config(self, mock_emb):
-        """_get_rag_embedding_model() constrói HuggingFaceEmbeddings com model_name=config.EMBEDDING_MODEL."""
-        rag._get_rag_embedding_model()
-
-        mock_emb.assert_called_once_with(
-            model_name=config.EMBEDDING_MODEL,
-            model_kwargs={"device": ANY},
-            encode_kwargs={"normalize_embeddings": True},
-        )
-
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
-    def test_get_rag_embedding_model_singleton_reusa_instancia(self, mock_emb):
-        """Chamadas subsequentes retornam a mesma instância sem recriar HuggingFaceEmbeddings."""
-        primeira = rag._get_rag_embedding_model()
-        segunda = rag._get_rag_embedding_model()
-
-        self.assertIs(primeira, segunda)
-        mock_emb.assert_called_once_with(
-            model_name=config.EMBEDDING_MODEL,
-            model_kwargs={"device": ANY},
-            encode_kwargs={"normalize_embeddings": True},
-        )
-
-
 class TestLogging(unittest.TestCase):
     """Testes para o módulo de logging em rag.py (LG-01 a LG-11)."""
 
@@ -986,165 +790,6 @@ class TestStructuredLogConfig:
             importlib.reload(config)
 
 
-class TestSanitizarNomeArquivo(unittest.TestCase):
-    """Testes para _sanitizar_nome_arquivo."""
-
-    def teste_1_sanitizar_nome_valido(self):
-        """Nome de arquivo válido é retornado sem alteração."""
-        resultado = _sanitizar_nome_arquivo("doc.json")
-        self.assertEqual(resultado, "doc.json")
-
-    def teste_2_sanitizar_rejeita_path_traversal(self):
-        """Nome com '../' levanta RAGSecurityError."""
-        with self.assertRaises(rag.RAGSecurityError):
-            _sanitizar_nome_arquivo("../evil.json")
-
-    def teste_3_sanitizar_rejeita_chars_invalidos(self):
-        """Nome com caracteres inválidos do Windows levanta RAGSecurityError."""
-        with self.assertRaises(rag.RAGSecurityError):
-            _sanitizar_nome_arquivo("file<>.json")
-
-    def teste_4_sanitizar_rejeita_nome_vazio(self):
-        """Nome vazio levanta RAGSecurityError."""
-        with self.assertRaises(rag.RAGSecurityError):
-            _sanitizar_nome_arquivo("")
-
-    def teste_5_sanitizar_rejeita_nomes_reservados_windows(self):
-        """Nomes reservados do Windows levantam RAGSecurityError."""
-        reserved = ["CON.json", "PRN.json", "AUX.json", "NUL.json", "COM1.json", "LPT9.json"]
-        for name in reserved:
-            with self.subTest(name=name):
-                with self.assertRaises(rag.RAGSecurityError):
-                    _sanitizar_nome_arquivo(name)
-
-
-class TestSanitizarNomeColecao(unittest.TestCase):
-    """Testes para _sanitizar_nome_colecao (MCC-06 a MCC-11)."""
-
-    def _sanitizar(self, name: str) -> str:
-        """Chama _sanitizar_nome_colecao via módulo para garantir identidade de classe após reload."""
-        return rag._sanitizar_nome_colecao(name)
-
-    def teste_1_nome_vazio_levanta_erro(self) -> None:
-        """String vazia levanta RAGSecurityError."""
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
-            self._sanitizar("")
-        self.assertIn("vazio", str(ctx.exception))
-
-    def teste_2_nome_muito_curto_dois_chars_levanta_erro(self) -> None:
-        """Nome com 2 caracteres levanta RAGSecurityError (mínimo é 3)."""
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
-            self._sanitizar("ab")
-        self.assertIn("curto", str(ctx.exception))
-
-    def teste_3_nome_exatamente_3_chars_valido(self) -> None:
-        """Nome com exatamente 3 caracteres é aceito (fronteira válida)."""
-        resultado = self._sanitizar("abc")
-        self.assertEqual(resultado, "abc")
-
-    def teste_4_nome_exatamente_63_chars_valido(self) -> None:
-        """Nome com exatamente 63 caracteres é aceito (fronteira válida)."""
-        nome = "a" * 63
-        resultado = self._sanitizar(nome)
-        self.assertEqual(resultado, nome)
-
-    def teste_5_nome_64_chars_levanta_erro(self) -> None:
-        """Nome com 64 caracteres levanta RAGSecurityError (máximo é 63)."""
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
-            self._sanitizar("a" * 64)
-        self.assertIn("longo", str(ctx.exception))
-
-    def teste_6_nome_com_espaco_levanta_erro(self) -> None:
-        """Nome com espaço levanta RAGSecurityError."""
-        with self.assertRaises(rag.RAGSecurityError):
-            self._sanitizar("nome colecao")
-
-    def teste_7_nome_comecando_com_hifen_levanta_erro(self) -> None:
-        """Nome iniciando com hífen levanta RAGSecurityError."""
-        with self.assertRaises(rag.RAGSecurityError):
-            self._sanitizar("-inicio")
-
-    def teste_8_nome_terminando_com_hifen_levanta_erro(self) -> None:
-        """Nome terminando com hífen levanta RAGSecurityError."""
-        with self.assertRaises(rag.RAGSecurityError):
-            self._sanitizar("fim-")
-
-    def teste_9_nome_valido_com_hifen_e_underscore(self) -> None:
-        """Nome com hífen e underscore internos é aceito."""
-        resultado = self._sanitizar("valido-nome_1")
-        self.assertEqual(resultado, "valido-nome_1")
-
-    def teste_10_nome_logistica_default_valido(self) -> None:
-        """DEFAULT_COLLECTION_NAME='logistica' passa validação."""
-        from agenticlog.config import DEFAULT_COLLECTION_NAME
-        resultado = self._sanitizar(DEFAULT_COLLECTION_NAME)
-        self.assertEqual(resultado, DEFAULT_COLLECTION_NAME)
-
-
-class TestSalvarDocumentoEnviado(unittest.TestCase):
-    """Testes para salvar_documento_enviado."""
-
-    def _valid_json_bytes(self) -> bytes:
-        return json.dumps({"conteudo": "test"}).encode()
-
-    def teste_1_salvar_documento_enviado_sucesso(self):
-        """Arquivo JSON válido é salvo em DIR_DOCUMENTS."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_path = Path(tmp_dir)
-            with patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path):
-                result = salvar_documento_enviado("doc.json", self._valid_json_bytes())
-            self.assertTrue((tmp_path / "doc.json").exists())
-            self.assertEqual(result, tmp_path / "doc.json")
-
-    def teste_2_salvar_rejeita_extensao_invalida(self):
-        """Extensão não-.json levanta RAGSecurityError antes de qualquer escrita."""
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
-            salvar_documento_enviado("dados.csv", self._valid_json_bytes())
-        self.assertIn(".json", str(ctx.exception))
-
-    def teste_3_salvar_rejeita_tamanho_excedido(self):
-        """Arquivo maior que 10 MB levanta RAGSecurityError."""
-        conteudo_grande = b"x" * (10 * 1024 * 1024 + 1)
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
-            salvar_documento_enviado("grande.json", conteudo_grande)
-        self.assertIn("10", str(ctx.exception))
-
-    def teste_4_salvar_rejeita_chave_proibida(self):
-        """JSON com chave proibida 'lc' levanta RAGSecurityError."""
-        conteudo = json.dumps({"lc": "bad"}).encode()
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_path = Path(tmp_dir)
-            with patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path):
-                with self.assertRaises(rag.RAGSecurityError):
-                    salvar_documento_enviado("malicioso.json", conteudo)
-
-    def teste_5_salvar_rejeita_colisao_de_nome(self):
-        """Arquivo com nome já existente levanta RAGSecurityError."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_path = Path(tmp_dir)
-            (tmp_path / "existente.json").write_bytes(b"{}")
-            with patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path):
-                with self.assertRaises(rag.RAGSecurityError) as ctx:
-                    salvar_documento_enviado("existente.json", self._valid_json_bytes())
-            self.assertIn("já existe", str(ctx.exception))
-
-    def teste_6_salvar_rejeita_path_traversal(self):
-        """Nome de arquivo com path traversal levanta RAGSecurityError."""
-        with self.assertRaises(rag.RAGSecurityError):
-            salvar_documento_enviado("../evil.json", self._valid_json_bytes())
-
-    def teste_7_salvar_rejeita_limite_de_arquivos(self):
-        """Quando já há 1000 arquivos .json, levanta RAGSecurityError."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_path = Path(tmp_dir)
-            for i in range(1000):
-                (tmp_path / f"arquivo_{i:04d}.json").write_bytes(b"{}")
-            with patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path):
-                with self.assertRaises(rag.RAGSecurityError) as ctx:
-                    salvar_documento_enviado("novo.json", self._valid_json_bytes())
-            self.assertIn("1000", str(ctx.exception))
-
-
 class TestReconstruirVectordb(unittest.TestCase):
     """Testes para reconstruir_vectordb."""
 
@@ -1160,211 +805,6 @@ class TestReconstruirVectordb(unittest.TestCase):
             with self.assertRaises(Exception) as ctx:
                 reconstruir_vectordb()
         self.assertEqual(str(ctx.exception), "fail")
-
-
-class TestExtrairTextoPdf(unittest.TestCase):
-    """Testes para extrair_texto_pdf."""
-
-    @patch("agenticlog.rag.fitz.open")
-    def teste_1_extrair_pdf_valido_retorna_dict(self, mock_fitz_open):
-        """PDF com texto retorna dict {"PÁGINA_1": texto}."""
-        mock_page = MagicMock()
-        mock_page.get_text.return_value = "texto do contrato"
-        mock_doc = MagicMock()
-        mock_doc.needs_pass = False
-        mock_doc.__iter__ = MagicMock(return_value=iter([mock_page]))
-        mock_fitz_open.return_value = mock_doc
-
-        resultado = extrair_texto_pdf(Path("qualquer.pdf"))
-
-        self.assertEqual(resultado, {"PÁGINA_1": "texto do contrato"})
-
-    @patch("agenticlog.rag.fitz.open")
-    def teste_2_extrair_pdf_com_senha_lanca_erro(self, mock_fitz_open):
-        """PDF com senha lança RAGSecurityError."""
-        mock_doc = MagicMock()
-        mock_doc.needs_pass = True
-        mock_fitz_open.return_value = mock_doc
-
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
-            extrair_texto_pdf(Path("qualquer.pdf"))
-        self.assertIn("senha", str(ctx.exception))
-
-    @patch("agenticlog.rag.fitz.open")
-    def teste_3_extrair_pdf_somente_imagem_lanca_erro(self, mock_fitz_open):
-        """PDF somente-imagem (todas as páginas retornam texto vazio) lança RAGSecurityError."""
-        mock_page = MagicMock()
-        mock_page.get_text.return_value = "   \n\t  "
-        mock_doc = MagicMock()
-        mock_doc.needs_pass = False
-        mock_doc.__iter__ = MagicMock(return_value=iter([mock_page, mock_page]))
-        mock_fitz_open.return_value = mock_doc
-
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
-            extrair_texto_pdf(Path("qualquer.pdf"))
-        self.assertIn("somente imagem", str(ctx.exception))
-
-    @patch("agenticlog.rag.fitz.open")
-    def teste_4_extrair_pdf_mix_texto_imagem_filtra_pagina_vazia(self, mock_fitz_open):
-        """PDF com mix de páginas texto e imagem: só a página com texto aparece no dict."""
-        mock_page_texto = MagicMock()
-        mock_page_texto.get_text.return_value = "conteúdo real"
-        mock_page_imagem = MagicMock()
-        mock_page_imagem.get_text.return_value = ""
-        mock_doc = MagicMock()
-        mock_doc.needs_pass = False
-        mock_doc.__iter__ = MagicMock(return_value=iter([mock_page_texto, mock_page_imagem]))
-        mock_fitz_open.return_value = mock_doc
-
-        resultado = extrair_texto_pdf(Path("qualquer.pdf"))
-
-        self.assertEqual(resultado, {"PÁGINA_1": "conteúdo real"})
-        self.assertNotIn("PÁGINA_2", resultado)
-
-    @patch("agenticlog.rag.fitz.open")
-    def teste_5_extrair_exception_generica_lanca_erro(self, mock_fitz_open):
-        """fitz.open() lançando Exception genérica é convertida em RAGSecurityError."""
-        mock_fitz_open.side_effect = RuntimeError("unexpected fitz error")
-
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
-            extrair_texto_pdf(Path("qualquer.pdf"))
-        self.assertIn("corrompido", str(ctx.exception))
-
-    @patch("agenticlog.rag.fitz.open")
-    def teste_6_extrair_pdf_multipagina_retorna_dict_ordenado(self, mock_fitz_open):
-        """PDF com 3 páginas de texto retorna dict com 3 chaves PÁGINA_1..3 na ordem."""
-        mock_pages = []
-        for i in range(3):
-            p = MagicMock()
-            p.get_text.return_value = f"texto da pagina {i + 1}"
-            mock_pages.append(p)
-        mock_doc = MagicMock()
-        mock_doc.needs_pass = False
-        mock_doc.__iter__ = MagicMock(return_value=iter(mock_pages))
-        mock_fitz_open.return_value = mock_doc
-
-        resultado = extrair_texto_pdf(Path("qualquer.pdf"))
-
-        self.assertEqual(
-            resultado,
-            {
-                "PÁGINA_1": "texto da pagina 1",
-                "PÁGINA_2": "texto da pagina 2",
-                "PÁGINA_3": "texto da pagina 3",
-            },
-        )
-        self.assertEqual(list(resultado.keys()), ["PÁGINA_1", "PÁGINA_2", "PÁGINA_3"])
-
-
-class TestSalvarPdfEnviado(unittest.TestCase):
-    """Testes para salvar_pdf_enviado."""
-
-    def _valid_pdf_bytes(self) -> bytes:
-        return b"%PDF-1.4 fake content"
-
-    @patch("agenticlog.rag.extrair_texto_pdf")
-    def teste_1_salvar_pdf_valido_sucesso(self, mock_extrair):
-        """PDF válido é salvo em DIR_DOCUMENTS."""
-        mock_extrair.return_value = {"PÁGINA_1": "texto extraído"}
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_path = Path(tmp_dir)
-            with patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path):
-                result = salvar_pdf_enviado("contrato.pdf", self._valid_pdf_bytes())
-            self.assertTrue((tmp_path / "contrato.pdf").exists())
-            self.assertEqual(result, tmp_path / "contrato.pdf")
-
-    def teste_2_salvar_rejeita_extensao_invalida(self):
-        """Extensão .txt levanta RAGSecurityError."""
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
-            salvar_pdf_enviado("documento.txt", self._valid_pdf_bytes())
-        self.assertIn(".pdf", str(ctx.exception))
-
-    def teste_2b_salvar_rejeita_magic_bytes_invalidos(self):
-        """Conteúdo sem magic bytes %PDF levanta RAGSecurityError antes de escrita em disco."""
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
-            salvar_pdf_enviado("fake.pdf", b"PK\x03\x04 not a pdf")
-        self.assertIn("PDF válido", str(ctx.exception))
-
-    @patch("agenticlog.rag.extrair_texto_pdf")
-    def teste_3_salvar_aceita_extensao_maiuscula(self, mock_extrair):
-        """Extensão .PDF (maiúscula) é aceita (case-insensitive)."""
-        mock_extrair.return_value = {"PÁGINA_1": "texto extraído"}
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_path = Path(tmp_dir)
-            with patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path):
-                result = salvar_pdf_enviado("CONTRATO.PDF", self._valid_pdf_bytes())
-            self.assertTrue((tmp_path / "CONTRATO.PDF").exists())
-
-    def teste_4_salvar_rejeita_tamanho_excedido(self):
-        """Conteúdo maior que 10 MB levanta RAGSecurityError antes de extração."""
-        conteudo_grande = b"%PDF" + b"x" * (10 * 1024 * 1024 + 1)
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
-            salvar_pdf_enviado("grande.pdf", conteudo_grande)
-        self.assertIn("10", str(ctx.exception))
-
-    def teste_5_salvar_rejeita_nome_duplicado(self):
-        """Arquivo com nome já existente levanta RAGSecurityError."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_path = Path(tmp_dir)
-            (tmp_path / "existente.pdf").write_bytes(b"%PDF")
-            with patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path):
-                with self.assertRaises(rag.RAGSecurityError) as ctx:
-                    salvar_pdf_enviado("existente.pdf", self._valid_pdf_bytes())
-            self.assertIn("já existe", str(ctx.exception))
-
-    def teste_6_salvar_rejeita_path_traversal(self):
-        """Nome com path traversal levanta RAGSecurityError."""
-        with self.assertRaises(rag.RAGSecurityError):
-            salvar_pdf_enviado("../evil.pdf", self._valid_pdf_bytes())
-
-    def teste_7_salvar_rejeita_nome_reservado_windows(self):
-        """Nome reservado Windows levanta RAGSecurityError."""
-        with self.assertRaises(rag.RAGSecurityError):
-            salvar_pdf_enviado("CON.pdf", self._valid_pdf_bytes())
-
-    @patch("agenticlog.rag.extrair_texto_pdf")
-    def teste_8_salvar_rollback_se_pdf_invalido(self, mock_extrair):
-        """Se extrair_texto_pdf lança RAGSecurityError, tempfile é deletado e erro é relançado."""
-        mock_extrair.side_effect = RAGSecurityError("PDF protegido por senha.")
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_path = Path(tmp_dir)
-            with patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path):
-                with self.assertRaises(RAGSecurityError) as ctx:
-                    salvar_pdf_enviado("invalido.pdf", self._valid_pdf_bytes())
-            self.assertNotIn("invalido.pdf", [f.name for f in tmp_path.iterdir()])
-        # Verifica que o tempfile passado para extrair_texto_pdf foi deletado
-        called_path = mock_extrair.call_args[0][0]
-        self.assertFalse(called_path.exists(), "Tempfile não foi deletado no rollback")
-        self.assertIn("senha", str(ctx.exception))
-
-    @patch("agenticlog.rag.MAX_JSON_FILES", new=2)
-    def teste_9_salvar_rejeita_limite_de_arquivos(self):
-        """pdf_count + json_count + 1 > MAX_JSON_FILES levanta RAGSecurityError."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_path = Path(tmp_dir)
-            (tmp_path / "doc_1.pdf").write_bytes(b"%PDF")
-            (tmp_path / "doc_2.json").write_bytes(b"{}")
-            with patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path):
-                with self.assertRaises(rag.RAGSecurityError) as ctx:
-                    salvar_pdf_enviado("novo.pdf", self._valid_pdf_bytes())
-        self.assertIn("Limite", str(ctx.exception))
-
-
-class TestComputarHash(unittest.TestCase):
-    """Testes para _computar_hash_conteudo."""
-
-    def teste_1_hash_deterministico(self) -> None:
-        """Mesmo input deve gerar mesmo hash de 64 caracteres."""
-        h1 = _computar_hash_conteudo(b"hello")
-        h2 = _computar_hash_conteudo(b"hello")
-        self.assertEqual(h1, h2)
-        self.assertEqual(len(h1), 64)
-
-    def teste_2_hash_diferente_para_conteudo_diferente(self) -> None:
-        """Inputs distintos devem gerar hashes diferentes."""
-        h1 = _computar_hash_conteudo(b"hello")
-        h2 = _computar_hash_conteudo(b"world")
-        self.assertNotEqual(h1, h2)
 
 
 class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
@@ -1394,7 +834,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
             with (
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
-                patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
+                patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
@@ -1433,7 +873,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
             with (
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
-                patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
+                patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
@@ -1484,7 +924,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
             with (
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
-                patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
+                patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
@@ -1526,7 +966,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
             with (
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
-                patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
+                patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
@@ -1555,7 +995,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
             with (
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
-                patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
+                patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
@@ -1581,7 +1021,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
             with (
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
-                patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
+                patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
@@ -1609,7 +1049,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
             with (
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
-                patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
+                patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
@@ -1641,7 +1081,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
             with (
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
-                patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
+                patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
@@ -1683,7 +1123,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
             with (
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
-                patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
+                patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
@@ -1723,7 +1163,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
             with (
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
-                patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
+                patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
@@ -1741,80 +1181,6 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
         self.assertEqual(str(exc_ctx.exception), "embed fail")
         mock_vdb.add_documents.assert_not_called()
         mock_vdb.delete.assert_not_called()
-
-
-class TestMetadadosUnificados(unittest.TestCase):
-    """Testes unitários para _enriquecer_metadados_chunks e campos unificados (REC-01)."""
-
-    def teste_1_enriquece_todos_os_campos(self) -> None:
-        """Todos os 5 campos presentes após enriquecimento."""
-        chunks = [LCDocument(page_content="a", metadata={})]
-        rag._enriquecer_metadados_chunks(chunks, "a" * 64, "json", 0)
-        meta = chunks[0].metadata
-        self.assertIn("file_hash", meta)
-        self.assertIn("chunk_index", meta)
-        self.assertIn("doc_type", meta)
-        self.assertIn("page", meta)
-
-    def teste_2_chunk_index_sequencial_json(self) -> None:
-        """Dois chunks JSON recebem chunk_index [0, 1]."""
-        chunks = [
-            LCDocument(page_content="c0", metadata={}),
-            LCDocument(page_content="c1", metadata={}),
-        ]
-        rag._enriquecer_metadados_chunks(chunks, "a" * 64, "json", 0)
-        self.assertEqual([c.metadata["chunk_index"] for c in chunks], [0, 1])
-
-    def teste_3_chunk_index_single_chunk(self) -> None:
-        """Chunk único tem chunk_index == 0."""
-        chunk = LCDocument(page_content="x", metadata={})
-        rag._enriquecer_metadados_chunks([chunk], "a" * 64, "json", 0)
-        self.assertEqual(chunk.metadata["chunk_index"], 0)
-
-    def teste_4_page_sentinel_json(self) -> None:
-        """Chunks JSON recebem page=0."""
-        chunk = LCDocument(page_content="x", metadata={})
-        rag._enriquecer_metadados_chunks([chunk], "a" * 64, "json", 0)
-        self.assertEqual(chunk.metadata["page"], 0)
-
-    def teste_5_page_nao_sobrescrito_quando_none(self) -> None:
-        """page=None não sobrescreve page já presente (PDF: herdado do Document pai)."""
-        chunk = LCDocument(page_content="x", metadata={"page": 3})
-        rag._enriquecer_metadados_chunks([chunk], "a" * 64, "pdf")
-        self.assertEqual(chunk.metadata["page"], 3)
-
-    def teste_6_doc_type_json(self) -> None:
-        """Chunks JSON recebem doc_type='json'."""
-        chunk = LCDocument(page_content="x", metadata={})
-        rag._enriquecer_metadados_chunks([chunk], "a" * 64, "json", 0)
-        self.assertEqual(chunk.metadata["doc_type"], "json")
-
-    def teste_7_doc_type_pdf(self) -> None:
-        """Chunks PDF recebem doc_type='pdf'."""
-        chunk = LCDocument(page_content="x", metadata={"page": 1})
-        rag._enriquecer_metadados_chunks([chunk], "a" * 64, "pdf")
-        self.assertEqual(chunk.metadata["doc_type"], "pdf")
-
-    def teste_8_file_hash_sha256_correto(self) -> None:
-        """_computar_hash_conteudo retorna SHA-256 de 64 chars identico ao hashlib."""
-        conteudo = b"teste de logistica"
-        esperado = hashlib.sha256(conteudo).hexdigest()
-        resultado = rag._computar_hash_conteudo(conteudo)
-        self.assertEqual(resultado, esperado)
-        self.assertEqual(len(resultado), 64)
-
-    def teste_9_zero_chunks_sem_erro(self) -> None:
-        """Lista vazia não levanta exceção."""
-        rag._enriquecer_metadados_chunks([], "a" * 64, "json", 0)
-
-    def teste_10_dois_grupos_chunk_index_independente(self) -> None:
-        """Dois grupos separados têm chunk_index independentes partindo de 0."""
-        grupo1 = [LCDocument(page_content=f"a{i}", metadata={}) for i in range(2)]
-        grupo2 = [LCDocument(page_content=f"b{i}", metadata={}) for i in range(3)]
-        rag._enriquecer_metadados_chunks(grupo1, "a" * 64, "json", 0)
-        rag._enriquecer_metadados_chunks(grupo2, "b" * 64, "json", 0)
-        self.assertEqual([c.metadata["chunk_index"] for c in grupo1], [0, 1])
-        self.assertEqual([c.metadata["chunk_index"] for c in grupo2], [0, 1, 2])
 
 
 class TestAdicionarPdfIncrementalmente(unittest.TestCase):

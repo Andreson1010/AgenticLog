@@ -509,7 +509,7 @@ class TestAC06DefaultCollectionName(unittest.TestCase):
              patch("agenticlog.rag._sanitizar_nome_arquivo", return_value="doc.json"), \
              patch("agenticlog.rag._valida_json_sem_chaves_proibidas"), \
              patch("agenticlog.rag.shutil.move"), \
-             patch("agenticlog.rag.JSONLoader") as mock_loader, \
+             patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader, \
              patch("agenticlog.rag.SemanticChunker") as mock_splitter:
 
             mock_dir.glob.return_value = []

@@ -272,7 +272,7 @@ class TestAC03IncrementalJson(unittest.TestCase):
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.SemanticChunker")
-    @patch("agenticlog.rag.JSONLoader")
+    @patch("agenticlog.ingestion.extraction.JSONLoader")
     @patch("agenticlog.rag._valida_json_sem_chaves_proibidas")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     @patch("agenticlog.rag.shutil")
@@ -372,7 +372,7 @@ class TestAC04DedupUsesFileHash(unittest.TestCase):
 
     @patch("agenticlog.agent.invalidar_vector_db")
     @patch("agenticlog.rag.SemanticChunker")
-    @patch("agenticlog.rag.JSONLoader")
+    @patch("agenticlog.ingestion.extraction.JSONLoader")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
@@ -417,7 +417,7 @@ class TestAC04DedupUsesFileHash(unittest.TestCase):
 
     @patch("agenticlog.agent.invalidar_vector_db")
     @patch("agenticlog.rag.SemanticChunker")
-    @patch("agenticlog.rag.JSONLoader")
+    @patch("agenticlog.ingestion.extraction.JSONLoader")
     @patch("agenticlog.rag.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
