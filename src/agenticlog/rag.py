@@ -7,28 +7,29 @@ Responsabilidades:
 - Transformar os documentos em chunks e gerar embeddings com HuggingFace.
 - Persistir o banco vetorial em data/vectordb/ para uso pelo agente.
 
+Os estágios de baixo risco (segurança, extração, limpeza, chunking, embeddings,
+metadados) vivem em `agenticlog.ingestion` desde a Fase 3a (ADR-018) e são
+re-exportados abaixo via shims identity-preserving. Os orquestradores, a escrita
+no Chroma, a atomicidade de upsert e a CLI permanecem aqui (reprojetados na Fase 3b).
+
 Execute: python -m agenticlog.rag
 """
 
 import argparse
-import hashlib
-import json
 import logging
 import shutil
 import tempfile
 import uuid
 from pathlib import Path
 
-import fitz  # PyMuPDF
+import fitz  # noqa: F401  # PyMuPDF — mantido p/ @patch("agenticlog.rag.fitz.open") (singleton sys.modules)
+import torch
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import DirectoryLoader, JSONLoader
 from langchain_core.documents import Document
-from langchain_experimental.text_splitter import SemanticChunker
 from langchain_huggingface import HuggingFaceEmbeddings
-import torch
 
 from agenticlog.config import (
-    PROJECT_ROOT,
     DIR_DOCUMENTS,
     DIR_VECTORDB,
     EMBEDDING_MODEL,
@@ -38,21 +39,13 @@ from agenticlog.config import (
     MAX_JSON_FILES,
     MAX_JSON_FILE_SIZE_MB,
     MAX_DOCUMENT_FILE_SIZE_MB,
-    FORBIDDEN_JSON_KEYS,
-    INVALID_FILENAME_CHARS,
-    WINDOWS_RESERVED_NAMES,
     LOG_LEVEL,
     LOG_FORMAT,
     _JsonFormatter,
     CHROMA_COLLECTION_METADATA,
     DEFAULT_COLLECTION_NAME,
-    COLLECTION_NAME_MIN_LEN,
-    COLLECTION_NAME_MAX_LEN,
-    COLLECTION_NAME_PATTERN,
     METADATA_FILE_HASH,
-    METADATA_CHUNK_INDEX,
     METADATA_PAGE,
-    METADATA_DOC_TYPE,
     METADATA_DOC_TYPE_JSON,
     METADATA_DOC_TYPE_PDF,
     METADATA_PAGE_JSON_SENTINEL,
@@ -69,239 +62,41 @@ def _get_rag_embedding_model() -> HuggingFaceEmbeddings:
 
     Entrada: nenhuma.
     Saída: instância de HuggingFaceEmbeddings (criada uma única vez por processo).
+
+    O cache e o getter FICAM em `rag.py` (ADR-018 Fase 3a): a construção é delegada
+    a `ingestion.embeddings.criar_embedding_model`, mas o estado (singleton) permanece
+    aqui para preservar `monkeypatch.setattr("agenticlog.rag._rag_embedding_model", ...)`.
     """
     global _rag_embedding_model
     if _rag_embedding_model is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        # normalize_embeddings=True garante o MESMO espaço vetorial do rebuild (cria_vectordb)
-        # e do agente — sem isso, chunks ingeridos incrementalmente teriam normas diferentes
-        # dos do rebuild, degradando a similaridade silenciosamente.
-        _rag_embedding_model = HuggingFaceEmbeddings(
-            model_name=EMBEDDING_MODEL,
-            model_kwargs={"device": device},
-            encode_kwargs={"normalize_embeddings": True},
-        )
+        _rag_embedding_model = criar_embedding_model()
     return _rag_embedding_model
 
 
+# ── Re-export shims (ADR-018 Fase 3a) — remover na Fase 6 ─────────────────────
 from agenticlog.shared.errors import RAGSecurityError  # noqa: E402  # Re-export shim (ADR-018 Fase 2) — remover na Fase 6
-
-
-def _valida_path_documentos() -> None:
-    """Verifica que DIR_DOCUMENTS está contido dentro de PROJECT_ROOT.
-
-    Mitiga path traversal: impede que um valor manipulado de DIR_DOCUMENTS aponte para
-    diretórios fora do projeto (ex.: /etc/ ou C:\\Windows\\), evitando leitura indevida
-    de arquivos do sistema operacional.
-    """
-    dir_resolved = DIR_DOCUMENTS.resolve()
-    root_resolved = PROJECT_ROOT.resolve()
-    try:
-        dir_resolved.relative_to(root_resolved)
-    except ValueError:
-        raise RAGSecurityError(
-            f"Diretório de documentos fora do projeto: {DIR_DOCUMENTS}"
-        )
-    if not dir_resolved.exists():
-        raise RAGSecurityError(f"Diretório não existe: {DIR_DOCUMENTS}")
-    if not dir_resolved.is_dir():
-        raise RAGSecurityError(f"Caminho não é um diretório: {DIR_DOCUMENTS}")
-
-
-def _valida_json_sem_chaves_proibidas(file_path: Path) -> None:
-    """Rejeita arquivos JSON que contenham chaves listadas em FORBIDDEN_JSON_KEYS.
-
-    Mitiga injeção de serialização: a chave "lc" é usada internamente pelo LangChain
-    para desserializar objetos arbitrários via Serializable. Um documento malicioso com
-    essa chave poderia forçar a execução de código inesperado ao ser carregado pelo loader.
-    """
-    try:
-        with open(file_path, encoding="utf-8", errors="replace") as f:
-            data = json.load(f)
-    except json.JSONDecodeError as e:
-        raise RAGSecurityError(f"JSON inválido em {file_path}: {e}") from e
-    except OSError as e:
-        raise RAGSecurityError(f"Erro ao ler {file_path}: {e}") from e
-    if isinstance(data, dict):
-        for key in FORBIDDEN_JSON_KEYS:
-            if key in data:
-                raise RAGSecurityError(
-                    f"Arquivo contém chave proibida '{key}': {file_path}"
-                )
-    elif isinstance(data, list):
-        for i, item in enumerate(data):
-            if isinstance(item, dict):
-                for key in FORBIDDEN_JSON_KEYS:
-                    if key in item:
-                        raise RAGSecurityError(
-                            f"Arquivo contém chave proibida '{key}' no item {i}: {file_path}"
-                        )
-
-
-def _valida_arquivos_json() -> None:
-    """Valida todos os arquivos JSON em DIR_DOCUMENTS antes do carregamento no ChromaDB.
-
-    Verificações realizadas:
-    - Contagem: rejeita se o número de arquivos exceder MAX_JSON_FILES (proteção contra DoS).
-    - Tamanho: rejeita arquivos maiores que MAX_JSON_FILE_SIZE_MB (evita consumo excessivo de memória).
-    - Conteúdo: delega a _valida_json_sem_chaves_proibidas para checar chaves proibidas e JSON válido.
-    """
-    max_bytes = MAX_JSON_FILE_SIZE_MB * 1024 * 1024
-    json_files = list(DIR_DOCUMENTS.glob("*.json"))
-
-    if len(json_files) > MAX_JSON_FILES:
-        raise RAGSecurityError(
-            f"Excesso de arquivos: {len(json_files)} > {MAX_JSON_FILES}"
-        )
-
-    for path in json_files:
-        try:
-            size = path.stat().st_size
-        except OSError as e:
-            raise RAGSecurityError(f"Erro ao acessar {path.name}: {e}") from e
-        if size > max_bytes:
-            raise RAGSecurityError(
-                f"Arquivo excede {MAX_JSON_FILE_SIZE_MB}MB: {path.name} ({size / (1024*1024):.1f}MB)"
-            )
-        _valida_json_sem_chaves_proibidas(path)
-
-
-def _sanitizar_nome_arquivo(filename: str) -> str:
-    """Valida e retorna o basename seguro do filename fornecido.
-
-    Entrada: filename — nome do arquivo como string (pode conter path).
-    Saída: basename sanitizado.
-    Lança RAGSecurityError se o nome for vazio, contiver caracteres inválidos
-    ou indicar path traversal.
-    """
-    if not filename:
-        raise RAGSecurityError("Nome de arquivo vazio.")
-    if any(c in INVALID_FILENAME_CHARS for c in filename):
-        raise RAGSecurityError(
-            f"Nome de arquivo contém caracteres inválidos: {filename!r}"
-        )
-    basename = Path(filename).name
-    if basename != filename or ".." in filename:
-        raise RAGSecurityError(
-            f"Nome de arquivo com path traversal detectado: {filename!r}"
-        )
-    stem = Path(basename).stem.upper()
-    if stem in WINDOWS_RESERVED_NAMES:
-        raise RAGSecurityError(
-            f"Nome de arquivo reservado pelo Windows: {filename!r}"
-        )
-    return basename
-
-
-def _sanitizar_nome_colecao(name: str) -> str:
-    """Valida e retorna o nome de coleção ChromaDB fornecido.
-
-    Entrada: name — nome da coleção como string.
-    Saída: name inalterado se válido.
-    Lança RAGSecurityError se o nome for vazio, muito curto, muito longo ou
-    não corresponder ao padrão de nomes válidos do ChromaDB.
-    """
-    if not name:
-        raise RAGSecurityError("Nome de coleção vazio.")
-    if len(name) < COLLECTION_NAME_MIN_LEN:
-        raise RAGSecurityError(
-            f"Nome de coleção muito curto: mínimo {COLLECTION_NAME_MIN_LEN} caracteres."
-        )
-    if len(name) > COLLECTION_NAME_MAX_LEN:
-        raise RAGSecurityError(
-            f"Nome de coleção muito longo: máximo {COLLECTION_NAME_MAX_LEN} caracteres."
-        )
-    if not COLLECTION_NAME_PATTERN.match(name):
-        raise RAGSecurityError(
-            "Nome de coleção inválido: use apenas letras, números, hífen e underscore, "
-            "começando e terminando com alfanumérico."
-        )
-    return name
-
-
-def sanitizar_nome_colecao(name: str) -> str:
-    """Valida nome de coleção ChromaDB. Levanta RAGSecurityError se inválido."""
-    return _sanitizar_nome_colecao(name)
-
-
-def salvar_documento_enviado(
-    filename: str,
-    conteudo: bytes,
-    collection_name: str = DEFAULT_COLLECTION_NAME,
-) -> Path:
-    """Valida e persiste um arquivo JSON enviado pelo operador.
-
-    Entrada:
-      filename — nome original do arquivo (str).
-      conteudo — conteúdo binário do arquivo (bytes).
-      collection_name — nome da coleção ChromaDB de destino.
-    Saída: Path do arquivo salvo em DIR_DOCUMENTS.
-    Lança RAGSecurityError em qualquer falha de validação.
-    """
-    _sanitizar_nome_colecao(collection_name)
-
-    if Path(filename).suffix.lower() != ".json":
-        raise RAGSecurityError("Apenas arquivos .json são aceitos.")
-
-    if len(conteudo) > MAX_DOCUMENT_FILE_SIZE_MB * 1024 * 1024:
-        raise RAGSecurityError(
-            f"Arquivo excede o limite de {MAX_DOCUMENT_FILE_SIZE_MB} MB."
-        )
-
-    safe_name = _sanitizar_nome_arquivo(filename)
-
-    if (DIR_DOCUMENTS / safe_name).exists():
-        raise RAGSecurityError("Arquivo com esse nome já existe.")
-
-    pdf_count = len(list(DIR_DOCUMENTS.glob("*.pdf")))
-    json_count = len(list(DIR_DOCUMENTS.glob("*.json")))
-    if pdf_count + json_count + 1 > MAX_JSON_FILES:
-        raise RAGSecurityError(
-            f"Limite de {MAX_JSON_FILES} arquivos atingido."
-        )
-
-    tmp_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
-            tmp.write(conteudo)
-            tmp_path = Path(tmp.name)
-        _valida_json_sem_chaves_proibidas(tmp_path)
-        shutil.move(str(tmp_path), DIR_DOCUMENTS / safe_name)
-        tmp_path = None  # moved — no cleanup needed
-    finally:
-        if tmp_path is not None:
-            tmp_path.unlink(missing_ok=True)
-
-    return DIR_DOCUMENTS / safe_name
-
-
-def _computar_hash_conteudo(conteudo: bytes) -> str:
-    """Computa o hash SHA-256 do conteúdo binário do arquivo.
-
-    Entrada: conteudo — bytes do arquivo.
-    Saída: string hexadecimal de 64 caracteres (SHA-256).
-    """
-    return hashlib.sha256(conteudo).hexdigest()
-
-
-def _hash_arquivo(path: str) -> str:
-    """Lê arquivo do disco e retorna SHA-256 do conteúdo (REC-01)."""
-    return _computar_hash_conteudo(Path(path).read_bytes())
-
-
-def _enriquecer_metadados_chunks(
-    chunks: list, file_hash: str, doc_type: str, page: int | None = None
-) -> None:
-    """Enriquece chunks in-place com campos unificados de metadados (REC-01).
-
-    page=None preserva o valor já presente em chunk.metadata (PDF: herdado do Document pai).
-    """
-    for idx, chunk in enumerate(chunks):
-        chunk.metadata[METADATA_FILE_HASH] = file_hash
-        chunk.metadata[METADATA_CHUNK_INDEX] = idx
-        chunk.metadata[METADATA_DOC_TYPE] = doc_type
-        if page is not None:
-            chunk.metadata[METADATA_PAGE] = page
+from agenticlog.ingestion.security import (  # noqa: E402,F401
+    _valida_path_documentos,
+    _valida_json_sem_chaves_proibidas,
+    _valida_arquivos_json,
+    _sanitizar_nome_arquivo,
+    _sanitizar_nome_colecao,
+    sanitizar_nome_colecao,
+    salvar_documento_enviado,
+    salvar_pdf_enviado,
+)  # Re-export shim (ADR-018 Fase 3a) — remover na Fase 6
+from agenticlog.ingestion.extraction import (  # noqa: E402
+    extrair_texto_pdf,
+    carregar_json,
+)  # Re-export shim (ADR-018 Fase 3a) — remover na Fase 6
+from agenticlog.ingestion.cleaning import filtrar_documentos_vazios  # noqa: E402  # Re-export shim (ADR-018 Fase 3a) — remover na Fase 6
+from agenticlog.ingestion.chunking import SemanticChunker  # noqa: E402,F401  # Re-export shim (ADR-018 Fase 3a) — remover na Fase 6
+from agenticlog.ingestion.embeddings import criar_embedding_model  # noqa: E402  # Re-export shim (ADR-018 Fase 3a) — remover na Fase 6
+from agenticlog.ingestion.metadata import (  # noqa: E402
+    _computar_hash_conteudo,
+    _hash_arquivo,
+    _enriquecer_metadados_chunks,
+)  # Re-export shim (ADR-018 Fase 3a) — remover na Fase 6
 
 
 def _backup_arquivo(path: Path) -> Path:
@@ -473,10 +268,9 @@ def adicionar_documento_incrementalmente(
     # Tudo após shutil.move (carga, chunking c/ embeddings, ingestão) é guardado:
     # qualquer falha reverte o disco para o estado pré-operação (upsert atômico).
     try:
-        loader = JSONLoader(str(saved_path), jq_schema=JQ_SCHEMA_CAMPOS_JSON)
-        docs = loader.load()
+        docs = carregar_json(saved_path)
         # Descarta Documents com page_content vazio (chave JSON com valor "", [] ou {}) — ADR-011
-        docs = [d for d in docs if d.page_content.strip()]
+        docs = filtrar_documentos_vazios(docs)
         text_splitter = SemanticChunker(
             embeddings=embedding_model,
             breakpoint_threshold_type=SEMANTIC_BREAKPOINT_TYPE,
@@ -633,7 +427,7 @@ def adicionar_pdf_incrementalmente(
                 metadata={"source": str(saved_path), METADATA_PAGE: page_num},
             )
         )
-    pdf_docs = [d for d in pdf_docs if d.page_content.strip()]
+    pdf_docs = filtrar_documentos_vazios(pdf_docs)
 
     # Tudo após shutil.move (chunking c/ embeddings, ingestão) é guardado:
     # qualquer falha reverte o disco para o estado pré-operação (upsert atômico).
@@ -700,98 +494,6 @@ def adicionar_pdf_incrementalmente(
     return {"status": status_final, "mensagem": mensagem_final}
 
 
-def extrair_texto_pdf(path: Path) -> dict[str, str]:
-    """Extrai texto de um arquivo PDF usando PyMuPDF (fitz), por página.
-
-    Entrada: path — Path para um arquivo PDF já salvo em disco.
-    Saída: dict {"PÁGINA_1": "texto da página 1", "PÁGINA_2": "...", ...} —
-      apenas páginas com texto não-vazio após .strip() são incluídas.
-    Lança RAGSecurityError se:
-      - fitz.open() lança qualquer Exception (arquivo corrompido).
-      - doc.needs_pass == True (PDF protegido por senha).
-      - dict resultante está vazio (nenhuma página com texto extraível — somente imagem).
-    """
-    try:
-        doc_handle = fitz.open(str(path))
-    except fitz.FileDataError:
-        raise RAGSecurityError("PDF inválido ou corrompido.")
-    except Exception as exc:
-        raise RAGSecurityError("PDF inválido ou corrompido.") from exc
-
-    with doc_handle:
-        if doc_handle.needs_pass:
-            raise RAGSecurityError("PDF protegido por senha.")
-        pages: dict[str, str] = {}
-        for i, page in enumerate(doc_handle):
-            texto = page.get_text().strip()
-            if texto:
-                pages[f"PÁGINA_{i + 1}"] = texto
-
-    if not pages:
-        raise RAGSecurityError("PDF não contém texto extraível (somente imagem).")
-
-    return pages
-
-
-def salvar_pdf_enviado(
-    filename: str,
-    conteudo: bytes,
-    collection_name: str = DEFAULT_COLLECTION_NAME,
-) -> Path:
-    """Valida e persiste um arquivo PDF enviado pelo operador.
-
-    Entrada:
-      filename — nome original do arquivo (str).
-      conteudo — conteúdo binário do arquivo (bytes).
-      collection_name — nome da coleção ChromaDB de destino.
-    Saída: Path do arquivo salvo em DIR_DOCUMENTS.
-    Lança RAGSecurityError em qualquer falha de validação.
-    """
-    _sanitizar_nome_colecao(collection_name)
-
-    if Path(filename).suffix.lower() != ".pdf":
-        raise RAGSecurityError("Apenas arquivos .pdf são aceitos.")
-
-    if not conteudo.startswith(b"%PDF"):
-        raise RAGSecurityError("Conteúdo não é um arquivo PDF válido.")
-
-    if len(conteudo) > MAX_DOCUMENT_FILE_SIZE_MB * 1024 * 1024:
-        raise RAGSecurityError(
-            f"Arquivo excede o limite de {MAX_DOCUMENT_FILE_SIZE_MB} MB."
-        )
-
-    safe_name = _sanitizar_nome_arquivo(filename)
-
-    if (DIR_DOCUMENTS / safe_name).exists():
-        raise RAGSecurityError("Arquivo com esse nome já existe.")
-
-    pdf_count = len(list(DIR_DOCUMENTS.glob("*.pdf")))
-    json_count = len(list(DIR_DOCUMENTS.glob("*.json")))
-    if pdf_count + json_count + 1 > MAX_JSON_FILES:
-        raise RAGSecurityError(
-            f"Limite de {MAX_JSON_FILES} arquivos atingido."
-        )
-
-    tmp_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            tmp.write(conteudo)
-            tmp_path = Path(tmp.name)
-        extrair_texto_pdf(tmp_path)  # validação por efeito colateral: levanta RAGSecurityError se sem texto
-        shutil.move(str(tmp_path), DIR_DOCUMENTS / safe_name)
-        tmp_path = None  # moved — no cleanup needed
-    except RAGSecurityError:
-        if tmp_path is not None:
-            tmp_path.unlink(missing_ok=True)
-            tmp_path = None
-        raise
-    finally:
-        if tmp_path is not None:
-            tmp_path.unlink(missing_ok=True)
-
-    return DIR_DOCUMENTS / safe_name
-
-
 def reconstruir_vectordb(collection_name: str = DEFAULT_COLLECTION_NAME) -> None:
     """Reconstrói o banco vetorial ChromaDB a partir dos documentos em DIR_DOCUMENTS.
 
@@ -832,7 +534,7 @@ def cria_vectordb(collection_name: str = DEFAULT_COLLECTION_NAME) -> None:
     )
     json_docs = loader.load()
     # Descarta Documents com page_content vazio (chave JSON com valor "", [] ou {}) — ADR-011
-    json_docs = [d for d in json_docs if d.page_content.strip()]
+    json_docs = filtrar_documentos_vazios(json_docs)
 
     pdf_docs = []
     for pdf_path in DIR_DOCUMENTS.glob("*.pdf"):
@@ -850,7 +552,7 @@ def cria_vectordb(collection_name: str = DEFAULT_COLLECTION_NAME) -> None:
             logger.error("PDF corrompido ignorado durante reconstrução: %s — %s", pdf_path.name, e)
 
     # Descarta Documents com page_content vazio — defensivo, simetria com o filtro JSON (ADR-011)
-    pdf_docs = [d for d in pdf_docs if d.page_content.strip()]
+    pdf_docs = filtrar_documentos_vazios(pdf_docs)
 
     documents = json_docs + pdf_docs
 

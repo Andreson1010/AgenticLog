@@ -58,6 +58,7 @@ ignore = []
 [tool.ruff.lint.per-file-ignores]
 "src/agenticlog/__init__.py" = ["E501"]
 "src/agenticlog/rag.py" = ["E501", "I001", "B904"]
+"src/agenticlog/ingestion/*.py" = ["E501", "B904"]
 "src/agenticlog/agent.py" = ["E501"]
 "src/agenticlog/config.py" = ["E501"]
 
