@@ -1207,7 +1207,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.extrair_texto_pdf")
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     def teste_1_happy_path_adiciona_chunks(
         self,
@@ -1270,7 +1270,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
         self.assertEqual(meta["doc_type"], "pdf")
 
     @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     def teste_2_duplicado_mesmo_hash(
         self,
@@ -1303,7 +1303,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
     @patch("agenticlog.rag.shutil")
     @patch("agenticlog.rag.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     def teste_3_upsert_hash_diferente_mesmo_nome(
         self,
@@ -1445,7 +1445,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
 
     @patch("agenticlog.rag.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     def teste_8_rejeita_pdf_com_senha(
         self,
@@ -1478,7 +1478,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
 
     @patch("agenticlog.rag.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     def teste_9_rejeita_pdf_somente_imagem(
         self,
@@ -1518,7 +1518,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.extrair_texto_pdf")
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     def teste_10_zero_chunks_retorna_sem_indexar(
         self,
@@ -1567,7 +1567,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.extrair_texto_pdf")
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     def teste_11_rollback_em_falha_de_add_documents(
         self,
@@ -1619,7 +1619,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     @patch("agenticlog.rag.SemanticChunker")
     @patch("agenticlog.rag.extrair_texto_pdf")
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     def teste_12_chunk_index_global_entre_paginas(
         self,

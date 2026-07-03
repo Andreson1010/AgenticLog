@@ -297,7 +297,7 @@ class TestDOCING06FilenameCollisionRejected(unittest.TestCase):
             existing = tmp_path / "existente.json"
             existing.write_bytes(b'{"ok": "1"}')
 
-            with patch("agenticlog.rag.DIR_DOCUMENTS", tmp_path):
+            with patch("agenticlog.ingestion.security.DIR_DOCUMENTS", tmp_path):
                 with self.assertRaises(RAGSecurityError) as ctx:
                     salvar_documento_enviado("existente.json", b'{"ok": "2"}')
 
@@ -400,7 +400,7 @@ class TestDOCING08FileCountLimitRejected(unittest.TestCase):
             for i in range(MAX_JSON_FILES):
                 (tmp_path / f"doc_{i:04d}.json").write_bytes(b'{}')
 
-            with patch("agenticlog.rag.DIR_DOCUMENTS", tmp_path):
+            with patch("agenticlog.ingestion.security.DIR_DOCUMENTS", tmp_path):
                 with self.assertRaises(RAGSecurityError) as ctx:
                     salvar_documento_enviado("novo.json", b'{"ok": "1"}')
 
