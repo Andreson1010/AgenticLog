@@ -402,3 +402,38 @@ def test_ac07_observability_logging_does_not_import_config() -> None:
     # (b) its source contains no import line that references 'agenticlog'.
     # A subprocess check here would require the feature worktree's src/ on PYTHONPATH,
     # which the current test runner does not guarantee; the in-process checks are sufficient.
+
+
+# ---------------------------------------------------------------------------
+# AC-08: ingestion package import is acyclic — fresh interpreter (ADR-018 Fase 3a)
+# ---------------------------------------------------------------------------
+
+def test_ac08_ingestion_import_acyclic_fresh_interpreter() -> None:
+    """
+    AC-08: WHEN `import agenticlog.ingestion` runs in a fresh interpreter (cold
+    sys.modules) THEN it SHALL exit 0 with no circular / partially-initialized error.
+
+    `ingestion/*` depende só de `agenticlog.config` e `agenticlog.shared` (folhas do
+    grafo) e, intra-pacote, `security → extraction`. Nenhum import de `rag`/`agent`.
+    Covers RAGING-10.
+    """
+    import os
+
+    env = dict(os.environ)
+    env["PYTHONPATH"] = _src + os.pathsep + env.get("PYTHONPATH", "")
+    result = subprocess.run(
+        [sys.executable, "-c", "import agenticlog.ingestion"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert result.returncode == 0, (
+        f"Fresh `import agenticlog.ingestion` failed (exit {result.returncode}).\n"
+        f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
+    )
+    assert "circular" not in result.stderr.lower(), (
+        f"Circular import detected in stderr: {result.stderr!r}"
+    )
+    assert "partially initialized" not in result.stderr.lower(), (
+        f"Partially initialized module in stderr: {result.stderr!r}"
+    )

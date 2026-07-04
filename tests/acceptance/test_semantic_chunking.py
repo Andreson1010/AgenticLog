@@ -107,7 +107,7 @@ class TestAC2JsonIncremental(unittest.TestCase):
             with (
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
-                patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
+                patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vdb"),
@@ -135,7 +135,7 @@ class TestAC2JsonIncremental(unittest.TestCase):
             with (
                 patch("agenticlog.rag.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
-                patch("agenticlog.rag.JSONLoader") as mock_loader_cls,
+                patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vdb"),

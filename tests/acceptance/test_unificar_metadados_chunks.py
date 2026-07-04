@@ -269,10 +269,10 @@ class TestAC02PdfFullRebuild(unittest.TestCase):
 class TestAC03IncrementalJson(unittest.TestCase):
     """AC-3: Incremental JSON ingest via adicionar_documento_incrementalmente() adds metadata."""
 
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.SemanticChunker")
-    @patch("agenticlog.rag.JSONLoader")
+    @patch("agenticlog.ingestion.extraction.JSONLoader")
     @patch("agenticlog.rag._valida_json_sem_chaves_proibidas")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     @patch("agenticlog.rag.shutil")
@@ -340,7 +340,7 @@ class TestAC03IncrementalJson(unittest.TestCase):
 class TestAC04DedupUsesFileHash(unittest.TestCase):
     """AC-4: Deduplication uses file_hash field (not content_hash)."""
 
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_1_duplicata_detectada_via_file_hash(
@@ -372,8 +372,8 @@ class TestAC04DedupUsesFileHash(unittest.TestCase):
 
     @patch("agenticlog.agent.invalidar_vector_db")
     @patch("agenticlog.rag.SemanticChunker")
-    @patch("agenticlog.rag.JSONLoader")
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.extraction.JSONLoader")
+    @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_2_hash_diferente_upsert_via_file_hash(
@@ -417,8 +417,8 @@ class TestAC04DedupUsesFileHash(unittest.TestCase):
 
     @patch("agenticlog.agent.invalidar_vector_db")
     @patch("agenticlog.rag.SemanticChunker")
-    @patch("agenticlog.rag.JSONLoader")
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.extraction.JSONLoader")
+    @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     @patch("agenticlog.rag.Chroma")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_3_campo_content_hash_nao_e_usado_para_dedup(
