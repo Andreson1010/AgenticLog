@@ -1,54 +1,33 @@
-# AgenticLog - Pipeline RAG
+# AgenticLog - Pipeline RAG (fachada de compatibilidade)
 """
-Pipeline de construção do banco vetorial (ChromaDB).
+Fachada do pipeline de ingestão RAG (ChromaDB).
 
-Responsabilidades:
-- Validar segurança dos documentos JSON antes do carregamento (path traversal, chaves proibidas, tamanho).
-- Transformar os documentos em chunks e gerar embeddings com HuggingFace.
-- Persistir o banco vetorial em data/vectordb/ para uso pelo agente.
+Desde a Fase 3a (ADR-018) os estágios de baixo risco (segurança, extração, limpeza,
+chunking, embeddings, metadados) vivem em `agenticlog.ingestion` e são re-exportados
+abaixo via shims identity-preserving. A Fase 3b moveu a camada de persistência/atomicidade
+para `agenticlog.ingestion.store` e os 5 orquestradores para `agenticlog.ingestion.orchestrator`.
 
-Os estágios de baixo risco (segurança, extração, limpeza, chunking, embeddings,
-metadados) vivem em `agenticlog.ingestion` desde a Fase 3a (ADR-018) e são
-re-exportados abaixo via shims identity-preserving. Os orquestradores, a escrita
-no Chroma, a atomicidade de upsert e a CLI permanecem aqui (reprojetados na Fase 3b).
+`rag.py` permanece como fachada: mantém os globais/seams (`DIR_DOCUMENTS`, `DIR_VECTORDB`,
+`_rag_embedding_model` + getter/cache), a CLI, os shims `is`-idênticos (Fase 3a + os 4
+símbolos de `store`) e WRAPPERS finos dos orquestradores que ligam os seams NO MOMENTO DA
+CHAMADA (para que `monkeypatch.setattr("agenticlog.rag.DIR_*")` continue fluindo).
 
 Execute: python -m agenticlog.rag
 """
 
 import argparse
 import logging
-import shutil
-import tempfile
-import uuid
-from pathlib import Path
 
 import fitz  # noqa: F401  # PyMuPDF — mantido p/ @patch("agenticlog.rag.fitz.open") (singleton sys.modules)
-import torch
-from langchain_chroma import Chroma
-from langchain_community.document_loaders import DirectoryLoader, JSONLoader
-from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
 
 from agenticlog.config import (
     DIR_DOCUMENTS,
     DIR_VECTORDB,
-    EMBEDDING_MODEL,
-    SEMANTIC_BREAKPOINT_TYPE,
-    SEMANTIC_BREAKPOINT_THRESHOLD,
-    JQ_SCHEMA_CAMPOS_JSON,
-    MAX_JSON_FILES,
-    MAX_JSON_FILE_SIZE_MB,
-    MAX_DOCUMENT_FILE_SIZE_MB,
     LOG_LEVEL,
     LOG_FORMAT,
     _JsonFormatter,
-    CHROMA_COLLECTION_METADATA,
     DEFAULT_COLLECTION_NAME,
-    METADATA_FILE_HASH,
-    METADATA_PAGE,
-    METADATA_DOC_TYPE_JSON,
-    METADATA_DOC_TYPE_PDF,
-    METADATA_PAGE_JSON_SENTINEL,
 )
 
 logger = logging.getLogger(__name__)
@@ -89,250 +68,42 @@ from agenticlog.ingestion.extraction import (  # noqa: E402
     extrair_texto_pdf,
     carregar_json,
 )  # Re-export shim (ADR-018 Fase 3a) — remover na Fase 6
-from agenticlog.ingestion.cleaning import filtrar_documentos_vazios  # noqa: E402  # Re-export shim (ADR-018 Fase 3a) — remover na Fase 6
+from agenticlog.ingestion.cleaning import filtrar_documentos_vazios  # noqa: E402,F401  # Re-export shim (ADR-018 Fase 3a) — remover na Fase 6
 from agenticlog.ingestion.chunking import SemanticChunker  # noqa: E402,F401  # Re-export shim (ADR-018 Fase 3a) — remover na Fase 6
 from agenticlog.ingestion.embeddings import criar_embedding_model  # noqa: E402  # Re-export shim (ADR-018 Fase 3a) — remover na Fase 6
-from agenticlog.ingestion.metadata import (  # noqa: E402
+from agenticlog.ingestion.metadata import (  # noqa: E402,F401
     _computar_hash_conteudo,
     _hash_arquivo,
     _enriquecer_metadados_chunks,
 )  # Re-export shim (ADR-018 Fase 3a) — remover na Fase 6
 
+# ── Re-export shims de store (ADR-018 Fase 3b) — remover na Fase 6 ────────────
+# Identidade `is` preservada: agenticlog.rag.X is agenticlog.ingestion.store.X.
+from agenticlog.ingestion.store import (  # noqa: E402,F401
+    _backup_arquivo,
+    _reverter_disco,
+    _outras_colecoes_existem,
+    _resetar_colecao,
+)  # Re-export shim (ADR-018 Fase 3b) — remover na Fase 6
 
-def _backup_arquivo(path: Path) -> Path:
-    """Cria cópia temporária de ``path`` para restauração em caso de falha de upsert."""
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".bak") as bak:
-        backup_path = Path(bak.name)
-    shutil.copy2(path, backup_path)
-    return backup_path
-
-
-def _reverter_disco(saved_path: Path, backup_path: Path | None) -> None:
-    """Reverte o estado do disco após falha de ingestão.
-
-    Upsert (``backup_path`` não-nulo): restaura o conteúdo antigo, mantendo o disco
-    consistente com os chunks antigos que permanecem no Chroma — evita perda do
-    documento original.
-    Arquivo novo (``backup_path`` nulo): remove o arquivo recém-gravado.
-    """
-    if backup_path is not None:
-        shutil.move(str(backup_path), saved_path)
-    else:
-        saved_path.unlink(missing_ok=True)
+import agenticlog.ingestion.orchestrator as _orch  # noqa: E402
 
 
-def _outras_colecoes_existem(collection_name: str) -> bool:
-    """Retorna True se o vector DB contém alguma coleção DIFERENTE de ``collection_name``.
-
-    Lê a tabela ``collections`` do SQLite do Chroma em modo read-only — sem abrir um
-    cliente Chroma, que seguraria um lock sobre o arquivo e faria o ``rmtree`` falhar no
-    Windows. Schema ausente/ilegível ou DB inexistente é tratado como "sem coleções irmãs"
-    (False) — o caminho seguro de wipe completo (que purga órfãos).
-
-    Entrada: collection_name — coleção alvo do rebuild.
-    Saída: True se há ao menos uma coleção com nome diferente; False caso contrário.
-    """
-    db_file = DIR_VECTORDB / "chroma.sqlite3"
-    if not db_file.exists():
-        return False
-    import sqlite3  # lazy — leitura pontual, sem lock do cliente Chroma
-
-    con = sqlite3.connect(f"file:{db_file}?mode=ro", uri=True)
-    try:
-        nomes = [row[0] for row in con.execute("SELECT name FROM collections").fetchall()]
-    except sqlite3.Error:
-        return False
-    finally:
-        con.close()
-    return any(nome != collection_name for nome in nomes)
-
-
-def _resetar_colecao(collection_name: str) -> None:
-    """Descarta o estado da coleção alvo antes do rebuild, sem destruir coleções irmãs.
-
-    Caso comum (a coleção alvo é a única, ou o DB ainda não existe): remove
-    ``DIR_VECTORDB`` inteiro — isso purga os segmentos/embeddings ÓRFÃOS que o
-    ``delete_collection`` do Chroma deixa para trás (causa-raiz da coleção vazia / RAG
-    silenciosamente offline). Caso multi-coleção: descarta apenas a coleção alvo via
-    ``delete_collection``, preservando as demais; a integridade do rebuild é garantida
-    pelo guardrail de contagem em ``cria_vectordb`` (aborta se persistir 0 chunks).
-    Diretório/coleção inexistente é no-op.
-
-    Entrada: collection_name — coleção ChromaDB alvo do rebuild.
-    Saída: nenhuma — efeito colateral: estado da coleção alvo removido do disco.
-    """
-    if not _outras_colecoes_existem(collection_name):
-        if DIR_VECTORDB.exists():
-            shutil.rmtree(DIR_VECTORDB, ignore_errors=True)
-            logger.info(
-                "Diretório do vector DB removido para rebuild limpo (coleção '%s'): %s",
-                collection_name, DIR_VECTORDB,
-            )
-        return
-
-    import chromadb  # lazy — evita side-effects na importação do módulo
-
-    client = chromadb.PersistentClient(path=str(DIR_VECTORDB))
-    try:
-        client.delete_collection(collection_name)
-        logger.info(
-            "Coleção '%s' descartada (coleções irmãs preservadas no vector DB).",
-            collection_name,
-        )
-    except Exception as exc:  # coleção inexistente → nada a descartar
-        logger.debug(
-            "Coleção '%s' não descartada (provavelmente inexistente): %s",
-            collection_name, exc,
-        )
-
-
+# ── WRAPPERS de orquestrador (ADR-018 Fase 3b) — remover na Fase 6 ────────────
+# NÃO são `is`-idênticos aos de `orchestrator`: ligam os seams de rag.py (DIR_DOCUMENTS,
+# DIR_VECTORDB, _get_rag_embedding_model) NO MOMENTO DA CHAMADA e os injetam por argumento,
+# preservando o monkeypatch do oráculo (§4 do design; ADR-019).
 def adicionar_documento_incrementalmente(
     filename: str,
     conteudo: bytes,
     collection_name: str = DEFAULT_COLLECTION_NAME,
 ) -> dict[str, str]:
-    """Adiciona chunks de um novo arquivo JSON ao ChromaDB existente sem reconstrução.
-
-    Entrada:
-      filename — nome original do arquivo (str).
-      conteudo — conteúdo binário do arquivo (bytes).
-      collection_name — nome da coleção ChromaDB de destino.
-    Saída: dict com chaves "status" e "mensagem":
-      {"status": "adicionado", "mensagem": "Arquivo <nome> adicionado com sucesso. N chunks inseridos."}
-      {"status": "duplicado", "mensagem": "Arquivo <nome> já está presente na base vetorial."}
-      {"status": "hash_diferente", "mensagem": "Arquivo <nome> já existe com conteúdo diferente. Remoção e substituição não são suportadas nesta versão."}
-    Lança RAGSecurityError em qualquer falha de validação de segurança.
-    Lança Exception se a ingestão falhar após rollback.
-    """
-    _sanitizar_nome_colecao(collection_name)
-
-    if Path(filename).suffix.lower() != ".json":
-        raise RAGSecurityError("Apenas arquivos .json são aceitos.")
-
-    max_bytes = MAX_JSON_FILE_SIZE_MB * 1024 * 1024
-    if len(conteudo) > max_bytes:
-        raise RAGSecurityError(
-            f"Arquivo excede o limite de {MAX_JSON_FILE_SIZE_MB} MB."
-        )
-
-    safe_name = _sanitizar_nome_arquivo(filename)
-
-    json_count = len(list(DIR_DOCUMENTS.glob("*.json")))
-    pdf_count = len(list(DIR_DOCUMENTS.glob("*.pdf")))
-    if json_count + pdf_count + 1 > MAX_JSON_FILES:
-        raise RAGSecurityError(
-            f"Limite de {MAX_JSON_FILES} arquivos atingido."
-        )
-
-    hash_str = _computar_hash_conteudo(conteudo)
-    planned_path = DIR_DOCUMENTS / safe_name
-
-    embedding_model = _get_rag_embedding_model()
-    vectordb_instance = Chroma(
-        persist_directory=str(DIR_VECTORDB),
-        collection_name=collection_name,
-        embedding_function=embedding_model,
-        collection_metadata=CHROMA_COLLECTION_METADATA,
+    """Wrapper: delega ao orquestrador ligando os seams de `rag.py` na chamada."""
+    return _orch.adicionar_documento_incrementalmente(
+        filename, conteudo, collection_name,
+        docs_dir=DIR_DOCUMENTS, vectordb_dir=DIR_VECTORDB,
+        embedding_model=_get_rag_embedding_model(),
     )
-
-    existing = vectordb_instance.get(
-        where={"source": {"$eq": str(planned_path)}}
-    )
-    old_ids: list[str] = []
-    if existing["ids"]:
-        existing_hash = existing["metadatas"][0].get(METADATA_FILE_HASH)
-        if existing_hash == hash_str:
-            return {
-                "status": "duplicado",
-                "mensagem": f"Arquivo {safe_name} já está presente na base vetorial.",
-            }
-        old_ids = list(existing["ids"])
-
-    saved_path: Path | None = None
-    tmp_path: Path | None = None
-    backup_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
-            tmp.write(conteudo)
-            tmp_path = Path(tmp.name)
-        _valida_json_sem_chaves_proibidas(tmp_path)
-        if old_ids and planned_path.exists():
-            backup_path = _backup_arquivo(planned_path)
-        shutil.move(str(tmp_path), planned_path)
-        saved_path = planned_path
-        tmp_path = None
-    finally:
-        if tmp_path is not None:
-            tmp_path.unlink(missing_ok=True)
-
-    # Tudo após shutil.move (carga, chunking c/ embeddings, ingestão) é guardado:
-    # qualquer falha reverte o disco para o estado pré-operação (upsert atômico).
-    try:
-        docs = carregar_json(saved_path)
-        # Descarta Documents com page_content vazio (chave JSON com valor "", [] ou {}) — ADR-011
-        docs = filtrar_documentos_vazios(docs)
-        text_splitter = SemanticChunker(
-            embeddings=embedding_model,
-            breakpoint_threshold_type=SEMANTIC_BREAKPOINT_TYPE,
-            breakpoint_threshold_amount=SEMANTIC_BREAKPOINT_THRESHOLD,
-        )
-        chunks = text_splitter.split_documents(docs)
-
-        if not chunks:
-            logger.warning("Arquivo %s produziu zero chunks após divisão.", safe_name)
-            _reverter_disco(saved_path, backup_path)
-            return {
-                "status": "adicionado",
-                "mensagem": f"Arquivo {safe_name} não pôde ser indexado: 0 chunks gerados.",
-            }
-
-        _enriquecer_metadados_chunks(
-            chunks, hash_str, METADATA_DOC_TYPE_JSON, METADATA_PAGE_JSON_SENTINEL
-        )
-
-        chunk_ids = [uuid.uuid4().hex for _ in chunks]
-
-        try:
-            vectordb_instance.add_documents(chunks, ids=chunk_ids)
-        except Exception:
-            try:
-                vectordb_instance.delete(ids=chunk_ids)
-            except Exception as rollback_exc:
-                logger.warning(
-                    "Rollback falhou após erro de ingestão. IDs órfãos: %s. Erro de rollback: %s",
-                    chunk_ids,
-                    rollback_exc,
-                )
-            raise
-
-        if old_ids:
-            try:
-                vectordb_instance.delete(ids=old_ids)
-            except Exception as del_exc:
-                logger.warning(
-                    "Falha ao deletar chunks antigos de %s (IDs: %s). Erro: %s",
-                    safe_name, old_ids, del_exc,
-                )
-    except Exception:
-        _reverter_disco(saved_path, backup_path)
-        raise
-    finally:
-        if backup_path is not None and backup_path.exists():
-            backup_path.unlink(missing_ok=True)
-
-    try:
-        from agenticlog.agent import invalidar_vector_db  # lazy — evita importação pesada no CLI
-        invalidar_vector_db()
-    except ImportError as e:
-        logger.warning("Não foi possível invalidar o singleton do agente: %s", e)
-
-    status_final = "substituido" if old_ids else "adicionado"
-    mensagem_final = (
-        f"Arquivo {safe_name} atualizado na base vetorial. {len(chunks)} chunks substituídos."
-        if old_ids
-        else f"Arquivo {safe_name} adicionado com sucesso. {len(chunks)} chunks inseridos."
-    )
-    return {"status": status_final, "mensagem": mensagem_final}
 
 
 def adicionar_pdf_incrementalmente(
@@ -340,323 +111,50 @@ def adicionar_pdf_incrementalmente(
     conteudo: bytes,
     collection_name: str = DEFAULT_COLLECTION_NAME,
 ) -> dict[str, str]:
-    """Adiciona chunks de um PDF ao ChromaDB existente sem reconstrução completa (REC-02).
+    """Wrapper: delega ao orquestrador ligando os seams de `rag.py` na chamada."""
+    return _orch.adicionar_pdf_incrementalmente(
+        filename, conteudo, collection_name,
+        docs_dir=DIR_DOCUMENTS, vectordb_dir=DIR_VECTORDB,
+        embedding_model=_get_rag_embedding_model(),
+    )
 
-    Entrada:
-      filename — nome original do arquivo (str).
-      conteudo — conteúdo binário do arquivo PDF (bytes).
-      collection_name — nome da coleção ChromaDB de destino.
-    Saída: dict com chaves "status" e "mensagem":
-      {"status": "adicionado", "mensagem": "Arquivo <nome> adicionado com sucesso. N chunks inseridos."}
-      {"status": "substituido", "mensagem": "Arquivo <nome> atualizado na base vetorial. N chunks substituídos."}
-      {"status": "duplicado", "mensagem": "Arquivo <nome> já está presente na base vetorial."}
-    Lança RAGSecurityError em qualquer falha de validação de segurança.
-    Lança Exception se a ingestão falhar após rollback.
+
+def ingerir_incrementalmente(
+    collection_name: str = DEFAULT_COLLECTION_NAME,
+) -> dict[str, int]:
+    """Wrapper: injeta o singleton de embedding só quando há documentos a ingerir.
+
+    O guard `tem_documentos` preserva a laziness da construção do modelo (~1 GB): com
+    o diretório vazio o singleton NÃO é construído. Com documentos, o singleton é
+    construído uma única vez e reutilizado por todos os `adicionar_*` do lote.
     """
-    _sanitizar_nome_colecao(collection_name)
-
-    if Path(filename).suffix.lower() != ".pdf":
-        raise RAGSecurityError("Apenas arquivos .pdf são aceitos.")
-
-    if conteudo[:4] != b"%PDF":
-        raise RAGSecurityError("Conteúdo não é um arquivo PDF válido.")
-
-    max_bytes = MAX_DOCUMENT_FILE_SIZE_MB * 1024 * 1024
-    if len(conteudo) > max_bytes:
-        raise RAGSecurityError(
-            f"Arquivo excede o limite de {MAX_DOCUMENT_FILE_SIZE_MB} MB."
-        )
-
-    safe_name = _sanitizar_nome_arquivo(filename)
-
-    json_count = len(list(DIR_DOCUMENTS.glob("*.json")))
-    pdf_count = len(list(DIR_DOCUMENTS.glob("*.pdf")))
-    if json_count + pdf_count + 1 > MAX_JSON_FILES:
-        raise RAGSecurityError(
-            f"Limite de {MAX_JSON_FILES} arquivos atingido."
-        )
-
-    hash_str = _computar_hash_conteudo(conteudo)
-    planned_path = DIR_DOCUMENTS / safe_name
-
-    embedding_model = _get_rag_embedding_model()
-    vectordb_instance = Chroma(
-        persist_directory=str(DIR_VECTORDB),
-        collection_name=collection_name,
-        embedding_function=embedding_model,
-        collection_metadata=CHROMA_COLLECTION_METADATA,
+    tem_documentos = any(DIR_DOCUMENTS.glob("*.json")) or any(DIR_DOCUMENTS.glob("*.pdf"))
+    embedding_model = _get_rag_embedding_model() if tem_documentos else None
+    return _orch.ingerir_incrementalmente(
+        collection_name,
+        docs_dir=DIR_DOCUMENTS, vectordb_dir=DIR_VECTORDB,
+        embedding_model=embedding_model,
     )
-
-    existing = vectordb_instance.get(
-        where={"source": {"$eq": str(planned_path)}}
-    )
-    old_ids: list[str] = []
-    if existing["ids"]:
-        existing_hash = existing["metadatas"][0].get(METADATA_FILE_HASH)
-        if existing_hash == hash_str:
-            return {
-                "status": "duplicado",
-                "mensagem": f"Arquivo {safe_name} já está presente na base vetorial.",
-            }
-        old_ids = list(existing["ids"])
-
-    saved_path: Path | None = None
-    tmp_path: Path | None = None
-    backup_path: Path | None = None
-    paginas: dict[str, str] = {}
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            tmp.write(conteudo)
-            tmp_path = Path(tmp.name)
-        paginas = extrair_texto_pdf(tmp_path)
-        if old_ids and planned_path.exists():
-            backup_path = _backup_arquivo(planned_path)
-        shutil.move(str(tmp_path), planned_path)
-        saved_path = planned_path
-        tmp_path = None
-    finally:
-        if tmp_path is not None:
-            tmp_path.unlink(missing_ok=True)
-
-    pdf_docs = []
-    for chave, texto in paginas.items():
-        page_num = int(chave.split("_")[1])
-        pdf_docs.append(
-            Document(
-                page_content=f"{chave}: {texto}",
-                metadata={"source": str(saved_path), METADATA_PAGE: page_num},
-            )
-        )
-    pdf_docs = filtrar_documentos_vazios(pdf_docs)
-
-    # Tudo após shutil.move (chunking c/ embeddings, ingestão) é guardado:
-    # qualquer falha reverte o disco para o estado pré-operação (upsert atômico).
-    try:
-        text_splitter = SemanticChunker(
-            embeddings=embedding_model,
-            breakpoint_threshold_type=SEMANTIC_BREAKPOINT_TYPE,
-            breakpoint_threshold_amount=SEMANTIC_BREAKPOINT_THRESHOLD,
-        )
-        chunks = text_splitter.split_documents(pdf_docs)
-
-        if not chunks:
-            logger.warning("Arquivo %s produziu zero chunks após divisão.", safe_name)
-            _reverter_disco(saved_path, backup_path)
-            return {
-                "status": "adicionado",
-                "mensagem": f"Arquivo {safe_name} não pôde ser indexado: 0 chunks gerados.",
-            }
-
-        _enriquecer_metadados_chunks(chunks, hash_str, METADATA_DOC_TYPE_PDF)
-
-        chunk_ids = [uuid.uuid4().hex for _ in chunks]
-
-        try:
-            vectordb_instance.add_documents(chunks, ids=chunk_ids)
-        except Exception:
-            try:
-                vectordb_instance.delete(ids=chunk_ids)
-            except Exception as rollback_exc:
-                logger.warning(
-                    "Rollback falhou após erro de ingestão. IDs órfãos: %s. Erro: %s",
-                    chunk_ids,
-                    rollback_exc,
-                )
-            raise
-
-        if old_ids:
-            try:
-                vectordb_instance.delete(ids=old_ids)
-            except Exception as del_exc:
-                logger.warning(
-                    "Falha ao deletar chunks antigos de %s (IDs: %s). Erro: %s",
-                    safe_name, old_ids, del_exc,
-                )
-    except Exception:
-        _reverter_disco(saved_path, backup_path)
-        raise
-    finally:
-        if backup_path is not None and backup_path.exists():
-            backup_path.unlink(missing_ok=True)
-
-    try:
-        from agenticlog.agent import invalidar_vector_db  # lazy — evita importação pesada no CLI
-        invalidar_vector_db()
-    except ImportError as e:
-        logger.warning("Não foi possível invalidar o singleton: %s", e)
-
-    status_final = "substituido" if old_ids else "adicionado"
-    mensagem_final = (
-        f"Arquivo {safe_name} atualizado na base vetorial. {len(chunks)} chunks substituídos."
-        if old_ids
-        else f"Arquivo {safe_name} adicionado com sucesso. {len(chunks)} chunks inseridos."
-    )
-    return {"status": status_final, "mensagem": mensagem_final}
-
-
-def reconstruir_vectordb(collection_name: str = DEFAULT_COLLECTION_NAME) -> None:
-    """Reconstrói o banco vetorial ChromaDB a partir dos documentos em DIR_DOCUMENTS.
-
-    Entrada: collection_name — nome da coleção ChromaDB a reconstruir.
-    Saída: nenhuma (efeito colateral: atualiza data/vectordb/).
-    Lança Exception se cria_vectordb() falhar.
-    """
-    _sanitizar_nome_colecao(collection_name)
-    cria_vectordb(collection_name)
 
 
 def cria_vectordb(collection_name: str = DEFAULT_COLLECTION_NAME) -> None:
-    """Cria e persiste o banco vetorial ChromaDB a partir dos documentos em data/documents/.
+    """Wrapper: rebuild delega ao orquestrador (modelo fresco) e reatribui `vectordb`.
 
-    Efeito colateral: atribui a variável global `vectordb` com a instância Chroma criada,
-    tornando-a disponível para outros módulos que importem este arquivo.
-
-    Fluxo:
-    1. Valida segurança dos paths e arquivos JSON.
-    2. Carrega documentos com JSONLoader usando jq_schema para achatar chave-valor.
-    3. Gera embeddings com HuggingFace e divide em chunks com SemanticChunker (ADR-013).
-    4. Persiste no ChromaDB.
+    O rebuild constrói um `HuggingFaceEmbeddings` fresco no orquestrador (seam `None`, D2).
     """
-    _sanitizar_nome_colecao(collection_name)
     global vectordb  # inicializado como None no nível do módulo; preenchido aqui
-
-    _valida_path_documentos()
-    _valida_arquivos_json()
-
-    logger.info("Gerando as Embeddings. Aguarde...")
-
-    # jq_schema compartilhado (config.py): 1 Document por chave top-level (ADR-008)
-    loader = DirectoryLoader(
-        str(DIR_DOCUMENTS),
-        glob="*.json",
-        loader_cls=JSONLoader,
-        loader_kwargs={"jq_schema": JQ_SCHEMA_CAMPOS_JSON},
-    )
-    json_docs = loader.load()
-    # Descarta Documents com page_content vazio (chave JSON com valor "", [] ou {}) — ADR-011
-    json_docs = filtrar_documentos_vazios(json_docs)
-
-    pdf_docs = []
-    for pdf_path in DIR_DOCUMENTS.glob("*.pdf"):
-        try:
-            paginas = extrair_texto_pdf(pdf_path)
-            for chave, texto in paginas.items():
-                page_num = int(chave.split("_")[1])
-                pdf_docs.append(
-                    Document(
-                        page_content=f"{chave}: {texto}",
-                        metadata={"source": str(pdf_path), METADATA_PAGE: page_num},
-                    )
-                )
-        except RAGSecurityError as e:
-            logger.error("PDF corrompido ignorado durante reconstrução: %s — %s", pdf_path.name, e)
-
-    # Descarta Documents com page_content vazio — defensivo, simetria com o filtro JSON (ADR-011)
-    pdf_docs = filtrar_documentos_vazios(pdf_docs)
-
-    documents = json_docs + pdf_docs
-
-    if not documents:
-        logger.warning("Nenhum documento encontrado.")
-        return
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    embedding_model = HuggingFaceEmbeddings(
-        model_name=EMBEDDING_MODEL,
-        model_kwargs={"device": device},
-        encode_kwargs={"normalize_embeddings": True},
-    )
-
-    text_splitter = SemanticChunker(
-        embeddings=embedding_model,
-        breakpoint_threshold_type=SEMANTIC_BREAKPOINT_TYPE,
-        breakpoint_threshold_amount=SEMANTIC_BREAKPOINT_THRESHOLD,
-    )
-
-    json_chunks = text_splitter.split_documents(json_docs)
-    _src_json: dict[str, list] = {}
-    for chunk in json_chunks:
-        _src_json.setdefault(chunk.metadata.get("source", ""), []).append(chunk)
-    for src, group in _src_json.items():
-        fh = _hash_arquivo(src)
-        _enriquecer_metadados_chunks(group, fh, METADATA_DOC_TYPE_JSON, METADATA_PAGE_JSON_SENTINEL)
-
-    pdf_chunks = text_splitter.split_documents(pdf_docs)
-    _src_pdf: dict[str, list] = {}
-    for chunk in pdf_chunks:
-        _src_pdf.setdefault(chunk.metadata.get("source", ""), []).append(chunk)
-    for src, group in _src_pdf.items():
-        fh = _hash_arquivo(src)
-        _enriquecer_metadados_chunks(group, fh, METADATA_DOC_TYPE_PDF)
-
-    chunks = json_chunks + pdf_chunks
-
-    # Reconstrução do zero: descarta a coleção antiga antes de gravar, senão
-    # from_documents anexa e duplica o índice a cada --rebuild.
-    _resetar_colecao(collection_name)
-
-    vectordb = Chroma.from_documents(
-        chunks,
-        embedding_model,
-        persist_directory=str(DIR_VECTORDB),
-        collection_name=collection_name,
-        collection_metadata=CHROMA_COLLECTION_METADATA,
-    )
-
-    # Guardrail fail-loud: o rebuild já deixou a coleção ativa vazia no passado (órfãos).
-    # Se nada foi persistido, aborta com erro em vez de deixar o RAG offline silenciosamente.
-    persistidos = vectordb._collection.count()
-    if persistidos == 0:
-        raise RuntimeError(
-            f"Rebuild gerou coleção vazia ('{collection_name}'): {len(chunks)} chunks "
-            "preparados, 0 persistidos. Vector DB não confiável — verifique o ChromaDB."
-        )
-
-    logger.info(
-        "Banco de Dados Vetorial Criado com sucesso! %s chunks na coleção '%s'.",
-        persistidos, collection_name,
+    vectordb = _orch.cria_vectordb(
+        collection_name, docs_dir=DIR_DOCUMENTS, vectordb_dir=DIR_VECTORDB,
+        embedding_model=None,
     )
 
 
-def ingerir_incrementalmente(collection_name: str = DEFAULT_COLLECTION_NAME) -> dict[str, int]:
-    """Ingestão incremental de todos os arquivos em data/documents/ sem reconstrução (REC-04).
-
-    Itera sobre cada *.json e *.pdf em DIR_DOCUMENTS, lê o conteúdo binário e delega para
-    adicionar_documento_incrementalmente / adicionar_pdf_incrementalmente. Arquivos já
-    presentes com mesmo hash são pulados (status "duplicado") pelas funções incrementais;
-    arquivos alterados disparam upsert (REC-03). Erro operacional em um arquivo (I/O, PDF
-    corrompido) é registrado e não aborta os demais.
-
-    Fail-fast de segurança: RAGSecurityError (path traversal, chave proibida, tamanho) é
-    propagado para abortar o lote — indica entrada suspeita e deve ser tratado pelo chamador.
-
-    Entrada: collection_name — coleção ChromaDB de destino.
-    Saída: dict com contadores agregados por status final (ex.: {"adicionado": 3, "duplicado": 1}).
-    Lança RAGSecurityError se algum arquivo falhar na validação de segurança.
-    """
-    contadores: dict[str, int] = {}
-    arquivos = sorted(DIR_DOCUMENTS.glob("*.json")) + sorted(DIR_DOCUMENTS.glob("*.pdf"))
-    for path in arquivos:
-        try:
-            conteudo = path.read_bytes()
-            if path.suffix.lower() == ".json":
-                resultado = adicionar_documento_incrementalmente(path.name, conteudo, collection_name)
-            else:
-                resultado = adicionar_pdf_incrementalmente(path.name, conteudo, collection_name)
-        except RAGSecurityError:
-            # Violação de segurança não é "arquivo ruim" — propaga para abortar o lote (fail-fast).
-            logger.error("Violação de segurança ao ingerir %s — abortando lote.", path.name)
-            raise
-        except Exception as e:  # um arquivo ruim não deve abortar o lote
-            logger.error("Falha ao ingerir %s: %s", path.name, e, exc_info=True)
-            contadores["erro"] = contadores.get("erro", 0) + 1
-            continue
-        status = resultado["status"]
-        contadores[status] = contadores.get(status, 0) + 1
-        logger.info(resultado["mensagem"])
-
-    logger.info("Ingestão incremental concluída: %s", contadores)
-    return contadores
+def reconstruir_vectordb(collection_name: str = DEFAULT_COLLECTION_NAME) -> None:
+    """Wrapper: reconstrução completa delega ao orquestrador ligando os seams de `rag.py`."""
+    return _orch.reconstruir_vectordb(
+        collection_name, docs_dir=DIR_DOCUMENTS, vectordb_dir=DIR_VECTORDB,
+        embedding_model=None,
+    )
 
 
 def _configurar_logging_cli() -> None:
