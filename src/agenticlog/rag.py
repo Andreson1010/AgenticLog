@@ -64,7 +64,7 @@ from agenticlog.ingestion.security import (  # noqa: E402,F401
     salvar_documento_enviado,
     salvar_pdf_enviado,
 )  # Re-export shim (ADR-018 Fase 3a) — remover na Fase 6
-from agenticlog.ingestion.extraction import (  # noqa: E402
+from agenticlog.ingestion.extraction import (  # noqa: E402,F401
     extrair_texto_pdf,
     carregar_json,
 )  # Re-export shim (ADR-018 Fase 3a) — remover na Fase 6

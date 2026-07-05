@@ -204,7 +204,7 @@ def _construir_docs_json(saved_path: Path, contexto: object) -> list[Document]:
     return filtrar_documentos_vazios(carregar_json(saved_path))
 
 
-def _construir_docs_pdf(saved_path: Path, contexto: object) -> list[Document]:
+def _construir_docs_pdf(saved_path: Path, contexto: dict[str, str]) -> list[Document]:
     """Constrói 1 Document por página a partir das páginas extraídas; descarta vazios."""
     pdf_docs = []
     for chave, texto in contexto.items():
