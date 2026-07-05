@@ -503,14 +503,14 @@ class TestAC06DefaultCollectionName(unittest.TestCase):
         """AC6: adicionar_documento_incrementalmente sem collection_name usa 'logistica'."""
         from agenticlog.rag import adicionar_documento_incrementalmente
 
-        with patch("agenticlog.rag.Chroma") as mock_chroma, \
+        with patch("agenticlog.ingestion.orchestrator.Chroma") as mock_chroma, \
              patch("agenticlog.rag._get_rag_embedding_model"), \
              patch("agenticlog.rag.DIR_DOCUMENTS") as mock_dir, \
-             patch("agenticlog.rag._sanitizar_nome_arquivo", return_value="doc.json"), \
-             patch("agenticlog.rag._valida_json_sem_chaves_proibidas"), \
-             patch("agenticlog.rag.shutil.move"), \
+             patch("agenticlog.ingestion.orchestrator._sanitizar_nome_arquivo", return_value="doc.json"), \
+             patch("agenticlog.ingestion.orchestrator._valida_json_sem_chaves_proibidas"), \
+             patch("agenticlog.ingestion.orchestrator.shutil.move"), \
              patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader, \
-             patch("agenticlog.rag.SemanticChunker") as mock_splitter:
+             patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter:
 
             mock_dir.glob.return_value = []
             mock_dir.__truediv__ = lambda self, other: Path("/fake") / other
@@ -598,7 +598,8 @@ class TestAC07NomeMuitoCurto(unittest.TestCase):
         """AC7: adicionar_documento_incrementalmente com nome < 3 chars → RAGSecurityError."""
         from agenticlog.rag import adicionar_documento_incrementalmente
 
-        with patch("agenticlog.rag.Chroma") as mock_chroma:
+        with patch("agenticlog.ingestion.orchestrator.Chroma") as mock_chroma, \
+             patch("agenticlog.rag._get_rag_embedding_model"):
             with self.assertRaises(RAGSecurityError):
                 adicionar_documento_incrementalmente("doc.json", b'{}', "ab")
 
@@ -608,7 +609,8 @@ class TestAC07NomeMuitoCurto(unittest.TestCase):
         """AC7: salvar_pdf_enviado com nome < 3 chars → RAGSecurityError sem escrita."""
         from agenticlog.rag import salvar_pdf_enviado
 
-        with patch("agenticlog.rag.Chroma") as mock_chroma:
+        with patch("agenticlog.ingestion.orchestrator.Chroma") as mock_chroma, \
+             patch("agenticlog.rag._get_rag_embedding_model"):
             with self.assertRaises(RAGSecurityError):
                 salvar_pdf_enviado("doc.pdf", b"%PDF-1.4 fake", "ab")
 
@@ -647,7 +649,8 @@ class TestAC08NomeMuitoLongo(unittest.TestCase):
         """AC8: adicionar_documento_incrementalmente com nome > 63 chars → RAGSecurityError."""
         from agenticlog.rag import adicionar_documento_incrementalmente
 
-        with patch("agenticlog.rag.Chroma") as mock_chroma:
+        with patch("agenticlog.ingestion.orchestrator.Chroma") as mock_chroma, \
+             patch("agenticlog.rag._get_rag_embedding_model"):
             with self.assertRaises(RAGSecurityError):
                 adicionar_documento_incrementalmente("doc.json", b'{}', "a" * 64)
 
@@ -752,7 +755,8 @@ class TestAC12SanitizacaoAntesDeEscrita(unittest.TestCase):
         """AC12: adicionar_documento_incrementalmente → RAGSecurityError antes de Chroma."""
         from agenticlog.rag import adicionar_documento_incrementalmente
 
-        with patch("agenticlog.rag.Chroma") as mock_chroma:
+        with patch("agenticlog.ingestion.orchestrator.Chroma") as mock_chroma, \
+             patch("agenticlog.rag._get_rag_embedding_model"):
             with self.assertRaises(RAGSecurityError):
                 adicionar_documento_incrementalmente("f.json", b'{}', "a!")
 
@@ -762,7 +766,7 @@ class TestAC12SanitizacaoAntesDeEscrita(unittest.TestCase):
         """AC12: salvar_documento_enviado → RAGSecurityError antes de disco."""
         from agenticlog.rag import salvar_documento_enviado
 
-        with patch("agenticlog.rag.shutil.move") as mock_move:
+        with patch("agenticlog.ingestion.security.shutil.move") as mock_move:
             with self.assertRaises(RAGSecurityError):
                 salvar_documento_enviado("f.json", b'{"ok":"1"}', "a!")
 
@@ -772,7 +776,7 @@ class TestAC12SanitizacaoAntesDeEscrita(unittest.TestCase):
         """AC12: salvar_pdf_enviado → RAGSecurityError antes de disco."""
         from agenticlog.rag import salvar_pdf_enviado
 
-        with patch("agenticlog.rag.shutil.move") as mock_move:
+        with patch("agenticlog.ingestion.security.shutil.move") as mock_move:
             with self.assertRaises(RAGSecurityError):
                 salvar_pdf_enviado("f.pdf", b"%PDF-1.4 fake", "a!")
 
@@ -782,7 +786,7 @@ class TestAC12SanitizacaoAntesDeEscrita(unittest.TestCase):
         """AC12: reconstruir_vectordb → RAGSecurityError antes de cria_vectordb."""
         from agenticlog.rag import reconstruir_vectordb
 
-        with patch("agenticlog.rag.cria_vectordb") as mock_criar:
+        with patch("agenticlog.ingestion.orchestrator.cria_vectordb") as mock_criar:
             with self.assertRaises(RAGSecurityError):
                 reconstruir_vectordb("a!")
 
