@@ -31,15 +31,15 @@ def _mock_vdb(ids=None, metadatas=None):
 class TestAC1CriaVectordbUsaSemanticChunker(unittest.TestCase):
     """AC-1 — cria_vectordb produz chunks com metadados unificados."""
 
-    @patch("agenticlog.rag._hash_arquivo", return_value="a" * 64)
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator._hash_arquivo", return_value="a" * 64)
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.DirectoryLoader")
-    @patch("agenticlog.rag._valida_arquivos_json")
-    @patch("agenticlog.rag._valida_path_documentos")
-    @patch("agenticlog.rag._resetar_colecao", new=MagicMock())
+    @patch("agenticlog.ingestion.orchestrator.carregar_json")
+    @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
+    @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
+    @patch("agenticlog.ingestion.orchestrator._resetar_colecao", new=MagicMock())
     def teste_1_chunks_tem_doc_type_e_file_hash(
         self, _vp, _vj, mock_loader, mock_dir, mock_splitter, mock_emb, mock_chroma, _hash
     ):
@@ -48,8 +48,8 @@ class TestAC1CriaVectordbUsaSemanticChunker(unittest.TestCase):
             page_content="CAMPO: valor de teste",
             metadata={"source": "/fake/doc.json"},
         )
-        mock_loader.return_value.load.return_value = [doc]
-        mock_dir.glob.return_value = []
+        mock_loader.return_value = [doc]
+        mock_dir.glob.side_effect = lambda pat: [Path("/fake/doc.json")] if pat == "*.json" else []
 
         mock_splitter_inst = MagicMock()
         mock_splitter_inst.split_documents.side_effect = lambda docs: list(docs)
@@ -64,22 +64,22 @@ class TestAC1CriaVectordbUsaSemanticChunker(unittest.TestCase):
             self.assertIn("doc_type", chunk.metadata)
             self.assertIn("file_hash", chunk.metadata)
 
-    @patch("agenticlog.rag._hash_arquivo", return_value="b" * 64)
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator._hash_arquivo", return_value="b" * 64)
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.DirectoryLoader")
-    @patch("agenticlog.rag._valida_arquivos_json")
-    @patch("agenticlog.rag._valida_path_documentos")
-    @patch("agenticlog.rag._resetar_colecao", new=MagicMock())
+    @patch("agenticlog.ingestion.orchestrator.carregar_json")
+    @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
+    @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
+    @patch("agenticlog.ingestion.orchestrator._resetar_colecao", new=MagicMock())
     def teste_2_semantic_chunker_inicializado_com_embedding_e_config(
         self, _vp, _vj, mock_loader, mock_dir, mock_splitter, mock_emb, mock_chroma, _hash
     ):
         """AC-5 (cria_vectordb): SemanticChunker recebe embedding model e config de ADR-013."""
         doc = LCDocument(page_content="CAMPO: x", metadata={"source": "/fake/doc.json"})
-        mock_loader.return_value.load.return_value = [doc]
-        mock_dir.glob.return_value = []
+        mock_loader.return_value = [doc]
+        mock_dir.glob.side_effect = lambda pat: [Path("/fake/doc.json")] if pat == "*.json" else []
         mock_splitter.return_value.split_documents.side_effect = lambda docs: list(docs)
 
         cria_vectordb()
@@ -105,10 +105,10 @@ class TestAC2JsonIncremental(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             with (
-                patch("agenticlog.rag.Chroma", return_value=mock_vdb),
+                patch("agenticlog.ingestion.orchestrator.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
                 patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
-                patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
+                patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vdb"),
                 patch("agenticlog.agent.invalidar_vector_db"),
@@ -133,10 +133,10 @@ class TestAC2JsonIncremental(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             with (
-                patch("agenticlog.rag.Chroma", return_value=mock_vdb),
+                patch("agenticlog.ingestion.orchestrator.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
                 patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
-                patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
+                patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vdb"),
                 patch("agenticlog.agent.invalidar_vector_db"),
@@ -169,10 +169,10 @@ class TestAC3PdfIncremental(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             with (
-                patch("agenticlog.rag.Chroma", return_value=mock_vdb),
+                patch("agenticlog.ingestion.orchestrator.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
-                patch("agenticlog.rag.extrair_texto_pdf", return_value={"PÁGINA_1": "texto"}),
-                patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
+                patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf", return_value={"PÁGINA_1": "texto"}),
+                patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vdb"),
                 patch("agenticlog.agent.invalidar_vector_db"),
@@ -195,10 +195,10 @@ class TestAC3PdfIncremental(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             with (
-                patch("agenticlog.rag.Chroma", return_value=mock_vdb),
+                patch("agenticlog.ingestion.orchestrator.Chroma", return_value=mock_vdb),
                 patch("agenticlog.rag._get_rag_embedding_model"),
-                patch("agenticlog.rag.extrair_texto_pdf", return_value={"PÁGINA_1": "texto"}),
-                patch("agenticlog.rag.SemanticChunker") as mock_splitter_cls,
+                patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf", return_value={"PÁGINA_1": "texto"}),
+                patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vdb"),
                 patch("agenticlog.agent.invalidar_vector_db"),

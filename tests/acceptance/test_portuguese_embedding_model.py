@@ -89,15 +89,15 @@ class TestAC02RagEmbeddingCallSitesUsamConfig(unittest.TestCase):
             encode_kwargs={"normalize_embeddings": True},
         )
 
-    @patch("agenticlog.rag._hash_arquivo", return_value="a" * 64)
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator._hash_arquivo", return_value="a" * 64)
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.DirectoryLoader")
-    @patch("agenticlog.rag._valida_arquivos_json")
-    @patch("agenticlog.rag._valida_path_documentos")
-    @patch("agenticlog.rag._resetar_colecao", new=MagicMock())
+    @patch("agenticlog.ingestion.orchestrator.carregar_json")
+    @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
+    @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
+    @patch("agenticlog.ingestion.orchestrator._resetar_colecao", new=MagicMock())
     def teste_2_cria_vectordb_usa_embedding_model_do_config(
         self,
         mock_valida_path: MagicMock,
@@ -112,12 +112,10 @@ class TestAC02RagEmbeddingCallSitesUsamConfig(unittest.TestCase):
         """AC2: cria_vectordb() constrói HuggingFaceEmbeddings(model_name=config.EMBEDDING_MODEL, ...)."""
         from langchain_core.documents import Document
 
-        mock_loader_instance = MagicMock()
-        mock_loader_instance.load.return_value = [
+        mock_loader.return_value = [
             Document(page_content="conteúdo de teste")
         ]
-        mock_loader.return_value = mock_loader_instance
-        mock_dir.glob.return_value = []  # nenhum PDF
+        mock_dir.glob.side_effect = lambda pat: ["/fake/documents/a.json"] if pat == "*.json" else []
 
         splitter_instance = MagicMock()
         splitter_instance.split_documents.return_value = [
@@ -421,12 +419,16 @@ class TestAC09ModelKwargsEncodeKwargsInalterados(unittest.TestCase):
         cls.embeddings_source = (
             _root / "src" / "agenticlog" / "ingestion" / "embeddings.py"
         ).read_text(encoding="utf-8")
+        # ADR-018 Fase 3b: cria_vectordb (construção inline do rebuild) migrou p/ ingestion/orchestrator.py
+        cls.orchestrator_source = (
+            _root / "src" / "agenticlog" / "ingestion" / "orchestrator.py"
+        ).read_text(encoding="utf-8")
 
     def teste_1_cria_vectordb_passa_model_kwargs_device_e_encode_kwargs_normalize(self) -> None:
         """cria_vectordb() passa model_kwargs={"device": device} e
-        encode_kwargs={"normalize_embeddings": True}."""
-        self.assertIn('model_kwargs={"device": device}', self.rag_source)
-        self.assertIn('encode_kwargs={"normalize_embeddings": True}', self.rag_source)
+        encode_kwargs={"normalize_embeddings": True} (ADR-018 Fase 3b: agora em orchestrator.py)."""
+        self.assertIn('model_kwargs={"device": device}', self.orchestrator_source)
+        self.assertIn('encode_kwargs={"normalize_embeddings": True}', self.orchestrator_source)
 
     def teste_2_get_rag_embedding_model_normaliza(self) -> None:
         """_get_rag_embedding_model() agora normaliza (sem a inconsistência pré-existente)."""
@@ -434,9 +436,9 @@ class TestAC09ModelKwargsEncodeKwargsInalterados(unittest.TestCase):
             "_rag_embedding_model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)",
             self.rag_source,
         )
-        # ADR-018 Fase 3a: rebuild fica em rag.py (cria_vectordb, construção inline);
+        # ADR-018 Fase 3b: rebuild (cria_vectordb, construção inline) migrou p/ orchestrator.py;
         # a ingestão incremental normaliza via ingestion/embeddings.py::criar_embedding_model.
-        combinado = self.rag_source + self.embeddings_source
+        combinado = self.orchestrator_source + self.embeddings_source
         self.assertEqual(
             combinado.count('encode_kwargs={"normalize_embeddings": True}'), 2,
             "rebuild e ingestão incremental devem ambos normalizar embeddings",
@@ -453,15 +455,15 @@ class TestAC09ModelKwargsEncodeKwargsInalterados(unittest.TestCase):
             self.agent_source,
         )
 
-    @patch("agenticlog.rag._hash_arquivo", return_value="a" * 64)
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator._hash_arquivo", return_value="a" * 64)
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.DirectoryLoader")
-    @patch("agenticlog.rag._valida_arquivos_json")
-    @patch("agenticlog.rag._valida_path_documentos")
-    @patch("agenticlog.rag._resetar_colecao", new=MagicMock())
+    @patch("agenticlog.ingestion.orchestrator.carregar_json")
+    @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
+    @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
+    @patch("agenticlog.ingestion.orchestrator._resetar_colecao", new=MagicMock())
     def teste_4_cria_vectordb_kwargs_completos_via_mock(
         self,
         mock_valida_path: MagicMock,
@@ -478,12 +480,10 @@ class TestAC09ModelKwargsEncodeKwargsInalterados(unittest.TestCase):
         from langchain_core.documents import Document
         import agenticlog.rag as rag_mod
 
-        mock_loader_instance = MagicMock()
-        mock_loader_instance.load.return_value = [
+        mock_loader.return_value = [
             Document(page_content="conteúdo")
         ]
-        mock_loader.return_value = mock_loader_instance
-        mock_dir.glob.return_value = []  # nenhum PDF
+        mock_dir.glob.side_effect = lambda pat: ["/fake/documents/a.json"] if pat == "*.json" else []
 
         splitter_instance = MagicMock()
         splitter_instance.split_documents.return_value = [
