@@ -47,15 +47,15 @@ class TestAC05ConfigConstants(unittest.TestCase):
 class TestAC01JsonFullRebuild(unittest.TestCase):
     """AC-1: JSON chunks from cria_vectordb() carry all 5 unified metadata fields."""
 
-    @patch("agenticlog.rag._hash_arquivo", return_value=_hex64("a"))
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator._hash_arquivo", return_value=_hex64("a"))
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.DirectoryLoader")
-    @patch("agenticlog.rag._valida_arquivos_json")
-    @patch("agenticlog.rag._valida_path_documentos")
-    @patch("agenticlog.rag._resetar_colecao", new=MagicMock())
+    @patch("agenticlog.ingestion.orchestrator.carregar_json")
+    @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
+    @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
+    @patch("agenticlog.ingestion.orchestrator._resetar_colecao", new=MagicMock())
     def teste_1_chunks_json_tem_5_campos_metadados(
         self,
         mock_valida_path: MagicMock,
@@ -71,10 +71,8 @@ class TestAC01JsonFullRebuild(unittest.TestCase):
 
         source_path = "data/documents/test.json"
         doc = Document(page_content="campo1: valor1", metadata={"source": source_path})
-        mock_loader_instance = MagicMock()
-        mock_loader_instance.load.return_value = [doc]
-        mock_loader.return_value = mock_loader_instance
-        mock_dir.glob.return_value = []  # no PDFs
+        mock_loader.return_value = [doc]
+        mock_dir.glob.side_effect = lambda pat: [source_path] if pat == "*.json" else []
 
         chunk = Document(page_content="campo1: valor1", metadata={"source": source_path})
         splitter_instance = MagicMock()
@@ -107,15 +105,15 @@ class TestAC01JsonFullRebuild(unittest.TestCase):
 
         self.assertEqual(meta["doc_type"], "json")
 
-    @patch("agenticlog.rag._hash_arquivo", return_value=_hex64("a"))
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator._hash_arquivo", return_value=_hex64("a"))
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.DirectoryLoader")
-    @patch("agenticlog.rag._valida_arquivos_json")
-    @patch("agenticlog.rag._valida_path_documentos")
-    @patch("agenticlog.rag._resetar_colecao", new=MagicMock())
+    @patch("agenticlog.ingestion.orchestrator.carregar_json")
+    @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
+    @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
+    @patch("agenticlog.ingestion.orchestrator._resetar_colecao", new=MagicMock())
     def teste_2_chunk_index_e_sequencial_e_zero_based(
         self,
         mock_valida_path: MagicMock,
@@ -134,12 +132,10 @@ class TestAC01JsonFullRebuild(unittest.TestCase):
             Document(page_content=f"chunk {i}", metadata={"source": source_path})
             for i in range(3)
         ]
-        mock_loader_instance = MagicMock()
-        mock_loader_instance.load.return_value = [
+        mock_loader.return_value = [
             Document(page_content="original", metadata={"source": source_path})
         ]
-        mock_loader.return_value = mock_loader_instance
-        mock_dir.glob.return_value = []
+        mock_dir.glob.side_effect = lambda pat: [source_path] if pat == "*.json" else []
 
         splitter_instance = MagicMock()
         # split_documents called twice: first for json_docs, second for pdf_docs (empty)
@@ -158,15 +154,15 @@ class TestAC01JsonFullRebuild(unittest.TestCase):
 class TestAC02PdfFullRebuild(unittest.TestCase):
     """AC-2: PDF chunks from cria_vectordb() carry all 5 unified metadata fields."""
 
-    @patch("agenticlog.rag._hash_arquivo", return_value=_hex64("b"))
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator._hash_arquivo", return_value=_hex64("b"))
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.DirectoryLoader")
-    @patch("agenticlog.rag._valida_arquivos_json")
-    @patch("agenticlog.rag._valida_path_documentos")
-    @patch("agenticlog.rag._resetar_colecao", new=MagicMock())
+    @patch("agenticlog.ingestion.orchestrator.carregar_json")
+    @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
+    @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
+    @patch("agenticlog.ingestion.orchestrator._resetar_colecao", new=MagicMock())
     def teste_1_chunks_pdf_tem_5_campos_metadados(
         self,
         mock_valida_path: MagicMock,
@@ -181,17 +177,15 @@ class TestAC02PdfFullRebuild(unittest.TestCase):
         import agenticlog.rag as rag_mod
 
         pdf_source = "data/documents/manual.pdf"
-        mock_loader_instance = MagicMock()
-        mock_loader_instance.load.return_value = []  # no JSON docs
-        mock_loader.return_value = mock_loader_instance
+        mock_loader.return_value = []  # no JSON docs
 
         # Simulate PDF path returned by glob
         mock_pdf_path = MagicMock()
         mock_pdf_path.__str__ = lambda self: pdf_source
-        mock_dir.glob.return_value = [mock_pdf_path]
+        mock_dir.glob.side_effect = lambda pat: [mock_pdf_path] if pat == "*.pdf" else []
 
         # Patch extrair_texto_pdf to return page data
-        with patch("agenticlog.rag.extrair_texto_pdf", return_value={"pagina_2": "Texto da página 2"}):
+        with patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf", return_value={"pagina_2": "Texto da página 2"}):
             pdf_chunk = Document(
                 page_content="pagina_2: Texto da página 2",
                 metadata={"source": pdf_source, "page": 2},
@@ -218,15 +212,15 @@ class TestAC02PdfFullRebuild(unittest.TestCase):
         self.assertGreater(meta["page"], 0)
         self.assertEqual(meta["doc_type"], "pdf")
 
-    @patch("agenticlog.rag._hash_arquivo", return_value=_hex64("b"))
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator._hash_arquivo", return_value=_hex64("b"))
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.DirectoryLoader")
-    @patch("agenticlog.rag._valida_arquivos_json")
-    @patch("agenticlog.rag._valida_path_documentos")
-    @patch("agenticlog.rag._resetar_colecao", new=MagicMock())
+    @patch("agenticlog.ingestion.orchestrator.carregar_json")
+    @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
+    @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
+    @patch("agenticlog.ingestion.orchestrator._resetar_colecao", new=MagicMock())
     def teste_2_page_pdf_preservada_do_document_pai(
         self,
         mock_valida_path: MagicMock,
@@ -241,15 +235,13 @@ class TestAC02PdfFullRebuild(unittest.TestCase):
         import agenticlog.rag as rag_mod
 
         pdf_source = "data/documents/relatorio.pdf"
-        mock_loader_instance = MagicMock()
-        mock_loader_instance.load.return_value = []
-        mock_loader.return_value = mock_loader_instance
+        mock_loader.return_value = []
 
         mock_pdf_path = MagicMock()
         mock_pdf_path.__str__ = lambda self: pdf_source
-        mock_dir.glob.return_value = [mock_pdf_path]
+        mock_dir.glob.side_effect = lambda pat: [mock_pdf_path] if pat == "*.pdf" else []
 
-        with patch("agenticlog.rag.extrair_texto_pdf", return_value={"pagina_5": "Conteúdo p5"}):
+        with patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf", return_value={"pagina_5": "Conteúdo p5"}):
             pdf_chunk = Document(
                 page_content="pagina_5: Conteúdo p5",
                 metadata={"source": pdf_source, "page": 5},
@@ -270,13 +262,13 @@ class TestAC03IncrementalJson(unittest.TestCase):
     """AC-3: Incremental JSON ingest via adicionar_documento_incrementalmente() adds metadata."""
 
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.extraction.JSONLoader")
-    @patch("agenticlog.rag._valida_json_sem_chaves_proibidas")
+    @patch("agenticlog.ingestion.orchestrator._valida_json_sem_chaves_proibidas")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
-    @patch("agenticlog.rag.shutil")
-    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.ingestion.orchestrator.shutil")
+    @patch("agenticlog.ingestion.orchestrator.tempfile")
     def teste_1_chunks_incrementais_tem_5_campos_metadados(
         self,
         mock_tempfile: MagicMock,
@@ -341,7 +333,7 @@ class TestAC04DedupUsesFileHash(unittest.TestCase):
     """AC-4: Deduplication uses file_hash field (not content_hash)."""
 
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_1_duplicata_detectada_via_file_hash(
         self,
@@ -371,10 +363,10 @@ class TestAC04DedupUsesFileHash(unittest.TestCase):
         self.assertEqual(result["status"], "duplicado")
 
     @patch("agenticlog.agent.invalidar_vector_db")
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.extraction.JSONLoader")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_2_hash_diferente_upsert_via_file_hash(
         self,
@@ -416,10 +408,10 @@ class TestAC04DedupUsesFileHash(unittest.TestCase):
         mock_chroma_instance.delete.assert_called_once_with(ids=["existing-id"])
 
     @patch("agenticlog.agent.invalidar_vector_db")
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.extraction.JSONLoader")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_3_campo_content_hash_nao_e_usado_para_dedup(
         self,

@@ -97,13 +97,13 @@ class TestAC1HappyPath:
     """
 
     @patch("agenticlog.rag.invalidar_vector_db", create=True)
-    @patch("agenticlog.rag.uuid")
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator.uuid")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.extrair_texto_pdf")
-    @patch("agenticlog.rag.shutil")
-    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
+    @patch("agenticlog.ingestion.orchestrator.shutil")
+    @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_1_happy_path_retorna_adicionado(
         self,
@@ -156,13 +156,13 @@ class TestAC1HappyPath:
         assert "2 chunks" in resultado["mensagem"]
 
     @patch("agenticlog.rag.invalidar_vector_db", create=True)
-    @patch("agenticlog.rag.uuid")
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator.uuid")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.extrair_texto_pdf")
-    @patch("agenticlog.rag.shutil")
-    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
+    @patch("agenticlog.ingestion.orchestrator.shutil")
+    @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_2_extrair_texto_chamado_exatamente_uma_vez(
         self,
@@ -207,13 +207,13 @@ class TestAC1HappyPath:
         )
 
     @patch("agenticlog.rag.invalidar_vector_db", create=True)
-    @patch("agenticlog.rag.uuid")
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator.uuid")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.extrair_texto_pdf")
-    @patch("agenticlog.rag.shutil")
-    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
+    @patch("agenticlog.ingestion.orchestrator.shutil")
+    @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_3_chunks_tem_5_campos_de_metadados(
         self,
@@ -277,13 +277,13 @@ class TestAC1HappyPath:
         )
 
     @patch("agenticlog.rag.invalidar_vector_db", create=True)
-    @patch("agenticlog.rag.uuid")
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator.uuid")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.extrair_texto_pdf")
-    @patch("agenticlog.rag.shutil")
-    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
+    @patch("agenticlog.ingestion.orchestrator.shutil")
+    @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_4_invalidar_cache_chamado_apos_insercao(
         self,
@@ -339,9 +339,9 @@ class TestAC2DedupMesmoHash:
     """
 
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.shutil")
-    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.shutil")
+    @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_5_duplicado_mesmo_hash_retorna_sem_escrita(
         self,
@@ -374,7 +374,7 @@ class TestAC2DedupMesmoHash:
         mock_vdb.add_documents.assert_not_called()
 
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_6_duplicado_mensagem_contem_nome_arquivo(
         self,
@@ -411,12 +411,12 @@ class TestAC3Upsert:
     """
 
     @patch("agenticlog.agent.invalidar_vector_db")
-    @patch("agenticlog.rag.extrair_texto_pdf")
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.shutil")
-    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.shutil")
+    @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_7_upsert_substitui_chunks_antigos(
         self,
@@ -464,12 +464,12 @@ class TestAC3Upsert:
         mock_shutil.move.assert_called_once()
 
     @patch("agenticlog.agent.invalidar_vector_db")
-    @patch("agenticlog.rag.extrair_texto_pdf")
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.shutil")
-    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.shutil")
+    @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_8_upsert_mensagem_contem_nome(
         self,
@@ -518,8 +518,8 @@ class TestAC4SecurityValidation:
     before any disk or DB write.
     """
 
-    @patch("agenticlog.rag.shutil")
-    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.ingestion.orchestrator.shutil")
+    @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_9_extensao_invalida_levanta_security_error(
         self,
@@ -535,8 +535,8 @@ class TestAC4SecurityValidation:
         mock_tempfile.NamedTemporaryFile.assert_not_called()
         mock_shutil.move.assert_not_called()
 
-    @patch("agenticlog.rag.shutil")
-    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.ingestion.orchestrator.shutil")
+    @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_10_magic_bytes_invalidos_levanta_security_error(
         self,
@@ -554,8 +554,8 @@ class TestAC4SecurityValidation:
         mock_tempfile.NamedTemporaryFile.assert_not_called()
         mock_shutil.move.assert_not_called()
 
-    @patch("agenticlog.rag.shutil")
-    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.ingestion.orchestrator.shutil")
+    @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_11_tamanho_excedido_levanta_security_error(
         self,
@@ -575,9 +575,9 @@ class TestAC4SecurityValidation:
         mock_shutil.move.assert_not_called()
 
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.shutil")
-    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.shutil")
+    @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_12_limite_de_arquivos_levanta_security_error(
         self,
@@ -603,10 +603,10 @@ class TestAC4SecurityValidation:
         mock_shutil.move.assert_not_called()
 
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.extrair_texto_pdf")
-    @patch("agenticlog.rag.shutil")
-    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
+    @patch("agenticlog.ingestion.orchestrator.shutil")
+    @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_13_pdf_com_senha_levanta_security_error_e_limpa_tempfile(
         self,
@@ -644,10 +644,10 @@ class TestAC4SecurityValidation:
         mock_shutil.move.assert_not_called()
 
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.extrair_texto_pdf")
-    @patch("agenticlog.rag.shutil")
-    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
+    @patch("agenticlog.ingestion.orchestrator.shutil")
+    @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_14_pdf_somente_imagem_levanta_security_error(
         self,
@@ -693,13 +693,13 @@ class TestAC5RollbackOnFailure:
     and re-raise the original exception.
     """
 
-    @patch("agenticlog.rag.uuid")
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator.uuid")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.extrair_texto_pdf")
-    @patch("agenticlog.rag.shutil")
-    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
+    @patch("agenticlog.ingestion.orchestrator.shutil")
+    @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_15_rollback_deleta_ids_e_unlink_arquivo(
         self,
@@ -747,13 +747,13 @@ class TestAC5RollbackOnFailure:
         assert "ids" in delete_call_args.kwargs or len(delete_call_args.args) > 0
         saved_path_mock.unlink.assert_called_once()
 
-    @patch("agenticlog.rag.uuid")
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator.uuid")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.extrair_texto_pdf")
-    @patch("agenticlog.rag.shutil")
-    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
+    @patch("agenticlog.ingestion.orchestrator.shutil")
+    @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_16_rollback_reraise_excecao_original(
         self,
@@ -971,13 +971,13 @@ class TestAC7ZeroChunks:
     THEN SHALL unlink the saved file and return {"status": "adicionado", "mensagem": "... 0 chunks gerados."}.
     """
 
-    @patch("agenticlog.rag.uuid")
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator.uuid")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.extrair_texto_pdf")
-    @patch("agenticlog.rag.shutil")
-    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
+    @patch("agenticlog.ingestion.orchestrator.shutil")
+    @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_23_zero_chunks_retorna_mensagem_e_unlink(
         self,
@@ -1023,12 +1023,12 @@ class TestAC7ZeroChunks:
         # add_documents should NOT have been called
         mock_vdb.add_documents.assert_not_called()
 
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.extrair_texto_pdf")
-    @patch("agenticlog.rag.shutil")
-    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
+    @patch("agenticlog.ingestion.orchestrator.shutil")
+    @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_24_zero_chunks_mensagem_contem_nome_arquivo(
         self,
@@ -1079,13 +1079,13 @@ class TestAC8GlobalChunkIndex:
     """
 
     @patch("agenticlog.rag.invalidar_vector_db", create=True)
-    @patch("agenticlog.rag.uuid")
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator.uuid")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.extrair_texto_pdf")
-    @patch("agenticlog.rag.shutil")
-    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
+    @patch("agenticlog.ingestion.orchestrator.shutil")
+    @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_25_chunk_index_global_entre_paginas(
         self,
@@ -1170,13 +1170,13 @@ class TestAC8GlobalChunkIndex:
         )
 
     @patch("agenticlog.rag.invalidar_vector_db", create=True)
-    @patch("agenticlog.rag.uuid")
-    @patch("agenticlog.rag.SemanticChunker")
+    @patch("agenticlog.ingestion.orchestrator.uuid")
+    @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
-    @patch("agenticlog.rag.Chroma")
-    @patch("agenticlog.rag.extrair_texto_pdf")
-    @patch("agenticlog.rag.shutil")
-    @patch("agenticlog.rag.tempfile")
+    @patch("agenticlog.ingestion.orchestrator.Chroma")
+    @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
+    @patch("agenticlog.ingestion.orchestrator.shutil")
+    @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.rag.DIR_DOCUMENTS")
     def teste_26_metadado_page_nao_usa_sentinel_zero(
         self,

@@ -4,6 +4,7 @@
 import os
 import re
 from pathlib import Path
+from typing import Literal
 
 from dotenv import load_dotenv
 
@@ -39,7 +40,9 @@ RESPOSTA_PADRAO_SEGURA: str = (
 )
 
 # RAG — Semantic Chunking (ADR-013)
-SEMANTIC_BREAKPOINT_TYPE: str = "percentile"  # método de detecção de breakpoints semânticos
+SEMANTIC_BREAKPOINT_TYPE: Literal[
+    "percentile", "standard_deviation", "interquartile", "gradient"
+] = "percentile"  # método de detecção de breakpoints semânticos (tipo exigido pelo SemanticChunker)
 SEMANTIC_BREAKPOINT_THRESHOLD: float = 95.0   # percentil de dissimilaridade para corte
 
 # jq_schema compartilhado: 1 valor de saída do jq por chave top-level do JSON -> 1 Document

@@ -18,6 +18,13 @@ from agenticlog.ingestion.metadata import (
     _enriquecer_metadados_chunks,
     _hash_arquivo,
 )
+from agenticlog.ingestion.orchestrator import (
+    adicionar_documento_incrementalmente,
+    adicionar_pdf_incrementalmente,
+    cria_vectordb,
+    ingerir_incrementalmente,
+    reconstruir_vectordb,
+)
 from agenticlog.ingestion.security import (
     _sanitizar_nome_arquivo,
     _sanitizar_nome_colecao,
@@ -27,6 +34,13 @@ from agenticlog.ingestion.security import (
     salvar_documento_enviado,
     salvar_pdf_enviado,
     sanitizar_nome_colecao,
+)
+from agenticlog.ingestion.store import (
+    _backup_arquivo,
+    _outras_colecoes_existem,
+    _resetar_colecao,
+    _reverter_disco,
+    add_documents_com_rollback,
 )
 
 __all__ = [
@@ -46,4 +60,16 @@ __all__ = [
     "sanitizar_nome_colecao",
     "salvar_documento_enviado",
     "salvar_pdf_enviado",
+    # ADR-018 Fase 3b — store (persistência/atomicidade)
+    "_backup_arquivo",
+    "_reverter_disco",
+    "_outras_colecoes_existem",
+    "_resetar_colecao",
+    "add_documents_com_rollback",
+    # ADR-018 Fase 3b — orchestrator (orquestradores de ingestão)
+    "cria_vectordb",
+    "adicionar_documento_incrementalmente",
+    "adicionar_pdf_incrementalmente",
+    "ingerir_incrementalmente",
+    "reconstruir_vectordb",
 ]
