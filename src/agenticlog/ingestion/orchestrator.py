@@ -60,7 +60,7 @@ from agenticlog.ingestion.security import (
     _valida_path_documentos,
 )
 from agenticlog.ingestion.store import (
-    _backup_arquivo,  # noqa: F401  # reexportado p/ paridade de namespace
+    _backup_arquivo,
     _resetar_colecao,
     _reverter_disco,
     add_documents_com_rollback,
