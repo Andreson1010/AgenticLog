@@ -54,7 +54,9 @@ def _build_embedding_model() -> HuggingFaceEmbeddings:
     return criar_embedding_model()
 
 
-def _get_vector_db(collection_name: str = DEFAULT_COLLECTION_NAME, *, vectordb_dir: Path | None = None) -> Chroma:
+def _get_vector_db(
+    collection_name: str = DEFAULT_COLLECTION_NAME, *, vectordb_dir: Path | None = None
+) -> Chroma:
     """Retorna singleton do ChromaDB para a coleção indicada, criando-o na primeira chamada.
 
     Entrada: collection_name — nome da coleção ChromaDB;
@@ -63,8 +65,8 @@ def _get_vector_db(collection_name: str = DEFAULT_COLLECTION_NAME, *, vectordb_d
 
     O singleton _vector_dbs fica em agent.py; acessado via lazy import.
     """
-    from agenticlog.agent import _vector_dbs  # lazy — singleton de agent (DN-2)
     from agenticlog.agent import _get_embedding_model as _get_emb  # lazy — wrapper de agent (DN-2a)
+    from agenticlog.agent import _vector_dbs  # lazy — singleton de agent (DN-2)
 
     actual_dir = DIR_VECTORDB if vectordb_dir is None else vectordb_dir
 
@@ -120,8 +122,10 @@ def _get_retriever(query: str) -> list[Document]:
     Acessa _listar_colecoes e _get_vector_db via lazy import dos WRAPPERS de agent.py
     (DN-3), garantindo que DIR_VECTORDB seja resolvido no call time.
     """
-    from agenticlog.agent import _listar_colecoes  # lazy — o wrapper de agent (DN-3)
-    from agenticlog.agent import _get_vector_db   # lazy — o wrapper de agent (DN-3)
+    from agenticlog.agent import (
+        _get_vector_db,  # lazy — o wrapper de agent (DN-3)
+        _listar_colecoes,  # lazy — o wrapper de agent (DN-3)
+    )
 
     collection_names = _listar_colecoes()
     all_docs: list[Document] = []

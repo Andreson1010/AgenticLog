@@ -26,8 +26,8 @@ from agenticlog.config import (
     ROUTING_KEYWORDS_WEB,
 )
 from agenticlog.retrieval.generation import (
-    _invoke_chain,
     _get_llm,
+    _invoke_chain,
     _prompt_web,
     avalia_similaridade,
     gera_multiplas_respostas,

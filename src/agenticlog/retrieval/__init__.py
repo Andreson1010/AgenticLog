@@ -12,23 +12,17 @@ todos os acessos a singletons de `agent.py` são lazy imports dentro de
 corpos de função, garantindo acicidade.
 """
 
-from agenticlog.retrieval.state import AgentState
 from agenticlog.retrieval.generation import (
     LLMClient,
-    _invoke_chain,
     _get_llm,
+    _invoke_chain,
     _llm_retry,
+    _prompt_web,
     avalia_similaridade,
     gera_multiplas_respostas,
     prompt_gerar,
     prompt_rag_retrieve,
     rank_respostas,
-    _prompt_web,
-)
-from agenticlog.retrieval.retriever import (
-    _build_embedding_model,
-    _get_retriever,
-    invalidar_vector_db,
 )
 from agenticlog.retrieval.graph import (
     agent_workflow,
@@ -37,6 +31,12 @@ from agenticlog.retrieval.graph import (
     retrieve_info,
     usar_ferramenta_web,
 )
+from agenticlog.retrieval.retriever import (
+    _build_embedding_model,
+    _get_retriever,
+    invalidar_vector_db,
+)
+from agenticlog.retrieval.state import AgentState
 
 __all__ = [
     "AgentState",

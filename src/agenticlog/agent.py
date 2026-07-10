@@ -48,7 +48,6 @@ search = DuckDuckGoSearchAPIWrapper(region="br-pt", max_results=5)
 
 import agenticlog.retrieval.retriever as _retr  # noqa: E402
 
-
 # ── WRAPPERS (ADR-018 Fase 4) — remover na Fase 6 ─────────────────────────────
 # NÃO são `is`-idênticos aos de `retrieval.*`: ligam seams de agent.py
 # (DIR_VECTORDB, _embedding_model) NO MOMENTO DA CHAMADA, preservando o
@@ -77,31 +76,33 @@ def _get_vector_db(collection_name: str = DEFAULT_COLLECTION_NAME) -> Chroma:
 
 
 # ── Re-export shims de state (ADR-018 Fase 4) — remover na Fase 6 ──────
-from agenticlog.retrieval.state import AgentState  # noqa: E402,F401
 # ── Re-export shims de generation (ADR-018 Fase 4) — remover na Fase 6 ─
-from agenticlog.retrieval.generation import (      # noqa: E402,F401
+from agenticlog.retrieval.generation import (  # noqa: E402,F401
     LLMClient,
-    _invoke_chain,
     _get_llm,
+    _invoke_chain,
     _llm_retry,
+    _prompt_web,
     avalia_similaridade,
     gera_multiplas_respostas,
     prompt_gerar,
     prompt_rag_retrieve,
     rank_respostas,
-    _prompt_web,
 )
-# ── Re-export shims de retriever (ADR-018 Fase 4) — remover na Fase 6 ──
-from agenticlog.retrieval.retriever import (        # noqa: E402,F401
-    _build_embedding_model,
-    _get_retriever,
-    invalidar_vector_db,
-)
+
 # ── Re-export shims de graph (ADR-018 Fase 4) — remover na Fase 6 ──────
-from agenticlog.retrieval.graph import (             # noqa: E402,F401
+from agenticlog.retrieval.graph import (  # noqa: E402,F401
     agent_workflow,
     inicializar_recursos,
     passo_decisao_agente,
     retrieve_info,
     usar_ferramenta_web,
 )
+
+# ── Re-export shims de retriever (ADR-018 Fase 4) — remover na Fase 6 ──
+from agenticlog.retrieval.retriever import (  # noqa: E402,F401
+    _build_embedding_model,
+    _get_retriever,
+    invalidar_vector_db,
+)
+from agenticlog.retrieval.state import AgentState  # noqa: E402,F401

@@ -10,7 +10,6 @@ NADA importa `agent` em nível de módulo — todos os acessos a singletons de
 `agent.py` são lazy imports DENTRO de funções (DN-2).
 """
 
-import hashlib
 import logging
 from typing import Any, Protocol, runtime_checkable
 
@@ -174,7 +173,8 @@ def gera_multiplas_respostas(state: AgentState) -> AgentState:
     responses = []
     for _ in range(NUM_CANDIDATE_RESPONSES):
         if state.next_step == "retrieve":
-            response = _invoke_chain(qa_chain_dynamic, {"context": context_text, "input": state.query})
+            response = _invoke_chain(qa_chain_dynamic,
+                                       {"context": context_text, "input": state.query})
         else:
             response = _invoke_chain(qa_chain_dynamic, {"input": state.query})
         responses.append(response)
@@ -195,7 +195,9 @@ def avalia_similaridade(state: AgentState) -> AgentState:
     têm maior fidelidade factual: quanto mais o espaço vetorial da resposta coincide com o do
     contexto, menos o LLM alucionou informações externas.
     """
-    from agenticlog.agent import _get_embedding_model as _get_emb_wrapper  # lazy — o wrapper de agent.py (DN-2a)
+    from agenticlog.agent import (
+        _get_embedding_model as _get_emb_wrapper,  # lazy — o wrapper de agent.py (DN-2a)
+    )
     _emb_model = _get_emb_wrapper()
 
     retrieved_texts = [doc.page_content for doc in state.retrieved_info]
