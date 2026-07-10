@@ -459,7 +459,8 @@ class TestAC12to16GetLlmProtocolType(TestCase):
         """
         import inspect
 
-        from agenticlog.agent import ChatOpenAI, LLMClient, _get_llm
+        from agenticlog.retrieval.generation import ChatOpenAI
+        from agenticlog.agent import LLMClient, _get_llm
 
         return_annotation = inspect.signature(_get_llm).return_annotation
 
@@ -635,7 +636,7 @@ class TestEdgeCasesRetryBoundsAndLogging(TestCase):
             "resposta ok",
         ]
 
-        logger_name = "agenticlog.agent"
+        logger_name = "agenticlog.retrieval.generation"
         with self._assert_warning_logged(logger_name):
             result = _invoke_chain(mock_chain, {"input": "pergunta"})
 

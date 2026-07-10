@@ -60,7 +60,7 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
 
     @patch("agenticlog.agent._get_embedding_model")
     @patch("agenticlog.retrieval.graph._get_retriever")
-    @patch("agenticlog.retrieval.graph._invoke_chain")
+    @patch("agenticlog.retrieval.generation._invoke_chain")
     def teste_1_caminho_retrieve_retorna_ranked_response(
         self,
         mock_invoke_chain,
@@ -88,7 +88,7 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
 
     @patch("agenticlog.agent._get_embedding_model")
     @patch("agenticlog.retrieval.graph._get_retriever")
-    @patch("agenticlog.retrieval.graph._invoke_chain")
+    @patch("agenticlog.retrieval.generation._invoke_chain")
     def teste_2_caminho_retrieve_agentstate_chaves_obrigatorias(
         self,
         mock_invoke_chain,
@@ -124,7 +124,7 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
 
     @patch("agenticlog.agent._get_embedding_model")
     @patch("agenticlog.retrieval.graph._get_retriever")
-    @patch("agenticlog.retrieval.graph._invoke_chain")
+    @patch("agenticlog.retrieval.generation._invoke_chain")
     def teste_3_caminho_gerar_retorna_ranked_response(
         self,
         mock_invoke_chain,
@@ -150,7 +150,7 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
 
     @patch("agenticlog.agent._get_embedding_model")
     @patch("agenticlog.retrieval.graph._get_retriever")
-    @patch("agenticlog.retrieval.graph._invoke_chain")
+    @patch("agenticlog.retrieval.generation._invoke_chain")
     def teste_4_caminho_gerar_retrieved_info_vazio(
         self,
         mock_invoke_chain,
@@ -240,7 +240,7 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
 
     @patch("agenticlog.agent._get_embedding_model")
     @patch("agenticlog.retrieval.graph._get_retriever")
-    @patch("agenticlog.retrieval.graph._invoke_chain")
+    @patch("agenticlog.retrieval.generation._invoke_chain")
     def teste_8_caminho_retrieve_sem_documentos_retorna_resposta(
         self,
         mock_invoke_chain,
@@ -265,7 +265,7 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
 
     @patch("agenticlog.agent._get_embedding_model")
     @patch("agenticlog.retrieval.graph._get_retriever")
-    @patch("agenticlog.retrieval.graph._invoke_chain")
+    @patch("agenticlog.retrieval.generation._invoke_chain")
     def teste_9_caminho_gerar_possible_responses_tem_n_itens(
         self,
         mock_invoke_chain,
