@@ -59,8 +59,8 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
     # ------------------------------------------------------------------
 
     @patch("agenticlog.agent._get_embedding_model")
-    @patch("agenticlog.agent._get_retriever")
-    @patch("agenticlog.agent._invoke_chain")
+    @patch("agenticlog.retrieval.retriever._get_retriever")
+    @patch("agenticlog.retrieval.generation._invoke_chain")
     def teste_1_caminho_retrieve_retorna_ranked_response(
         self,
         mock_invoke_chain,
@@ -87,8 +87,8 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
         self.assertIsInstance(result["confidence_score"], float)
 
     @patch("agenticlog.agent._get_embedding_model")
-    @patch("agenticlog.agent._get_retriever")
-    @patch("agenticlog.agent._invoke_chain")
+    @patch("agenticlog.retrieval.retriever._get_retriever")
+    @patch("agenticlog.retrieval.generation._invoke_chain")
     def teste_2_caminho_retrieve_agentstate_chaves_obrigatorias(
         self,
         mock_invoke_chain,
@@ -123,8 +123,8 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
     # ------------------------------------------------------------------
 
     @patch("agenticlog.agent._get_embedding_model")
-    @patch("agenticlog.agent._get_retriever")
-    @patch("agenticlog.agent._invoke_chain")
+    @patch("agenticlog.retrieval.retriever._get_retriever")
+    @patch("agenticlog.retrieval.generation._invoke_chain")
     def teste_3_caminho_gerar_retorna_ranked_response(
         self,
         mock_invoke_chain,
@@ -149,8 +149,8 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
         self.assertEqual(result["next_step"], "gerar")
 
     @patch("agenticlog.agent._get_embedding_model")
-    @patch("agenticlog.agent._get_retriever")
-    @patch("agenticlog.agent._invoke_chain")
+    @patch("agenticlog.retrieval.retriever._get_retriever")
+    @patch("agenticlog.retrieval.generation._invoke_chain")
     def teste_4_caminho_gerar_retrieved_info_vazio(
         self,
         mock_invoke_chain,
@@ -173,7 +173,7 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
     # Caminho 3: usar_web (busca web via DuckDuckGo)
     # ------------------------------------------------------------------
 
-    @patch("agenticlog.agent._invoke_chain")
+    @patch("agenticlog.retrieval.generation._invoke_chain")
     @patch("agenticlog.agent.search")
     def teste_5_caminho_usar_web_retorna_ranked_response(
         self,
@@ -197,7 +197,7 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
         self.assertEqual(result["confidence_score"], 0.0)
         self.assertEqual(result["next_step"], "usar_web")
 
-    @patch("agenticlog.agent._invoke_chain")
+    @patch("agenticlog.retrieval.generation._invoke_chain")
     @patch("agenticlog.agent.search")
     def teste_6_caminho_usar_web_agentstate_chaves_obrigatorias(
         self,
@@ -216,7 +216,7 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
         for key in required_keys:
             self.assertIn(key, result, f"Chave obrigatória ausente: {key}")
 
-    @patch("agenticlog.agent._invoke_chain")
+    @patch("agenticlog.retrieval.generation._invoke_chain")
     @patch("agenticlog.agent.search")
     def teste_7_caminho_usar_web_duckduckgo_falha_retorna_fallback(
         self,
@@ -239,8 +239,8 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
     # ------------------------------------------------------------------
 
     @patch("agenticlog.agent._get_embedding_model")
-    @patch("agenticlog.agent._get_retriever")
-    @patch("agenticlog.agent._invoke_chain")
+    @patch("agenticlog.retrieval.retriever._get_retriever")
+    @patch("agenticlog.retrieval.generation._invoke_chain")
     def teste_8_caminho_retrieve_sem_documentos_retorna_resposta(
         self,
         mock_invoke_chain,
@@ -264,8 +264,8 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
         )
 
     @patch("agenticlog.agent._get_embedding_model")
-    @patch("agenticlog.agent._get_retriever")
-    @patch("agenticlog.agent._invoke_chain")
+    @patch("agenticlog.retrieval.retriever._get_retriever")
+    @patch("agenticlog.retrieval.generation._invoke_chain")
     def teste_9_caminho_gerar_possible_responses_tem_n_itens(
         self,
         mock_invoke_chain,

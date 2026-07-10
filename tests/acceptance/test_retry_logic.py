@@ -78,7 +78,7 @@ class TestAC01GeraMultiplasRetries(unittest.TestCase):
         self.assertEqual(mock_chain.invoke.call_count, 2)
 
     @patch("time.sleep")
-    @patch("agenticlog.agent._get_llm")
+    @patch("agenticlog.retrieval.generation._get_llm")
     def test_ac01_gera_multiplas_respostas_retries_end_to_end(
         self, mock_get_llm, mock_sleep
     ):
@@ -105,7 +105,7 @@ class TestAC01GeraMultiplasRetries(unittest.TestCase):
         mock_get_llm.return_value = mock_llm
 
         # Patch the prompt | llm | parser pipeline to return our controllable chain
-        with patch("agenticlog.agent.prompt_gerar") as mock_prompt:
+        with patch("agenticlog.retrieval.generation.prompt_gerar") as mock_prompt:
             mock_prompt.__or__ = MagicMock(return_value=mock_chain)
             mock_chain.__or__ = MagicMock(return_value=mock_chain)
 
@@ -165,7 +165,7 @@ class TestAC02UsarWebRetries(unittest.TestCase):
         mock_prompt.__or__ = MagicMock(return_value=mock_chain)
         mock_chain.__or__ = MagicMock(return_value=mock_chain)
 
-        with patch("agenticlog.agent._prompt_web", mock_prompt):
+        with patch("agenticlog.retrieval.generation._prompt_web", mock_prompt):
             state = AgentState(query="últimas notícias sobre supply chain")
             new_state = usar_ferramenta_web(state)
 
@@ -329,7 +329,7 @@ class TestAC06ConstantsInConfig(unittest.TestCase):
         self.assertEqual(ag.LLM_RETRY_WAIT_INITIAL_SECONDS, LLM_RETRY_WAIT_INITIAL_SECONDS)
         self.assertEqual(ag.LLM_RETRY_WAIT_MAX_SECONDS, LLM_RETRY_WAIT_MAX_SECONDS)
 
-    @patch("agenticlog.agent.ChatOpenAI")
+    @patch("agenticlog.retrieval.generation.ChatOpenAI")
     def test_ac06_llm_created_with_timeout_from_config(self, mock_chat_openai):
         """AC-06: ChatOpenAI is instantiated with request_timeout=LLM_TIMEOUT_SECONDS."""
         agent_module._llm = None

@@ -146,7 +146,7 @@ class TestAC02AgentEmbeddingCallSiteUsaConfig(unittest.TestCase):
     def tearDown(self) -> None:
         self._agent_mod._embedding_model = None
 
-    @patch("agenticlog.agent.HuggingFaceEmbeddings")
+    @patch("agenticlog.retrieval.retriever.HuggingFaceEmbeddings")
     def teste_1_get_embedding_model_usa_embedding_model_do_config(
         self, mock_emb: MagicMock
     ) -> None:
@@ -159,7 +159,7 @@ class TestAC02AgentEmbeddingCallSiteUsaConfig(unittest.TestCase):
             encode_kwargs={"normalize_embeddings": True},
         )
 
-    @patch("agenticlog.agent.HuggingFaceEmbeddings")
+    @patch("agenticlog.retrieval.retriever.HuggingFaceEmbeddings")
     def teste_2_get_embedding_model_singleton_reusa_instancia(
         self, mock_emb: MagicMock
     ) -> None:
@@ -362,7 +362,7 @@ class TestAC08SemLogicaDePrefixoQueryPassage(unittest.TestCase):
         self.assertNotIn('"passage: "', self.agent_source)
         self.assertNotIn("'passage: '", self.agent_source)
 
-    @patch("agenticlog.agent.HuggingFaceEmbeddings")
+    @patch("agenticlog.retrieval.retriever.HuggingFaceEmbeddings")
     def teste_3_embed_query_chamado_com_texto_original_sem_prefixo(
         self, mock_emb: MagicMock
     ) -> None:

@@ -418,7 +418,7 @@ class TestAC12to16GetLlmProtocolType(TestCase):
     def tearDown(self):
         self.agent_module._llm = self._saved_llm
 
-    @patch("agenticlog.agent.ChatOpenAI")
+    @patch("agenticlog.retrieval.generation.ChatOpenAI")
     def test_ac12_get_llm_constructs_chatopenai_with_all_six_kwargs(self, mock_chat_openai):
         """
         LLMPORT-12: _get_llm() SHALL return a ChatOpenAI instance constructed

@@ -49,7 +49,7 @@ class TestIngestionIntegration:
             patch("agenticlog.rag.DIR_DOCUMENTS", new=doc_dir),
             patch("agenticlog.rag.DIR_VECTORDB", new=vdb_dir),
             patch("agenticlog.rag._get_rag_embedding_model", return_value=mock_emb_instance),
-            patch("agenticlog.agent.invalidar_vector_db"),
+            patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
         ):
             result_a = adicionar_documento_incrementalmente(
                 "cadeira.json", conteudo_a, collection_name=DEFAULT_COLLECTION_NAME
@@ -79,7 +79,7 @@ class TestIngestionIntegration:
             patch("agenticlog.rag.DIR_DOCUMENTS", new=doc_dir),
             patch("agenticlog.rag.DIR_VECTORDB", new=vdb_dir),
             patch("agenticlog.rag._get_rag_embedding_model", return_value=mock_emb_instance),
-            patch("agenticlog.agent.invalidar_vector_db"),
+            patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
         ):
             result_a = adicionar_documento_incrementalmente(
                 "p001.json", conteudo_a, collection_name=DEFAULT_COLLECTION_NAME
@@ -108,7 +108,7 @@ class TestIngestionIntegration:
             patch("agenticlog.rag.DIR_DOCUMENTS", new=doc_dir),
             patch("agenticlog.rag.DIR_VECTORDB", new=vdb_dir),
             patch("agenticlog.rag._get_rag_embedding_model", return_value=mock_emb_instance),
-            patch("agenticlog.agent.invalidar_vector_db"),
+            patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
         ):
             result = adicionar_documento_incrementalmente(
                 "rota.json", conteudo, collection_name=DEFAULT_COLLECTION_NAME
@@ -167,7 +167,7 @@ class TestIngestionIntegration:
             patch("agenticlog.rag.DIR_DOCUMENTS", new=doc_dir),
             patch("agenticlog.rag.DIR_VECTORDB", new=vdb_dir),
             patch("agenticlog.rag._get_rag_embedding_model", return_value=mock_emb_instance),
-            patch("agenticlog.agent.invalidar_vector_db"),
+            patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
         ):
             result_forn = adicionar_documento_incrementalmente(
                 "fornecedor.json", conteudo_forn, collection_name="fornecedores"
@@ -195,7 +195,7 @@ class TestIngestionIntegration:
             patch("agenticlog.rag.DIR_DOCUMENTS", new=doc_dir),
             patch("agenticlog.rag.DIR_VECTORDB", new=vdb_dir),
             patch("agenticlog.rag._get_rag_embedding_model", return_value=mock_emb_instance),
-            patch("agenticlog.agent.invalidar_vector_db"),
+            patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
         ):
             result = adicionar_documento_incrementalmente(
                 "rota.json", conteudo, collection_name="rotas"
@@ -233,7 +233,7 @@ class TestIngestionIntegration:
             patch("agenticlog.rag.DIR_DOCUMENTS", new=doc_dir),
             patch("agenticlog.rag.DIR_VECTORDB", new=vdb_dir),
             patch("agenticlog.rag._get_rag_embedding_model", return_value=mock_emb_instance),
-            patch("agenticlog.agent.invalidar_vector_db"),
+            patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
         ):
             adicionar_documento_incrementalmente(
                 "fornecedor_b.json", conteudo_forn, collection_name="fornecedores"
