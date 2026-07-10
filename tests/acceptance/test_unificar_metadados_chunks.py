@@ -362,7 +362,7 @@ class TestAC04DedupUsesFileHash(unittest.TestCase):
 
         self.assertEqual(result["status"], "duplicado")
 
-    @patch("agenticlog.retrieval.retriever.invalidar_vector_db")
+    @patch("agenticlog.agent.invalidar_vector_db")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.extraction.JSONLoader")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
@@ -407,7 +407,7 @@ class TestAC04DedupUsesFileHash(unittest.TestCase):
         self.assertEqual(result["status"], "substituido")
         mock_chroma_instance.delete.assert_called_once_with(ids=["existing-id"])
 
-    @patch("agenticlog.retrieval.retriever.invalidar_vector_db")
+    @patch("agenticlog.agent.invalidar_vector_db")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.extraction.JSONLoader")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")

@@ -111,7 +111,7 @@ class TestAC2JsonIncremental(unittest.TestCase):
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vdb"),
-                patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
+                patch("agenticlog.agent.invalidar_vector_db"),
             ):
                 mock_loader_cls.return_value.load.return_value = [self._chunk()]
                 mock_splitter_cls.return_value.split_documents.return_value = [self._chunk()]
@@ -139,7 +139,7 @@ class TestAC2JsonIncremental(unittest.TestCase):
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vdb"),
-                patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
+                patch("agenticlog.agent.invalidar_vector_db"),
             ):
                 mock_loader_cls.return_value.load.return_value = [chunk]
                 mock_splitter_cls.return_value.split_documents.return_value = [chunk]
@@ -175,7 +175,7 @@ class TestAC3PdfIncremental(unittest.TestCase):
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vdb"),
-                patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
+                patch("agenticlog.agent.invalidar_vector_db"),
             ):
                 mock_splitter_cls.return_value.split_documents.return_value = [self._chunk()]
 
@@ -201,7 +201,7 @@ class TestAC3PdfIncremental(unittest.TestCase):
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vdb"),
-                patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
+                patch("agenticlog.agent.invalidar_vector_db"),
             ):
                 mock_splitter_cls.return_value.split_documents.return_value = [chunk]
 

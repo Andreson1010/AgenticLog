@@ -445,14 +445,16 @@ class TestAC09ModelKwargsEncodeKwargsInalterados(unittest.TestCase):
         )
 
     def teste_3_get_embedding_model_normaliza(self) -> None:
-        """agent._get_embedding_model() agora normaliza (espaço vetorial consistente com a ingestão)."""
+        """_get_embedding_model() (wrapper em agent) delega a _build_embedding_model()
+        que chama criar_embedding_model() em ingestion/embeddings.py — a normalização
+        está em embeddings.py, não mais inline em agent.py."""
         self.assertNotIn(
             "_embedding_model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)",
             self.agent_source,
         )
         self.assertIn(
             'encode_kwargs={"normalize_embeddings": True}',
-            self.agent_source,
+            self.embeddings_source,
         )
 
     @patch("agenticlog.ingestion.orchestrator._hash_arquivo", return_value="a" * 64)

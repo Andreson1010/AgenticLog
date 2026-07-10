@@ -52,7 +52,7 @@ class TestAgenticRAG(unittest.TestCase):
         new_state = passo_decisao_agente(state)
         self.assertEqual(new_state.next_step, "retrieve")
 
-    @patch("agenticlog.retrieval.generation._invoke_chain")
+    @patch("agenticlog.retrieval.graph._invoke_chain")
     @patch("agenticlog.agent.search")
     def teste_4_usar_ferramenta_web(self, mock_search, mock_invoke_chain):
         mock_search.run.return_value = "resultados da busca"
@@ -62,7 +62,7 @@ class TestAgenticRAG(unittest.TestCase):
         mock_invoke_chain.assert_called_once()
         self.assertEqual(new_state.ranked_response, "Resposta da web.")
 
-    @patch("agenticlog.retrieval.retriever._get_retriever")
+    @patch("agenticlog.retrieval.graph._get_retriever")
     def teste_5_retrieve_info(self, mock_get_retriever):
         """_get_retriever(query) retorna list[Document] diretamente — sem .invoke()."""
         mock_get_retriever.return_value = [
@@ -75,13 +75,13 @@ class TestAgenticRAG(unittest.TestCase):
         # Recuperação com resultados: mantém rota retrieve (não cai para gerar).
         self.assertEqual(new_state.next_step, "retrieve")
 
-    @patch("agenticlog.retrieval.retriever._get_retriever")
+    @patch("agenticlog.retrieval.graph._get_retriever")
     def teste_5b_retrieve_info_empty(self, mock_get_retriever):
         """Recuperação vazia: cai para fallback 'gerar' (geração direta sem contexto)."""
         mock_get_retriever.return_value = []
         state = AgentState(query="consulta sem resultados", next_step="retrieve")
         # Fail-loud: retrieval vazio deve logar WARNING (não passar silencioso).
-        with self.assertLogs("agenticlog.agent", level="WARNING") as log_ctx:
+        with self.assertLogs("agenticlog.retrieval.graph", level="WARNING") as log_ctx:
             new_state = retrieve_info(state)
         mock_get_retriever.assert_called_once_with("consulta sem resultados")
         self.assertEqual(len(new_state.retrieved_info), 0)
@@ -299,7 +299,7 @@ class TestRetryLogic(unittest.TestCase):
         self.assertEqual(resultado, "resposta ok")
         self.assertEqual(mock_chain.invoke.call_count, 2)
 
-    @patch("agenticlog.retrieval.generation._invoke_chain")
+    @patch("agenticlog.retrieval.graph._invoke_chain")
     @patch("agenticlog.agent.search")
     def teste_6_duckduckgo_falha_retorna_fallback_sem_propagar(
         self, mock_search, mock_invoke_chain

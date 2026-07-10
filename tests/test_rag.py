@@ -827,7 +827,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
-                patch("agenticlog.retrieval.retriever.invalidar_vector_db") as mock_invalidar,
+                patch("agenticlog.agent.invalidar_vector_db") as mock_invalidar,
             ):
                 mock_loader = MagicMock()
                 mock_loader.load.return_value = [LCDocument(page_content="doc", metadata={})]
@@ -866,7 +866,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
-                patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
+                patch("agenticlog.agent.invalidar_vector_db"),
             ):
                 mock_loader_cls.return_value.load.return_value = [LCDocument(page_content="d", metadata={})]
                 mock_splitter_cls.return_value.split_documents.return_value = chunks
@@ -917,7 +917,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
-                patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
+                patch("agenticlog.agent.invalidar_vector_db"),
             ):
                 mock_loader_cls.return_value.load.return_value = [
                     LCDocument(page_content="pedido v2", metadata={})
@@ -1042,7 +1042,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
-                patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
+                patch("agenticlog.agent.invalidar_vector_db"),
             ):
                 mock_loader_cls.return_value.load.return_value = [
                     LCDocument(page_content="campo: valor", metadata={})
@@ -1074,7 +1074,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
                 patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
-                patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
+                patch("agenticlog.agent.invalidar_vector_db"),
             ):
                 mock_loader_cls.return_value.load.return_value = [
                     LCDocument(page_content="campo_a: valor", metadata={}),
@@ -1239,7 +1239,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
 
         mock_uuid.uuid4.return_value.hex = "abc123"
 
-        with patch("agenticlog.retrieval.retriever.invalidar_vector_db") as mock_invalidar:
+        with patch("agenticlog.agent.invalidar_vector_db") as mock_invalidar:
             result = adicionar_pdf_incrementalmente("contrato.pdf", conteudo)
 
         self.assertEqual(result["status"], "adicionado")
@@ -1287,7 +1287,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
         mock_vdb.add_documents.assert_not_called()
 
     @patch("agenticlog.ingestion.store.shutil")
-    @patch("agenticlog.retrieval.retriever.invalidar_vector_db")
+    @patch("agenticlog.agent.invalidar_vector_db")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
     @patch("agenticlog.ingestion.orchestrator.shutil")
@@ -1656,7 +1656,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
 
         mock_uuid.uuid4.return_value.hex = "aabbcc"
 
-        with patch("agenticlog.retrieval.retriever.invalidar_vector_db"):
+        with patch("agenticlog.agent.invalidar_vector_db"):
             adicionar_pdf_incrementalmente("multi.pdf", conteudo)
 
         called_chunks = mock_vdb.add_documents.call_args[0][0]

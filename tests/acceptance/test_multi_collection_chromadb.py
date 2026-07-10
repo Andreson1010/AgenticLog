@@ -527,7 +527,7 @@ class TestAC06DefaultCollectionName(unittest.TestCase):
             splitter_instance.split_documents.return_value = [_make_doc("chunk")]
             mock_splitter.return_value = splitter_instance
 
-            with patch("agenticlog.retrieval.retriever.invalidar_vector_db", MagicMock()):
+            with patch("agenticlog.agent.invalidar_vector_db", MagicMock()):
                 adicionar_documento_incrementalmente("doc.json", b'{"ok": "1"}')
 
         mock_chroma.assert_called_once()
