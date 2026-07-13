@@ -112,7 +112,8 @@ def inicializar_recursos() -> None:
     Saída: nenhuma — efeito colateral: singletons globais inicializados
 
     Ordem de inicialização: embeddings → vector_db → llm.
-    Chamada única a partir do lifespan do FastAPI; elimina race condition em requisições concorrentes.
+    Chamada única a partir do lifespan do FastAPI; elimina race condition \
+em requisições concorrentes.
 
     Acessa os 3 getters via lazy import de `agenticlog.agent` para garantir que
     os singletons sejam criados no namespace de `agent` (DN-2).

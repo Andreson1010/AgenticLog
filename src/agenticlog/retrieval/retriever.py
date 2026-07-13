@@ -109,7 +109,8 @@ def _listar_colecoes(*, vectordb_dir: Path | None = None) -> list[str]:
 
 
 def _get_retriever(query: str) -> list[Document]:
-    """Executa fan-out em todas as coleções ChromaDB e retorna até RETRIEVAL_K_TOTAL documentos únicos.
+    """Executa fan-out em todas as coleções ChromaDB e retorna até \
+RETRIEVAL_K_TOTAL documentos únicos.
 
     Entrada: query — texto da consulta do usuário.
     Saída: lista de até RETRIEVAL_K_TOTAL documentos únicos (deduplicados por MD5 do page_content).

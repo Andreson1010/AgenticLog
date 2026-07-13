@@ -105,11 +105,13 @@ prompt_rag_retrieve = PromptTemplate.from_template(
     """You are a truthful and precise assistant in logistics and supply chain.
     Your task is to answer the user's question based STRICTLY on the provided context below.
 
-    # REGRAS DE RESPOSTA: restrições obrigatórias que impedem o LLM de alucinar ou usar conhecimento externo
+    # REGRAS DE RESPOSTA: restrições obrigatórias que impedem o LLM de \
+alucinar ou usar conhecimento externo
     REGRAS DE RESPOSTA:
     1. USE ONLY the information inside the context block.
     2. DO NOT use your internal knowledge or previous training.
-    3. If the answer is not in the context, reply exactly: "Sorry, I did not find that information in the documents."
+    3. If the answer is not in the context, reply exactly: "Sorry, I did not \
+find that information in the documents."
     4. Answer the user in Brazilian Portuguese based on the provided context.
 
     --- Context ---
@@ -186,7 +188,8 @@ def gera_multiplas_respostas(state: AgentState) -> AgentState:
 
 
 def avalia_similaridade(state: AgentState) -> AgentState:
-    """Nó de avaliação: calcula score de similaridade de cosseno entre cada resposta e o contexto recuperado.
+    """Nó de avaliação: calcula score de similaridade de cosseno entre cada \
+resposta e o contexto recuperado.
 
     Entrada: state.retrieved_info, state.possible_responses.
     Saída:   state.similarity_scores — lista de floats, um por resposta candidata.
@@ -229,12 +232,16 @@ def avalia_similaridade(state: AgentState) -> AgentState:
 
 
 def rank_respostas(state: AgentState) -> AgentState:
-    """Nó de ranqueamento: seleciona a resposta com maior score de similaridade como resposta final.
+    """Nó de ranqueamento: seleciona a resposta com maior score de similaridade \
+como resposta final.
 
     Entrada: state.possible_responses, state.similarity_scores.
-    Saída:   state.ranked_response — melhor resposta (str ou dict); state.confidence_score — score vencedor.
+    Saída:   state.ranked_response — melhor resposta (str ou dict); \
+state.confidence_score — score vencedor.
     """
-    response_with_scores = list(zip(state.possible_responses, state.similarity_scores, strict=False))
+    response_with_scores = list(
+        zip(state.possible_responses, state.similarity_scores, strict=False)
+    )
     if response_with_scores:
         ranked = sorted(response_with_scores, key=lambda x: x[1], reverse=True)
         return state.model_copy(update={

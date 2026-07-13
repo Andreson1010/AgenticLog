@@ -16,6 +16,8 @@ Os singletons `_llm`/`_embedding_model`/`_vector_dbs` e o global `search`
 PERMANECEM físicos em agent.py (não movidos) — preservando monkeypatch do oráculo.
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import warnings
@@ -39,7 +41,7 @@ from agenticlog.config import (  # noqa: E402
 logger = logging.getLogger(__name__)
 
 # Singletons lazy — inicializados somente na primeira chamada, não na importação
-_llm = None
+_llm: LLMClient | None = None
 _vector_dbs: dict[str, Chroma] = {}
 _embedding_model = None
 
