@@ -16,11 +16,11 @@ from agenticlog.health import (
     LMStudioUnavailableError,
     ModeloNaoCarregadoError,
     _extrair_ids_modelos,
-    _health_checked,
     check_lmstudio_health,
     reset_health_check_sentinel,
 )
 import agenticlog.health as health_module
+import agenticlog.serving.health as serving_health  # noqa: E402  # destino real das funcoes (ADR-018 Fase 5)
 
 _MODELS_URL = f"{LLM_API_BASE.rstrip('/')}/models"
 
@@ -40,8 +40,8 @@ class TestLmstudioHealthCheck(TestCase):
     def tearDown(self):
         reset_health_check_sentinel()
 
-    @patch.object(health_module, "logger")
-    @patch("agenticlog.health.httpx.Client")
+    @patch("agenticlog.serving.health.logger")
+    @patch("agenticlog.serving.health.httpx.Client")
     def teste_1_happy_path_retorna_sem_excecao(self, mock_client_cls, mock_logger):
         mock_client = MagicMock()
         mock_client.get.return_value = _resposta_ok()
@@ -51,11 +51,11 @@ class TestLmstudioHealthCheck(TestCase):
 
         mock_client_cls.assert_called_once_with(timeout=LLM_HEALTH_CHECK_TIMEOUT_SECONDS)
         mock_client.get.assert_called_once_with(_MODELS_URL)
-        self.assertTrue(health_module._health_checked)
+        self.assertTrue(serving_health._health_checked)
         mock_logger.error.assert_not_called()
 
-    @patch.object(health_module, "logger")
-    @patch("agenticlog.health.httpx.Client")
+    @patch("agenticlog.serving.health.logger")
+    @patch("agenticlog.serving.health.httpx.Client")
     def teste_2_connect_error_levanta_lmstudio_unavailable(self, mock_client_cls, mock_logger):
         mock_client = MagicMock()
         mock_client.get.side_effect = httpx.ConnectError("connection refused")
@@ -68,8 +68,8 @@ class TestLmstudioHealthCheck(TestCase):
         mock_logger.error.assert_called_once()
         self.assertIn("url=", mock_logger.error.call_args[0][0])
 
-    @patch.object(health_module, "logger")
-    @patch("agenticlog.health.httpx.Client")
+    @patch("agenticlog.serving.health.logger")
+    @patch("agenticlog.serving.health.httpx.Client")
     def teste_3_timeout_levanta_mensagem_de_timeout(self, mock_client_cls, mock_logger):
         mock_client = MagicMock()
         mock_client.get.side_effect = httpx.TimeoutException("timed out")
@@ -81,8 +81,8 @@ class TestLmstudioHealthCheck(TestCase):
         self.assertIn("tempo limite", str(ctx.exception).lower())
         mock_logger.error.assert_called_once()
 
-    @patch.object(health_module, "logger")
-    @patch("agenticlog.health.httpx.Client")
+    @patch("agenticlog.serving.health.logger")
+    @patch("agenticlog.serving.health.httpx.Client")
     def teste_4_status_nao_2xx_levanta_lmstudio_unavailable(self, mock_client_cls, mock_logger):
         mock_client = MagicMock()
         mock_response = MagicMock()
@@ -97,8 +97,8 @@ class TestLmstudioHealthCheck(TestCase):
         self.assertIn("500", str(ctx.exception))
         mock_logger.error.assert_called_once()
 
-    @patch.object(health_module, "logger")
-    @patch("agenticlog.health.httpx.Client")
+    @patch("agenticlog.serving.health.logger")
+    @patch("agenticlog.serving.health.httpx.Client")
     def teste_5_lista_vazia_de_modelos_levanta_modelo_nao_carregado(
         self, mock_client_cls, mock_logger
     ):
@@ -113,19 +113,19 @@ class TestLmstudioHealthCheck(TestCase):
         self.assertIn("nenhum", str(ctx.exception))
         mock_logger.error.assert_called_once()
 
-    @patch("agenticlog.health.httpx.Client")
+    @patch("agenticlog.serving.health.httpx.Client")
     def teste_6_sentinel_resetavel_entre_testes(self, mock_client_cls):
         mock_client = MagicMock()
         mock_client.get.return_value = _resposta_ok()
         mock_client_cls.return_value.__enter__.return_value = mock_client
 
-        self.assertFalse(health_module._health_checked)
+        self.assertFalse(serving_health._health_checked)
         check_lmstudio_health()
-        self.assertTrue(health_module._health_checked)
+        self.assertTrue(serving_health._health_checked)
         reset_health_check_sentinel()
-        self.assertFalse(health_module._health_checked)
+        self.assertFalse(serving_health._health_checked)
 
-    @patch("agenticlog.health.httpx.Client")
+    @patch("agenticlog.serving.health.httpx.Client")
     def teste_7_exportado_via_init(self, mock_client_cls):
         from agenticlog import check_lmstudio_health as exported_check
         from agenticlog import LMStudioUnavailableError as exported_error
@@ -135,8 +135,8 @@ class TestLmstudioHealthCheck(TestCase):
         self.assertIs(exported_error, LMStudioUnavailableError)
         self.assertIs(exported_modelo_error, ModeloNaoCarregadoError)
 
-    @patch.object(health_module, "logger")
-    @patch("agenticlog.health.httpx.Client")
+    @patch("agenticlog.serving.health.logger")
+    @patch("agenticlog.serving.health.httpx.Client")
     def teste_8_modelo_presente_entre_varios_passa(self, mock_client_cls, mock_logger):
         mock_client = MagicMock()
         mock_client.get.return_value = _resposta_ok(
@@ -148,8 +148,8 @@ class TestLmstudioHealthCheck(TestCase):
 
         mock_logger.error.assert_not_called()
 
-    @patch.object(health_module, "logger")
-    @patch("agenticlog.health.httpx.Client")
+    @patch("agenticlog.serving.health.logger")
+    @patch("agenticlog.serving.health.httpx.Client")
     def teste_9_modelo_diferente_carregado_levanta(self, mock_client_cls, mock_logger):
         mock_client = MagicMock()
         mock_client.get.return_value = _resposta_ok(model_ids=("modelo-errado",))
@@ -163,8 +163,8 @@ class TestLmstudioHealthCheck(TestCase):
         # subclasse de LMStudioUnavailableError → api.py captura e devolve 503
         self.assertIsInstance(ctx.exception, LMStudioUnavailableError)
 
-    @patch.object(health_module, "logger")
-    @patch("agenticlog.health.httpx.Client")
+    @patch("agenticlog.serving.health.logger")
+    @patch("agenticlog.serving.health.httpx.Client")
     def teste_10_json_malformado_levanta_unavailable(self, mock_client_cls, mock_logger):
         mock_client = MagicMock()
         mock_response = MagicMock()

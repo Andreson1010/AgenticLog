@@ -69,7 +69,7 @@ disallow_untyped_defs = false
 warn_unused_ignores = false
 
 [[tool.mypy.overrides]]
-module = ["agenticlog.rag", "agenticlog.api"]
+module = ["agenticlog.rag", "agenticlog.api", "agenticlog.serving.api"]
 ignore_errors = true
 
 [tool.bandit]

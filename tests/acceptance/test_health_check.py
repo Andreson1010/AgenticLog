@@ -48,7 +48,7 @@ class TestACHC01HappyPath(unittest.TestCase):
     def tearDown(self) -> None:
         reset_health_check_sentinel()
 
-    @patch("agenticlog.health.httpx.Client")
+    @patch("agenticlog.serving.health.httpx.Client")
     def test_ac_hc_01_healthy_lmstudio_does_not_raise(
         self, mock_client_class: MagicMock
     ) -> None:
@@ -96,9 +96,9 @@ class TestACHC02ConnectErrorBlocksWorkflow(unittest.TestCase):
     def tearDown(self) -> None:
         reset_health_check_sentinel()
 
-    @patch("agenticlog.health.logger")
+    @patch("agenticlog.serving.health.logger")
     @patch("agenticlog.agent.agent_workflow")
-    @patch("agenticlog.health.httpx.Client")
+    @patch("agenticlog.serving.health.httpx.Client")
     def test_ac_hc_02_connect_error_raises_and_blocks_workflow(
         self,
         mock_client_class: MagicMock,
@@ -142,8 +142,8 @@ class TestACHC03TimeoutBlocksWorkflow(unittest.TestCase):
     def tearDown(self) -> None:
         reset_health_check_sentinel()
 
-    @patch("agenticlog.health.logger")
-    @patch("agenticlog.health.httpx.Client")
+    @patch("agenticlog.serving.health.logger")
+    @patch("agenticlog.serving.health.httpx.Client")
     def test_ac_hc_03_timeout_raises_with_tempo_limite_message(
         self, mock_client_class: MagicMock, mock_logger: MagicMock
     ) -> None:
@@ -186,7 +186,7 @@ class TestACHC04NonSuccessStatusBlocksWorkflow(unittest.TestCase):
     def tearDown(self) -> None:
         reset_health_check_sentinel()
 
-    @patch("agenticlog.health.httpx.Client")
+    @patch("agenticlog.serving.health.httpx.Client")
     def test_ac_hc_04_non_2xx_raises_with_status_code_in_message(
         self, mock_client_class: MagicMock
     ) -> None:
@@ -224,9 +224,9 @@ class TestACHC05ModeloNaoCarregadoBlocksWorkflow(unittest.TestCase):
     def tearDown(self) -> None:
         reset_health_check_sentinel()
 
-    @patch("agenticlog.health.logger")
+    @patch("agenticlog.serving.health.logger")
     @patch("agenticlog.agent.agent_workflow")
-    @patch("agenticlog.health.httpx.Client")
+    @patch("agenticlog.serving.health.httpx.Client")
     def test_ac_hc_05_modelo_ausente_raises_and_blocks_workflow(
         self,
         mock_client_class: MagicMock,
