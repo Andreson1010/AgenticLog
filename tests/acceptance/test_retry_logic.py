@@ -78,7 +78,7 @@ class TestAC01GeraMultiplasRetries(unittest.TestCase):
         self.assertEqual(mock_chain.invoke.call_count, 2)
 
     @patch("time.sleep")
-    @patch("agenticlog.agent._get_llm")
+    @patch("agenticlog.retrieval.generation._get_llm")
     def test_ac01_gera_multiplas_respostas_retries_end_to_end(
         self, mock_get_llm, mock_sleep
     ):
@@ -105,7 +105,7 @@ class TestAC01GeraMultiplasRetries(unittest.TestCase):
         mock_get_llm.return_value = mock_llm
 
         # Patch the prompt | llm | parser pipeline to return our controllable chain
-        with patch("agenticlog.agent.prompt_gerar") as mock_prompt:
+        with patch("agenticlog.retrieval.generation.prompt_gerar") as mock_prompt:
             mock_prompt.__or__ = MagicMock(return_value=mock_chain)
             mock_chain.__or__ = MagicMock(return_value=mock_chain)
 
@@ -165,7 +165,7 @@ class TestAC02UsarWebRetries(unittest.TestCase):
         mock_prompt.__or__ = MagicMock(return_value=mock_chain)
         mock_chain.__or__ = MagicMock(return_value=mock_chain)
 
-        with patch("agenticlog.agent._prompt_web", mock_prompt):
+        with patch("agenticlog.retrieval.graph._prompt_web", mock_prompt):
             state = AgentState(query="últimas notícias sobre supply chain")
             new_state = usar_ferramenta_web(state)
 
@@ -321,15 +321,15 @@ class TestAC06ConstantsInConfig(unittest.TestCase):
         self.assertIsInstance(LLM_RETRY_WAIT_MAX_SECONDS, float)
 
     def test_ac06_agent_imports_all_four_constants_from_config(self):
-        """AC-06: agent.py imports each of the four constants (not defining them locally)."""
-        import agenticlog.agent as ag
+        """AC-06: generation.py imports each of the four constants from config (not defining them locally)."""
+        from agenticlog.retrieval import generation as gen_mod
         # The module must expose these via its own namespace (imported, not hardcoded)
-        self.assertEqual(ag.LLM_TIMEOUT_SECONDS, LLM_TIMEOUT_SECONDS)
-        self.assertEqual(ag.LLM_MAX_RETRY_ATTEMPTS, LLM_MAX_RETRY_ATTEMPTS)
-        self.assertEqual(ag.LLM_RETRY_WAIT_INITIAL_SECONDS, LLM_RETRY_WAIT_INITIAL_SECONDS)
-        self.assertEqual(ag.LLM_RETRY_WAIT_MAX_SECONDS, LLM_RETRY_WAIT_MAX_SECONDS)
+        self.assertEqual(gen_mod.LLM_TIMEOUT_SECONDS, LLM_TIMEOUT_SECONDS)
+        self.assertEqual(gen_mod.LLM_MAX_RETRY_ATTEMPTS, LLM_MAX_RETRY_ATTEMPTS)
+        self.assertEqual(gen_mod.LLM_RETRY_WAIT_INITIAL_SECONDS, LLM_RETRY_WAIT_INITIAL_SECONDS)
+        self.assertEqual(gen_mod.LLM_RETRY_WAIT_MAX_SECONDS, LLM_RETRY_WAIT_MAX_SECONDS)
 
-    @patch("agenticlog.agent.ChatOpenAI")
+    @patch("agenticlog.retrieval.generation.ChatOpenAI")
     def test_ac06_llm_created_with_timeout_from_config(self, mock_chat_openai):
         """AC-06: ChatOpenAI is instantiated with request_timeout=LLM_TIMEOUT_SECONDS."""
         agent_module._llm = None
@@ -424,7 +424,7 @@ class TestAC08DuckDuckGoFallback(unittest.TestCase):
         self.assertEqual(new_state.ranked_response, "Busca indisponível no momento.")
         self.assertEqual(new_state.confidence_score, 0.0)
 
-    @patch("agenticlog.agent._invoke_chain")
+    @patch("agenticlog.retrieval.generation._invoke_chain")
     @patch("agenticlog.agent.search")
     def test_ac08_duckduckgo_failure_does_not_call_llm_executor(
         self, mock_search, mock_invoke_chain

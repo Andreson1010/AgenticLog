@@ -527,7 +527,7 @@ class TestAC06DefaultCollectionName(unittest.TestCase):
             splitter_instance.split_documents.return_value = [_make_doc("chunk")]
             mock_splitter.return_value = splitter_instance
 
-            with patch("agenticlog.agent.invalidar_vector_db", MagicMock()):
+            with patch("agenticlog.retrieval.retriever.invalidar_vector_db", MagicMock()):
                 adicionar_documento_incrementalmente("doc.json", b'{"ok": "1"}')
 
         mock_chroma.assert_called_once()
@@ -833,7 +833,7 @@ class TestAC13InvalidarVectorDb(unittest.TestCase):
         _agent.invalidar_vector_db()
         self.assertEqual(len(_agent._vector_dbs), 0)
 
-        with patch("agenticlog.agent.Chroma") as mock_chroma, \
+        with patch("agenticlog.retrieval.retriever.Chroma") as mock_chroma, \
              patch("agenticlog.agent._get_embedding_model"):
             mock_chroma.return_value = MagicMock()
             _agent._get_vector_db("logistica")

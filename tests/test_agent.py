@@ -26,7 +26,7 @@ class TestGetEmbeddingModel(unittest.TestCase):
         """Reseta o singleton após cada teste."""
         agent_mod._embedding_model = None
 
-    @patch("agenticlog.agent.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     def test_get_embedding_model_usa_embedding_model_do_config(self, mock_emb):
         """_get_embedding_model() constrói HuggingFaceEmbeddings com model_name=EMBEDDING_MODEL."""
         agent_mod._get_embedding_model()
@@ -37,7 +37,7 @@ class TestGetEmbeddingModel(unittest.TestCase):
             encode_kwargs={"normalize_embeddings": True},
         )
 
-    @patch("agenticlog.agent.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     def test_get_embedding_model_singleton_reusa_instancia(self, mock_emb):
         """Chamadas subsequentes retornam a mesma instância sem recriar HuggingFaceEmbeddings."""
         primeira = agent_mod._get_embedding_model()

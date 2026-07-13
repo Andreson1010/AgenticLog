@@ -52,7 +52,7 @@ class TestAgenticRAG(unittest.TestCase):
         new_state = passo_decisao_agente(state)
         self.assertEqual(new_state.next_step, "retrieve")
 
-    @patch("agenticlog.agent._invoke_chain")
+    @patch("agenticlog.retrieval.graph._invoke_chain")
     @patch("agenticlog.agent.search")
     def teste_4_usar_ferramenta_web(self, mock_search, mock_invoke_chain):
         mock_search.run.return_value = "resultados da busca"
@@ -62,7 +62,7 @@ class TestAgenticRAG(unittest.TestCase):
         mock_invoke_chain.assert_called_once()
         self.assertEqual(new_state.ranked_response, "Resposta da web.")
 
-    @patch("agenticlog.agent._get_retriever")
+    @patch("agenticlog.retrieval.graph._get_retriever")
     def teste_5_retrieve_info(self, mock_get_retriever):
         """_get_retriever(query) retorna list[Document] diretamente — sem .invoke()."""
         mock_get_retriever.return_value = [
@@ -75,13 +75,13 @@ class TestAgenticRAG(unittest.TestCase):
         # Recuperação com resultados: mantém rota retrieve (não cai para gerar).
         self.assertEqual(new_state.next_step, "retrieve")
 
-    @patch("agenticlog.agent._get_retriever")
+    @patch("agenticlog.retrieval.graph._get_retriever")
     def teste_5b_retrieve_info_empty(self, mock_get_retriever):
         """Recuperação vazia: cai para fallback 'gerar' (geração direta sem contexto)."""
         mock_get_retriever.return_value = []
         state = AgentState(query="consulta sem resultados", next_step="retrieve")
         # Fail-loud: retrieval vazio deve logar WARNING (não passar silencioso).
-        with self.assertLogs("agenticlog.agent", level="WARNING") as log_ctx:
+        with self.assertLogs("agenticlog.retrieval.graph", level="WARNING") as log_ctx:
             new_state = retrieve_info(state)
         mock_get_retriever.assert_called_once_with("consulta sem resultados")
         self.assertEqual(len(new_state.retrieved_info), 0)
@@ -91,9 +91,9 @@ class TestAgenticRAG(unittest.TestCase):
         self.assertTrue(any("0 documentos" in m for m in log_ctx.output))
 
     @patch("time.sleep")
-    @patch("agenticlog.agent.StrOutputParser")
-    @patch("agenticlog.agent._get_llm")
-    @patch("agenticlog.agent.prompt_rag_retrieve")
+    @patch("agenticlog.retrieval.generation.StrOutputParser")
+    @patch("agenticlog.retrieval.generation._get_llm")
+    @patch("agenticlog.retrieval.generation.prompt_rag_retrieve")
     def teste_6_gera_multiplas_respostas(
         self, mock_prompt, mock_get_llm, mock_str_parser_class, mock_sleep
     ):
@@ -118,9 +118,9 @@ class TestAgenticRAG(unittest.TestCase):
         self.assertEqual(new_state.possible_responses[0]["answer"], "Resposta gerada")
 
     @patch("time.sleep")
-    @patch("agenticlog.agent.StrOutputParser")
-    @patch("agenticlog.agent._get_llm")
-    @patch("agenticlog.agent.prompt_rag_retrieve")
+    @patch("agenticlog.retrieval.generation.StrOutputParser")
+    @patch("agenticlog.retrieval.generation._get_llm")
+    @patch("agenticlog.retrieval.generation.prompt_rag_retrieve")
     def teste_6b_gera_multiplas_respostas_empty_context(
         self, mock_prompt, mock_get_llm, mock_str_parser_class, mock_sleep
     ):
@@ -178,7 +178,7 @@ class TestAgenticRAG(unittest.TestCase):
         self.assertEqual(new_state.ranked_response, {"answer": "resp2"})
         self.assertEqual(new_state.confidence_score, 0.9)
 
-    @patch("agenticlog.agent.ChatOpenAI")
+    @patch("agenticlog.retrieval.generation.ChatOpenAI")
     def teste_9_import_sem_lmstudio(self, mock_chat_openai):
         """LAZY-01: recarregar o módulo não deve instanciar ChatOpenAI (init é lazy)."""
         import importlib
@@ -186,7 +186,7 @@ class TestAgenticRAG(unittest.TestCase):
         mock_chat_openai.assert_not_called()
         self.assertIsNone(agent_module._llm)
 
-    @patch("agenticlog.agent.ChatOpenAI")
+    @patch("agenticlog.retrieval.generation.ChatOpenAI")
     def teste_10_get_llm_singleton(self, mock_chat_openai):
         """LAZY-04: _get_llm() retorna a mesma instância em chamadas repetidas (singleton)
         e é criado com request_timeout=LLM_TIMEOUT_SECONDS."""
@@ -205,7 +205,7 @@ class TestAgenticRAG(unittest.TestCase):
         # limpar singleton para não vazar entre testes
         agent_module._llm = None
 
-    @patch("agenticlog.agent.Chroma")
+    @patch("agenticlog.retrieval.retriever.Chroma")
     @patch("agenticlog.agent._get_embedding_model")
     def teste_11_get_vector_db_singleton(self, mock_get_embedding, mock_chroma):
         """LAZY-05: _get_vector_db() retorna a mesma instância em chamadas repetidas (singleton)."""
@@ -299,7 +299,7 @@ class TestRetryLogic(unittest.TestCase):
         self.assertEqual(resultado, "resposta ok")
         self.assertEqual(mock_chain.invoke.call_count, 2)
 
-    @patch("agenticlog.agent._invoke_chain")
+    @patch("agenticlog.retrieval.graph._invoke_chain")
     @patch("agenticlog.agent.search")
     def teste_6_duckduckgo_falha_retorna_fallback_sem_propagar(
         self, mock_search, mock_invoke_chain

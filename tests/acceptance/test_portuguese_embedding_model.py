@@ -146,7 +146,7 @@ class TestAC02AgentEmbeddingCallSiteUsaConfig(unittest.TestCase):
     def tearDown(self) -> None:
         self._agent_mod._embedding_model = None
 
-    @patch("agenticlog.agent.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     def teste_1_get_embedding_model_usa_embedding_model_do_config(
         self, mock_emb: MagicMock
     ) -> None:
@@ -159,7 +159,7 @@ class TestAC02AgentEmbeddingCallSiteUsaConfig(unittest.TestCase):
             encode_kwargs={"normalize_embeddings": True},
         )
 
-    @patch("agenticlog.agent.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     def teste_2_get_embedding_model_singleton_reusa_instancia(
         self, mock_emb: MagicMock
     ) -> None:
@@ -362,7 +362,7 @@ class TestAC08SemLogicaDePrefixoQueryPassage(unittest.TestCase):
         self.assertNotIn('"passage: "', self.agent_source)
         self.assertNotIn("'passage: '", self.agent_source)
 
-    @patch("agenticlog.agent.HuggingFaceEmbeddings")
+    @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     def teste_3_embed_query_chamado_com_texto_original_sem_prefixo(
         self, mock_emb: MagicMock
     ) -> None:
@@ -445,14 +445,16 @@ class TestAC09ModelKwargsEncodeKwargsInalterados(unittest.TestCase):
         )
 
     def teste_3_get_embedding_model_normaliza(self) -> None:
-        """agent._get_embedding_model() agora normaliza (espaço vetorial consistente com a ingestão)."""
+        """_get_embedding_model() (wrapper em agent) delega a _build_embedding_model()
+        que chama criar_embedding_model() em ingestion/embeddings.py — a normalização
+        está em embeddings.py, não mais inline em agent.py."""
         self.assertNotIn(
             "_embedding_model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)",
             self.agent_source,
         )
         self.assertIn(
             'encode_kwargs={"normalize_embeddings": True}',
-            self.agent_source,
+            self.embeddings_source,
         )
 
     @patch("agenticlog.ingestion.orchestrator._hash_arquivo", return_value="a" * 64)
