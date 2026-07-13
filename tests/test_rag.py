@@ -930,12 +930,14 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
         mock_vdb.add_documents.assert_called_once()
         mock_vdb.delete.assert_called_once_with(ids=old_ids)
 
-    def teste_5_rejeita_seguranca(self) -> None:
+    @patch("agenticlog.rag._get_rag_embedding_model")
+    def teste_5_rejeita_seguranca(self, _mock_embedding: MagicMock) -> None:
         """Falha de validação de segurança levanta RAGSecurityError antes de tocar Chroma."""
         with self.assertRaises(rag.RAGSecurityError):
             rag.adicionar_documento_incrementalmente("arquivo.txt", b"{}")
 
-    def teste_6_rejeita_limite_arquivos(self) -> None:
+    @patch("agenticlog.rag._get_rag_embedding_model")
+    def teste_6_rejeita_limite_arquivos(self, _mock_embedding: MagicMock) -> None:
         """MAX_JSON_FILES atingido levanta RAGSecurityError."""
         with patch("agenticlog.rag.DIR_DOCUMENTS") as mock_dir:
             mock_dir.glob.return_value = [MagicMock()] * MAX_JSON_FILES
