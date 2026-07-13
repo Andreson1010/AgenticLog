@@ -56,12 +56,12 @@ def _client(estado: AgentState | None = None, *, vectordb_ok: bool = True):
     estado_ret = estado or _make_estado()
     verificar_side_effect = None if vectordb_ok else RuntimeError(MSG_VECTORDB_AUSENTE)
 
-    with patch("agenticlog.api.inicializar_recursos") as mock_init, patch(
-        "agenticlog.api._verificar_vectordb", side_effect=verificar_side_effect
-    ), patch("agenticlog.api.check_lmstudio_health"), patch(
-        "agenticlog.api.agent_workflow.invoke", return_value=estado_ret
+    with patch("agenticlog.serving.api.inicializar_recursos") as mock_init, patch(
+        "agenticlog.serving.api._verificar_vectordb", side_effect=verificar_side_effect
+    ), patch("agenticlog.serving.api.check_lmstudio_health"), patch(
+        "agenticlog.serving.api.agent_workflow.invoke", return_value=estado_ret
     ) as mock_invoke, patch(
-        "agenticlog.api.HistoryStore", return_value=_mock_history_store
+        "agenticlog.serving.api.HistoryStore", return_value=_mock_history_store
     ):
         with TestClient(app) as client:
             yield client, mock_invoke, mock_init
@@ -100,10 +100,10 @@ def test_ac_api_02_ranked_response_dict_normalization():
     mock_estado.next_step = "retrieve"
     mock_estado.retrieved_info = []
 
-    with patch("agenticlog.api.inicializar_recursos"), patch(
-        "agenticlog.api._verificar_vectordb"
-    ), patch("agenticlog.api.check_lmstudio_health"), patch(
-        "agenticlog.api.agent_workflow.invoke", return_value=mock_estado
+    with patch("agenticlog.serving.api.inicializar_recursos"), patch(
+        "agenticlog.serving.api._verificar_vectordb"
+    ), patch("agenticlog.serving.api.check_lmstudio_health"), patch(
+        "agenticlog.serving.api.agent_workflow.invoke", return_value=mock_estado
     ):
         with TestClient(app) as client:
             response = client.post("/query", json={"query": "prazo"})
@@ -147,10 +147,10 @@ def test_ac_api_04_lmstudio_unavailable_200_degraded():
     reset_health_check_sentinel()
     try:
         # Pre-flight levanta LMStudioUnavailableError
-        with patch("agenticlog.api.inicializar_recursos"), patch(
-            "agenticlog.api._verificar_vectordb"
+        with patch("agenticlog.serving.api.inicializar_recursos"), patch(
+            "agenticlog.serving.api._verificar_vectordb"
         ), patch(
-            "agenticlog.api.check_lmstudio_health",
+            "agenticlog.serving.api.check_lmstudio_health",
             side_effect=LMStudioUnavailableError("LMStudio offline"),
         ):
             with TestClient(app) as client:
@@ -164,10 +164,10 @@ def test_ac_api_04_lmstudio_unavailable_200_degraded():
         assert data["retrieved_info"] == []
 
         # Mid-call: pre-flight passa, invoke re-levanta httpx.ConnectError
-        with patch("agenticlog.api.inicializar_recursos"), patch(
-            "agenticlog.api._verificar_vectordb"
-        ), patch("agenticlog.api.check_lmstudio_health"), patch(
-            "agenticlog.api.agent_workflow.invoke",
+        with patch("agenticlog.serving.api.inicializar_recursos"), patch(
+            "agenticlog.serving.api._verificar_vectordb"
+        ), patch("agenticlog.serving.api.check_lmstudio_health"), patch(
+            "agenticlog.serving.api.agent_workflow.invoke",
             side_effect=httpx.ConnectError("Connection refused"),
         ):
             with TestClient(app) as client:
@@ -232,10 +232,10 @@ def test_ac_api_07_empty_query_422():
 
 def test_ac_api_08_unexpected_exception_500_no_stacktrace():
     """AC-API-08: RuntimeError inesperado retorna 500 sem expor stack trace no body."""
-    with patch("agenticlog.api.inicializar_recursos"), patch(
-        "agenticlog.api._verificar_vectordb"
-    ), patch("agenticlog.api.check_lmstudio_health"), patch(
-        "agenticlog.api.agent_workflow.invoke",
+    with patch("agenticlog.serving.api.inicializar_recursos"), patch(
+        "agenticlog.serving.api._verificar_vectordb"
+    ), patch("agenticlog.serving.api.check_lmstudio_health"), patch(
+        "agenticlog.serving.api.agent_workflow.invoke",
         side_effect=RuntimeError("erro interno secreto"),
     ):
         with TestClient(app, raise_server_exceptions=False) as client:
@@ -259,12 +259,12 @@ def test_ac_api_09_workflow_in_threadpool():
     import asyncio as _asyncio
 
     estado = _make_estado()
-    with patch("agenticlog.api.inicializar_recursos"), patch(
-        "agenticlog.api._verificar_vectordb"
-    ), patch("agenticlog.api.check_lmstudio_health"), patch(
-        "agenticlog.api.agent_workflow.invoke", return_value=estado
+    with patch("agenticlog.serving.api.inicializar_recursos"), patch(
+        "agenticlog.serving.api._verificar_vectordb"
+    ), patch("agenticlog.serving.api.check_lmstudio_health"), patch(
+        "agenticlog.serving.api.agent_workflow.invoke", return_value=estado
     ) as mock_invoke, patch(
-        "agenticlog.api.asyncio.to_thread", wraps=_asyncio.to_thread
+        "agenticlog.serving.api.asyncio.to_thread", wraps=_asyncio.to_thread
     ) as mock_to_thread:
         with TestClient(app) as client:
             response = client.post("/query", json={"query": "prazo"})
@@ -287,10 +287,10 @@ def test_ac_api_09_workflow_in_threadpool():
 def test_ac_api_10_singletons_initialized_at_startup():
     """AC-API-10: inicializar_recursos() é chamado exatamente uma vez durante o lifespan startup."""
     estado = _make_estado()
-    with patch("agenticlog.api.inicializar_recursos") as mock_init, patch(
-        "agenticlog.api._verificar_vectordb"
-    ), patch("agenticlog.api.check_lmstudio_health"), patch(
-        "agenticlog.api.agent_workflow.invoke", return_value=estado
+    with patch("agenticlog.serving.api.inicializar_recursos") as mock_init, patch(
+        "agenticlog.serving.api._verificar_vectordb"
+    ), patch("agenticlog.serving.api.check_lmstudio_health"), patch(
+        "agenticlog.serving.api.agent_workflow.invoke", return_value=estado
     ):
         with TestClient(app) as client:
             # Faz duas requisições para confirmar que init não é chamado por req

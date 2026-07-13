@@ -64,12 +64,12 @@ def _make_estado(**kwargs) -> AgentState:
 def _client_vectordb_pronto(estado: AgentState | None = None):
     """Cria TestClient com vectordb_pronto=True, pre-flight saudável e workflow mockado."""
     estado_retornado = estado or _make_estado()
-    with patch("agenticlog.api.inicializar_recursos"), patch(
-        "agenticlog.api._verificar_vectordb"
-    ), patch("agenticlog.api.check_lmstudio_health"), patch(
-        "agenticlog.api.agent_workflow.invoke", return_value=estado_retornado
+    with patch("agenticlog.serving.api.inicializar_recursos"), patch(
+        "agenticlog.serving.api._verificar_vectordb"
+    ), patch("agenticlog.serving.api.check_lmstudio_health"), patch(
+        "agenticlog.serving.api.agent_workflow.invoke", return_value=estado_retornado
     ) as mock_invoke, patch(
-        "agenticlog.api.HistoryStore", return_value=_mock_history_store
+        "agenticlog.serving.api.HistoryStore", return_value=_mock_history_store
     ):
         with TestClient(app) as client:
             yield client, mock_invoke
@@ -78,11 +78,11 @@ def _client_vectordb_pronto(estado: AgentState | None = None):
 @contextmanager
 def _client_vectordb_ausente():
     """Cria TestClient simulando vectordb ausente na inicialização."""
-    with patch("agenticlog.api.inicializar_recursos"), patch(
-        "agenticlog.api._verificar_vectordb",
+    with patch("agenticlog.serving.api.inicializar_recursos"), patch(
+        "agenticlog.serving.api._verificar_vectordb",
         side_effect=RuntimeError(MSG_VECTORDB_AUSENTE),
     ), patch(
-        "agenticlog.api.HistoryStore", return_value=_mock_history_store
+        "agenticlog.serving.api.HistoryStore", return_value=_mock_history_store
     ):
         with TestClient(app) as client:
             yield client
@@ -114,12 +114,12 @@ def teste_2_ranked_response_dict_normalizado():
     mock_estado.confidence_score = 0.87
     mock_estado.next_step = "retrieve"
     mock_estado.retrieved_info = []
-    with patch("agenticlog.api.inicializar_recursos"), patch(
-        "agenticlog.api._verificar_vectordb"
-    ), patch("agenticlog.api.check_lmstudio_health"), patch(
-        "agenticlog.api.agent_workflow.invoke", return_value=mock_estado
+    with patch("agenticlog.serving.api.inicializar_recursos"), patch(
+        "agenticlog.serving.api._verificar_vectordb"
+    ), patch("agenticlog.serving.api.check_lmstudio_health"), patch(
+        "agenticlog.serving.api.agent_workflow.invoke", return_value=mock_estado
     ), patch(
-        "agenticlog.api.HistoryStore", return_value=_mock_history_store
+        "agenticlog.serving.api.HistoryStore", return_value=_mock_history_store
     ):
         with TestClient(app) as client:
             response = client.post("/query", json={"query": "prazo"})
@@ -134,12 +134,12 @@ def teste_3_confidence_score_none_normalizado():
     mock_estado.confidence_score = None
     mock_estado.next_step = "retrieve"
     mock_estado.retrieved_info = []
-    with patch("agenticlog.api.inicializar_recursos"), patch(
-        "agenticlog.api._verificar_vectordb"
-    ), patch("agenticlog.api.check_lmstudio_health"), patch(
-        "agenticlog.api.agent_workflow.invoke", return_value=mock_estado
+    with patch("agenticlog.serving.api.inicializar_recursos"), patch(
+        "agenticlog.serving.api._verificar_vectordb"
+    ), patch("agenticlog.serving.api.check_lmstudio_health"), patch(
+        "agenticlog.serving.api.agent_workflow.invoke", return_value=mock_estado
     ), patch(
-        "agenticlog.api.HistoryStore", return_value=_mock_history_store
+        "agenticlog.serving.api.HistoryStore", return_value=_mock_history_store
     ):
         with TestClient(app) as client:
             response = client.post("/query", json={"query": "prazo"})
@@ -204,13 +204,13 @@ def teste_9_pre_flight_lmstudio_indisponivel_retorna_200_degradado():
     """Pre-flight LMStudioUnavailableError → 200-degraded (não mais 503)."""
     reset_health_check_sentinel()
     try:
-        with patch("agenticlog.api.inicializar_recursos"), patch(
-            "agenticlog.api._verificar_vectordb"
+        with patch("agenticlog.serving.api.inicializar_recursos"), patch(
+            "agenticlog.serving.api._verificar_vectordb"
         ), patch(
-            "agenticlog.api.check_lmstudio_health",
+            "agenticlog.serving.api.check_lmstudio_health",
             side_effect=LMStudioUnavailableError("LMStudio offline"),
         ), patch(
-            "agenticlog.api.HistoryStore", return_value=_mock_history_store
+            "agenticlog.serving.api.HistoryStore", return_value=_mock_history_store
         ):
             with TestClient(app) as client:
                 response = client.post("/query", json={"query": "prazo"})
@@ -224,13 +224,13 @@ def teste_10_mid_call_connect_error_retorna_200_degradado():
     """invoke re-levanta httpx.ConnectError após pre-flight ok → 200-degraded."""
     reset_health_check_sentinel()
     try:
-        with patch("agenticlog.api.inicializar_recursos"), patch(
-            "agenticlog.api._verificar_vectordb"
-        ), patch("agenticlog.api.check_lmstudio_health"), patch(
-            "agenticlog.api.agent_workflow.invoke",
+        with patch("agenticlog.serving.api.inicializar_recursos"), patch(
+            "agenticlog.serving.api._verificar_vectordb"
+        ), patch("agenticlog.serving.api.check_lmstudio_health"), patch(
+            "agenticlog.serving.api.agent_workflow.invoke",
             side_effect=httpx.ConnectError("Connection refused"),
         ), patch(
-            "agenticlog.api.HistoryStore", return_value=_mock_history_store
+            "agenticlog.serving.api.HistoryStore", return_value=_mock_history_store
         ):
             with TestClient(app) as client:
                 response = client.post("/query", json={"query": "prazo"})
@@ -244,13 +244,13 @@ def teste_10b_mid_call_api_connection_error_retorna_200_degradado():
     """invoke re-levanta openai.APIConnectionError após pre-flight ok → 200-degraded."""
     reset_health_check_sentinel()
     try:
-        with patch("agenticlog.api.inicializar_recursos"), patch(
-            "agenticlog.api._verificar_vectordb"
-        ), patch("agenticlog.api.check_lmstudio_health"), patch(
-            "agenticlog.api.agent_workflow.invoke",
+        with patch("agenticlog.serving.api.inicializar_recursos"), patch(
+            "agenticlog.serving.api._verificar_vectordb"
+        ), patch("agenticlog.serving.api.check_lmstudio_health"), patch(
+            "agenticlog.serving.api.agent_workflow.invoke",
             side_effect=APIConnectionError(request=httpx.Request("POST", "http://x")),
         ), patch(
-            "agenticlog.api.HistoryStore", return_value=_mock_history_store
+            "agenticlog.serving.api.HistoryStore", return_value=_mock_history_store
         ):
             with TestClient(app) as client:
                 response = client.post("/query", json={"query": "prazo"})
@@ -264,13 +264,13 @@ def teste_9b_pre_flight_modelo_nao_carregado_retorna_200_degradado():
     """Pre-flight ModeloNaoCarregadoError (modelo errado) → 200-degraded (caso novo)."""
     reset_health_check_sentinel()
     try:
-        with patch("agenticlog.api.inicializar_recursos"), patch(
-            "agenticlog.api._verificar_vectordb"
+        with patch("agenticlog.serving.api.inicializar_recursos"), patch(
+            "agenticlog.serving.api._verificar_vectordb"
         ), patch(
-            "agenticlog.api.check_lmstudio_health",
+            "agenticlog.serving.api.check_lmstudio_health",
             side_effect=ModeloNaoCarregadoError("modelo X não carregado"),
         ), patch(
-            "agenticlog.api.HistoryStore", return_value=_mock_history_store
+            "agenticlog.serving.api.HistoryStore", return_value=_mock_history_store
         ):
             with TestClient(app) as client:
                 response = client.post("/query", json={"query": "prazo"})
@@ -287,13 +287,13 @@ def teste_9c_resposta_degradada_gravada_no_historico():
     store.append.return_value = None
     store.read_all.return_value = []
     try:
-        with patch("agenticlog.api.inicializar_recursos"), patch(
-            "agenticlog.api._verificar_vectordb"
+        with patch("agenticlog.serving.api.inicializar_recursos"), patch(
+            "agenticlog.serving.api._verificar_vectordb"
         ), patch(
-            "agenticlog.api.check_lmstudio_health",
+            "agenticlog.serving.api.check_lmstudio_health",
             side_effect=LMStudioUnavailableError("offline"),
         ), patch(
-            "agenticlog.api.HistoryStore", return_value=store
+            "agenticlog.serving.api.HistoryStore", return_value=store
         ):
             with TestClient(app) as client:
                 response = client.post("/query", json={"query": "prazo SP-RJ"})
@@ -314,13 +314,13 @@ def teste_9d_falha_historico_nao_quebra_resposta_degradada():
     store.append.side_effect = OSError("disco cheio")
     store.read_all.return_value = []
     try:
-        with patch("agenticlog.api.inicializar_recursos"), patch(
-            "agenticlog.api._verificar_vectordb"
+        with patch("agenticlog.serving.api.inicializar_recursos"), patch(
+            "agenticlog.serving.api._verificar_vectordb"
         ), patch(
-            "agenticlog.api.check_lmstudio_health",
+            "agenticlog.serving.api.check_lmstudio_health",
             side_effect=LMStudioUnavailableError("offline"),
         ), patch(
-            "agenticlog.api.HistoryStore", return_value=store
+            "agenticlog.serving.api.HistoryStore", return_value=store
         ):
             with TestClient(app) as client:
                 response = client.post("/query", json={"query": "prazo"})
@@ -332,13 +332,13 @@ def teste_9d_falha_historico_nao_quebra_resposta_degradada():
 
 def teste_11_excecao_generica_retorna_500():
     """RuntimeError inesperado retorna HTTP 500 com mensagem genérica sem stack trace."""
-    with patch("agenticlog.api.inicializar_recursos"), patch(
-        "agenticlog.api._verificar_vectordb"
-    ), patch("agenticlog.api.check_lmstudio_health"), patch(
-        "agenticlog.api.agent_workflow.invoke",
+    with patch("agenticlog.serving.api.inicializar_recursos"), patch(
+        "agenticlog.serving.api._verificar_vectordb"
+    ), patch("agenticlog.serving.api.check_lmstudio_health"), patch(
+        "agenticlog.serving.api.agent_workflow.invoke",
         side_effect=RuntimeError("boom interno"),
     ), patch(
-        "agenticlog.api.HistoryStore", return_value=_mock_history_store
+        "agenticlog.serving.api.HistoryStore", return_value=_mock_history_store
     ):
         with TestClient(app, raise_server_exceptions=False) as client:
             response = client.post("/query", json={"query": "prazo"})
@@ -360,14 +360,14 @@ def teste_12_vectordb_ausente_retorna_503():
 def teste_13_workflow_executa_em_thread():
     """agent_workflow.invoke é chamado via asyncio.to_thread (não chamada direta)."""
     estado = _make_estado()
-    with patch("agenticlog.api.inicializar_recursos"), patch(
-        "agenticlog.api._verificar_vectordb"
-    ), patch("agenticlog.api.check_lmstudio_health"), patch(
-        "agenticlog.api.agent_workflow.invoke", return_value=estado
+    with patch("agenticlog.serving.api.inicializar_recursos"), patch(
+        "agenticlog.serving.api._verificar_vectordb"
+    ), patch("agenticlog.serving.api.check_lmstudio_health"), patch(
+        "agenticlog.serving.api.agent_workflow.invoke", return_value=estado
     ) as mock_invoke, patch(
-        "agenticlog.api.asyncio.to_thread", wraps=asyncio.to_thread
+        "agenticlog.serving.api.asyncio.to_thread", wraps=asyncio.to_thread
     ) as mock_to_thread, patch(
-        "agenticlog.api.HistoryStore", return_value=_mock_history_store
+        "agenticlog.serving.api.HistoryStore", return_value=_mock_history_store
     ):
         with TestClient(app) as client:
             response = client.post("/query", json={"query": "prazo"})
@@ -393,17 +393,17 @@ def teste_14_query_tipo_nao_string_retorna_422():
 def teste_15_verificar_vectordb_diretorio_ausente_lanca_runtimeerror(tmp_path):
     """_verificar_vectordb levanta RuntimeError quando DIR_VECTORDB nao existe."""
     caminho_ausente = tmp_path / "vectordb_inexistente"
-    with patch("agenticlog.api.DIR_VECTORDB", caminho_ausente):
+    with patch("agenticlog.serving.api.DIR_VECTORDB", caminho_ausente):
         with pytest.raises(RuntimeError, match=MSG_VECTORDB_AUSENTE):
             _verificar_vectordb()
 
 
 def teste_16_verificar_vectordb_diretorio_presente_abre_chroma(tmp_path):
     """_verificar_vectordb abre a colecao Chroma quando DIR_VECTORDB existe."""
-    with patch("agenticlog.api.DIR_VECTORDB", tmp_path), patch(
-        "agenticlog.api.Chroma"
+    with patch("agenticlog.serving.api.DIR_VECTORDB", tmp_path), patch(
+        "agenticlog.serving.api.Chroma"
     ) as mock_chroma, patch(
-        "agenticlog.api._get_rag_embedding_model", return_value="embedding-mock"
+        "agenticlog.serving.api._get_rag_embedding_model", return_value="embedding-mock"
     ):
         _verificar_vectordb()
     mock_chroma.assert_called_once()
@@ -412,9 +412,9 @@ def teste_16_verificar_vectordb_diretorio_presente_abre_chroma(tmp_path):
 def teste_17_lifespan_erro_generico_marca_vectordb_indisponivel():
     """Exception generica (nao RuntimeError) na inicializacao marca vectordb_pronto=False."""
     with patch(
-        "agenticlog.api._verificar_vectordb", side_effect=ValueError("erro inesperado")
-    ), patch("agenticlog.api.inicializar_recursos"), patch(
-        "agenticlog.api.HistoryStore", return_value=_mock_history_store
+        "agenticlog.serving.api._verificar_vectordb", side_effect=ValueError("erro inesperado")
+    ), patch("agenticlog.serving.api.inicializar_recursos"), patch(
+        "agenticlog.serving.api.HistoryStore", return_value=_mock_history_store
     ):
         with TestClient(app) as client:
             assert client.app.state.vectordb_pronto is False
@@ -426,12 +426,12 @@ def teste_17_lifespan_erro_generico_marca_vectordb_indisponivel():
 def teste_18_lifespan_historystore_falha_marca_none():
     """Falha ao construir HistoryStore marca history_store=None; /query continua ok."""
     estado = _make_estado()
-    with patch("agenticlog.api.inicializar_recursos"), patch(
-        "agenticlog.api._verificar_vectordb"
-    ), patch("agenticlog.api.check_lmstudio_health"), patch(
-        "agenticlog.api.agent_workflow.invoke", return_value=estado
+    with patch("agenticlog.serving.api.inicializar_recursos"), patch(
+        "agenticlog.serving.api._verificar_vectordb"
+    ), patch("agenticlog.serving.api.check_lmstudio_health"), patch(
+        "agenticlog.serving.api.agent_workflow.invoke", return_value=estado
     ), patch(
-        "agenticlog.api.HistoryStore", side_effect=OSError("disco cheio")
+        "agenticlog.serving.api.HistoryStore", side_effect=OSError("disco cheio")
     ):
         with TestClient(app) as client:
             assert client.app.state.history_store is None

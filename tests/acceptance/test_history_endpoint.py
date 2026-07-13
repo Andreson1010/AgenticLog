@@ -61,9 +61,9 @@ class TestHistoryEndpoint(unittest.TestCase):
     def test_ac_history_01_post_grava_registro(self) -> None:
         """HIST-01: POST /query bem-sucedido persiste 1 registro com campos corretos."""
         estado = _make_estado()
-        with patch("agenticlog.api.agent_workflow.invoke", return_value=estado), patch(
-            "agenticlog.api.check_lmstudio_health"
-        ), patch("agenticlog.api.inicializar_recursos"):
+        with patch("agenticlog.serving.api.agent_workflow.invoke", return_value=estado), patch(
+            "agenticlog.serving.api.check_lmstudio_health"
+        ), patch("agenticlog.serving.api.inicializar_recursos"):
             response = self.client.post("/query", json={"query": "prazo SP-RJ"})
 
         assert response.status_code == 200
@@ -89,9 +89,9 @@ class TestHistoryEndpoint(unittest.TestCase):
         app.state.history_store = broken_store
 
         estado = _make_estado()
-        with patch("agenticlog.api.agent_workflow.invoke", return_value=estado), patch(
-            "agenticlog.api.check_lmstudio_health"
-        ), patch("agenticlog.api.inicializar_recursos"):
+        with patch("agenticlog.serving.api.agent_workflow.invoke", return_value=estado), patch(
+            "agenticlog.serving.api.check_lmstudio_health"
+        ), patch("agenticlog.serving.api.inicializar_recursos"):
             response = self.client.post("/query", json={"query": "prazo"})
 
         assert response.status_code == 200

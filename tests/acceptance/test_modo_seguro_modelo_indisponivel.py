@@ -93,11 +93,11 @@ def _client_ctx(
         kwargs_health["side_effect"] = health_side_effect
 
     return (
-        patch("agenticlog.api.inicializar_recursos"),
-        patch("agenticlog.api._verificar_vectordb", side_effect=vectordb_effect),
-        patch("agenticlog.api.check_lmstudio_health", **kwargs_health),
-        patch("agenticlog.api.agent_workflow.invoke", **kwargs_invoke),
-        patch("agenticlog.api.HistoryStore", return_value=_mock_history_store),
+        patch("agenticlog.serving.api.inicializar_recursos"),
+        patch("agenticlog.serving.api._verificar_vectordb", side_effect=vectordb_effect),
+        patch("agenticlog.serving.api.check_lmstudio_health", **kwargs_health),
+        patch("agenticlog.serving.api.agent_workflow.invoke", **kwargs_invoke),
+        patch("agenticlog.serving.api.HistoryStore", return_value=_mock_history_store),
     )
 
 
