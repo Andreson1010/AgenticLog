@@ -424,7 +424,7 @@ class TestAC08DuckDuckGoFallback(unittest.TestCase):
         self.assertEqual(new_state.ranked_response, "Busca indisponível no momento.")
         self.assertEqual(new_state.confidence_score, 0.0)
 
-    @patch("agenticlog.agent._invoke_chain")
+    @patch("agenticlog.retrieval.generation._invoke_chain")
     @patch("agenticlog.agent.search")
     def test_ac08_duckduckgo_failure_does_not_call_llm_executor(
         self, mock_search, mock_invoke_chain
