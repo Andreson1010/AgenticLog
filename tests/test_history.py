@@ -12,7 +12,7 @@ import threading
 import unittest
 from pathlib import Path
 
-from agenticlog.history import HistoryStore
+from agenticlog.observability.history import HistoryStore
 
 
 class TestHistoryStore(unittest.TestCase):

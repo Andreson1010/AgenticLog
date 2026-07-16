@@ -81,12 +81,12 @@ def _bootstrap() -> dict[str, Any]:
         sys.path.insert(0, src)
     try:
         from agenticlog import config  # type: ignore[import-not-found]
-        from agenticlog.agent import (  # type: ignore[import-not-found]
-            AgentState,
-            _get_retriever,
-            agent_workflow,
+        from agenticlog.ingestion.embeddings import (
+            _get_rag_embedding_model,  # type: ignore[import-not-found]
         )
-        from agenticlog.rag import _get_rag_embedding_model  # type: ignore[import-not-found]
+        from agenticlog.retrieval.graph import agent_workflow  # type: ignore[import-not-found]
+        from agenticlog.retrieval.retriever import _get_retriever  # type: ignore[import-not-found]
+        from agenticlog.retrieval.state import AgentState  # type: ignore[import-not-found]
     except Exception as exc:  # noqa: BLE001 — import nativo (chromadb/hnswlib) pode falhar
         return {"erro": f"falha ao importar agenticlog ({type(exc).__name__}): {exc}"}
     return {

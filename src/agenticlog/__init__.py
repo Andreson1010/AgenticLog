@@ -14,8 +14,9 @@ Exportações públicas:
 Para detalhes do fluxo completo de nós e roteamento, consulte agent.py.
 """
 
-from agenticlog.agent import AgentState, agent_workflow
-from agenticlog.health import (
+from agenticlog.retrieval.graph import agent_workflow
+from agenticlog.retrieval.state import AgentState
+from agenticlog.serving.health import (
     LMStudioUnavailableError,
     ModeloNaoCarregadoError,
     check_lmstudio_health,

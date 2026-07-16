@@ -13,42 +13,30 @@ import sqlite3
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock, ANY, call
+from unittest.mock import ANY, MagicMock, call, patch
 
 _root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_root / "src"))
 
-import unittest
-import pytest
-
 import hashlib
+import unittest
 
+import pytest
 from langchain_core.documents import Document as LCDocument
 
-from agenticlog.rag import (
-    RAGSecurityError,
-    _valida_path_documentos,
-    _valida_json_sem_chaves_proibidas,
-    _valida_arquivos_json,
-    cria_vectordb,
-    ingerir_incrementalmente,
-    _executar_main,
-    _sanitizar_nome_arquivo,
-    _sanitizar_nome_colecao,
-    _computar_hash_conteudo,
-    _enriquecer_metadados_chunks,
-    adicionar_documento_incrementalmente,
-    adicionar_pdf_incrementalmente,
-    salvar_documento_enviado,
-    salvar_pdf_enviado,
-    extrair_texto_pdf,
-    reconstruir_vectordb,
-)
-from agenticlog.config import MAX_JSON_FILES, MAX_JSON_FILE_SIZE_MB
-import agenticlog.rag as rag
 import agenticlog.config as config
 import agenticlog.ingestion.orchestrator as orchestrator
 import agenticlog.ingestion.store as store
+from agenticlog.config import MAX_JSON_FILES
+from agenticlog.ingestion.cli import _executar_main
+from agenticlog.ingestion.orchestrator import (
+    adicionar_documento_incrementalmente,
+    adicionar_pdf_incrementalmente,
+    cria_vectordb,
+    ingerir_incrementalmente,
+    reconstruir_vectordb,
+)
+from agenticlog.shared.errors import RAGSecurityError
 
 
 class TestRAGSecurityError(unittest.TestCase):
@@ -82,7 +70,7 @@ class TestCriaVectordb(unittest.TestCase):
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.carregar_json")
     @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
     @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
@@ -104,7 +92,7 @@ class TestCriaVectordb(unittest.TestCase):
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.carregar_json")
     @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
     @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
@@ -162,7 +150,7 @@ class TestCriaVectordb(unittest.TestCase):
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.carregar_json")
     @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
     @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
@@ -202,7 +190,7 @@ class TestCriaVectordb(unittest.TestCase):
     @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.carregar_json")
     @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
     @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
@@ -247,7 +235,7 @@ class TestCriaVectordb(unittest.TestCase):
     @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.carregar_json")
     @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
     @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
@@ -266,12 +254,12 @@ class TestCriaVectordb(unittest.TestCase):
             json_paths=[Path("/data/documents/a.json")], pdf_paths=[pdf_path]
         )
 
-        # Usa rag.RAGSecurityError (não o import top-level RAGSecurityError) porque
+        # Usa RAGSecurityError (não o import top-level RAGSecurityError) porque
         # tests/acceptance/test_structured_log_config.py faz importlib.reload(rag_module)
         # quando a suíte completa roda; o `except RAGSecurityError` em cria_vectordb
         # passa a referenciar a classe pós-reload, e a comparação `isinstance` só
         # bate se o side_effect também usar a classe atual de agenticlog.rag.
-        mock_extrair.side_effect = rag.RAGSecurityError(
+        mock_extrair.side_effect = RAGSecurityError(
             "PDF não contém texto extraível (somente imagem)."
         )
 
@@ -292,7 +280,7 @@ class TestCriaVectordb(unittest.TestCase):
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.carregar_json")
     @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
     @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
@@ -326,7 +314,7 @@ class TestCriaVectordb(unittest.TestCase):
         )
 
     @patch("agenticlog.ingestion.orchestrator._resetar_colecao")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.carregar_json")
     @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
     @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
@@ -345,7 +333,7 @@ class TestCriaVectordb(unittest.TestCase):
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.carregar_json")
     @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
     @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
@@ -374,7 +362,7 @@ class TestCriaVectordb(unittest.TestCase):
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.carregar_json")
     @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
     @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
@@ -411,7 +399,7 @@ class TestResetarColecao(unittest.TestCase):
         """Coleção única e diretório presente: rmtree do DIR_VECTORDB (elimina órfãos)."""
         mock_dir.exists.return_value = True
 
-        rag._resetar_colecao("logistica")
+        store._resetar_colecao("logistica")
 
         mock_rmtree.assert_called_once_with(mock_dir, ignore_errors=True)
 
@@ -422,7 +410,7 @@ class TestResetarColecao(unittest.TestCase):
         """Diretório ausente: nada a remover (no-op), sem levantar."""
         mock_dir.exists.return_value = False
 
-        rag._resetar_colecao("inexistente")  # não deve levantar
+        store._resetar_colecao("inexistente")  # não deve levantar
 
         mock_rmtree.assert_not_called()
 
@@ -436,7 +424,7 @@ class TestResetarColecao(unittest.TestCase):
         mock_client = MagicMock()
         mock_client_cls.return_value = mock_client
 
-        rag._resetar_colecao("logistica")
+        store._resetar_colecao("logistica")
 
         mock_rmtree.assert_not_called()
         mock_client.delete_collection.assert_called_once_with("logistica")
@@ -452,7 +440,7 @@ class TestResetarColecao(unittest.TestCase):
         mock_client.delete_collection.side_effect = ValueError("Collection not found")
         mock_client_cls.return_value = mock_client
 
-        rag._resetar_colecao("inexistente")  # não deve levantar
+        store._resetar_colecao("inexistente")  # não deve levantar
 
         mock_rmtree.assert_not_called()
         mock_client.delete_collection.assert_called_once_with("inexistente")
@@ -480,19 +468,19 @@ class TestOutrasColecoesExistem(unittest.TestCase):
     def test_db_inexistente_retorna_false(self) -> None:
         """Sem arquivo SQLite: nenhuma coleção irmã → False (caminho de wipe seguro)."""
         with patch("agenticlog.ingestion.store.DIR_VECTORDB", Path(self._tmp)):
-            self.assertFalse(rag._outras_colecoes_existem("logistica"))
+            self.assertFalse(store._outras_colecoes_existem("logistica"))
 
     def test_apenas_a_colecao_alvo_retorna_false(self) -> None:
         """Só a coleção alvo presente: não há irmãs → False."""
         self._criar_db_com_colecoes(["logistica"])
         with patch("agenticlog.ingestion.store.DIR_VECTORDB", Path(self._tmp)):
-            self.assertFalse(rag._outras_colecoes_existem("logistica"))
+            self.assertFalse(store._outras_colecoes_existem("logistica"))
 
     def test_outra_colecao_presente_retorna_true(self) -> None:
         """Existe coleção com nome diferente → True (preservar irmãs)."""
         self._criar_db_com_colecoes(["logistica", "outra"])
         with patch("agenticlog.ingestion.store.DIR_VECTORDB", Path(self._tmp)):
-            self.assertTrue(rag._outras_colecoes_existem("logistica"))
+            self.assertTrue(store._outras_colecoes_existem("logistica"))
 
     def test_schema_ilegivel_retorna_false(self) -> None:
         """Schema sem tabela collections: degrada para False (wipe seguro)."""
@@ -501,7 +489,7 @@ class TestOutrasColecoesExistem(unittest.TestCase):
         con.commit()
         con.close()
         with patch("agenticlog.ingestion.store.DIR_VECTORDB", Path(self._tmp)):
-            self.assertFalse(rag._outras_colecoes_existem("logistica"))
+            self.assertFalse(store._outras_colecoes_existem("logistica"))
 
 
 class TestLogging(unittest.TestCase):
@@ -512,7 +500,7 @@ class TestLogging(unittest.TestCase):
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.carregar_json")
     @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
     @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
@@ -543,7 +531,7 @@ class TestLogging(unittest.TestCase):
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.carregar_json")
     @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
     @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
@@ -569,7 +557,7 @@ class TestLogging(unittest.TestCase):
             f"Esperava 'Criado' nos logs, encontrado: {cm.output}",
         )
 
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.carregar_json")
     @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
     @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
@@ -593,7 +581,7 @@ class TestLogging(unittest.TestCase):
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.carregar_json")
     @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
     @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
@@ -603,6 +591,7 @@ class TestLogging(unittest.TestCase):
     ):
         """Nenhuma saída em stdout quando cria_vectordb() chamada como biblioteca (AC-01)."""
         import io
+
         from langchain_core.documents import Document
 
         mock_dir.glob.side_effect = _glob_side_effect(json_paths=[Path("/data/documents/a.json")])
@@ -634,17 +623,14 @@ class TestLogging(unittest.TestCase):
             if original is not None:
                 os.environ["LOG_LEVEL"] = original
             importlib.reload(config)
-            # Restore rag so RAGSecurityError class identity stays consistent
-            # for all tests that execute after this one in the same process.
-            importlib.reload(rag)
 
     def teste_6_logger_modulo_usa_dunder_name(self):
         """logger em rag.py tem name == 'agenticlog.rag' (AC-08)."""
-        self.assertEqual(rag.logger.name, "agenticlog.rag")
+        self.assertEqual(logging.getLogger("agenticlog.rag").name, "agenticlog.rag")
 
     def teste_7_erro_seguranca_usa_logger_error(self):
         """RAGSecurityError em _executar_main aciona logger.error com 'Erro de segurança' (AC-05)."""
-        with patch.object(rag, "cria_vectordb", side_effect=rag.RAGSecurityError("falha de segurança simulada")):
+        with patch("agenticlog.ingestion.cli.cria_vectordb", side_effect=RAGSecurityError("falha de segurança simulada")):
             with self.assertLogs("agenticlog.rag", level="ERROR") as cm:
                 with self.assertRaises(SystemExit) as ctx:
                     _executar_main(["--rebuild"])
@@ -657,7 +643,7 @@ class TestLogging(unittest.TestCase):
 
     def teste_8_excecao_generica_usa_logger_error(self):
         """Exception generica em _executar_main aciona logger.error com 'Erro ao criar banco vetorial' (AC-06)."""
-        with patch.object(rag, "cria_vectordb", side_effect=RuntimeError("erro generico simulado")):
+        with patch("agenticlog.ingestion.cli.cria_vectordb", side_effect=RuntimeError("erro generico simulado")):
             with self.assertLogs("agenticlog.rag", level="ERROR") as cm:
                 with self.assertRaises(SystemExit) as ctx:
                     _executar_main(["--rebuild"])
@@ -721,21 +707,18 @@ class TestStructuredLogConfig:
         monkeypatch.setenv("LOG_FORMAT", "json")
         importlib.reload(config)
 
-        # Recarrega rag para que LOG_FORMAT e LOG_LEVEL apontem para os valores atualizados
-        importlib.reload(rag)
-
         captured = io.StringIO()
         captured_handler = logging.StreamHandler(captured)
-        from agenticlog.config import _JsonFormatter
+        from agenticlog.observability.logging import _JsonFormatter
         captured_handler.setFormatter(_JsonFormatter())
 
         # Dispara o log diretamente através do logger do módulo
-        rag.logger.addHandler(captured_handler)
-        rag.logger.setLevel(logging.DEBUG)
+        logging.getLogger("agenticlog.rag").addHandler(captured_handler)
+        logging.getLogger("agenticlog.rag").setLevel(logging.DEBUG)
         try:
-            rag.logger.info("teste json output")
+            logging.getLogger("agenticlog.rag").info("teste json output")
         finally:
-            rag.logger.removeHandler(captured_handler)
+            logging.getLogger("agenticlog.rag").removeHandler(captured_handler)
 
         output = captured.getvalue().strip()
         assert output, "Nenhuma saída de log capturada"
@@ -751,14 +734,13 @@ class TestStructuredLogConfig:
         monkeypatch.delenv("LOG_FORMAT", raising=False)
         monkeypatch.delenv("LOG_LEVEL", raising=False)
         importlib.reload(config)
-        importlib.reload(rag)
 
         # Em modo text, _executar_main configura o logger 'agenticlog' sem formatter JSON.
         # Verifica que _JsonFormatter NÃO está registrado no logger do pacote após a chamada.
-        with patch.object(rag, "cria_vectordb", return_value=None):
-            rag._executar_main(["--rebuild"])
+        with patch("agenticlog.ingestion.cli.cria_vectordb", return_value=None):
+            _executar_main(["--rebuild"])
 
-        from agenticlog.config import _JsonFormatter
+        from agenticlog.observability.logging import _JsonFormatter
         pkg_logger = logging.getLogger("agenticlog")
         json_handlers = [h for h in pkg_logger.handlers if isinstance(getattr(h, "formatter", None), _JsonFormatter)]
         assert json_handlers == [], f"Não esperava _JsonFormatter em modo text, encontrado: {json_handlers}"
@@ -801,7 +783,7 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        import agenticlog.agent  # garante que o módulo está em sys.modules antes dos patches  # noqa: F401
+        import agenticlog.retrieval.retriever  # garante que o módulo está em sys.modules antes dos patches  # noqa: F401
 
     def _chunk(self, content: str = "chunk") -> LCDocument:
         return LCDocument(page_content=content, metadata={})
@@ -822,12 +804,12 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
 
             with (
                 patch("agenticlog.ingestion.orchestrator.Chroma", return_value=mock_vdb),
-                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.ingestion.orchestrator.criar_embedding_model"),
                 patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
-                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
-                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
-                patch("agenticlog.agent.invalidar_vector_db") as mock_invalidar,
+                patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.ingestion.orchestrator.DIR_VECTORDB", new=tmp_path / "vectordb"),
+                patch("agenticlog.retrieval.retriever.invalidar_vector_db") as mock_invalidar,
             ):
                 mock_loader = MagicMock()
                 mock_loader.load.return_value = [LCDocument(page_content="doc", metadata={})]
@@ -861,12 +843,12 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
 
             with (
                 patch("agenticlog.ingestion.orchestrator.Chroma", return_value=mock_vdb),
-                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.ingestion.orchestrator.criar_embedding_model"),
                 patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
-                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
-                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
-                patch("agenticlog.agent.invalidar_vector_db"),
+                patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.ingestion.orchestrator.DIR_VECTORDB", new=tmp_path / "vectordb"),
+                patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
             ):
                 mock_loader_cls.return_value.load.return_value = [LCDocument(page_content="d", metadata={})]
                 mock_splitter_cls.return_value.split_documents.return_value = chunks
@@ -886,9 +868,9 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
 
         with (
             patch("agenticlog.ingestion.orchestrator.Chroma", return_value=mock_vdb),
-            patch("agenticlog.rag._get_rag_embedding_model"),
-            patch("agenticlog.rag.DIR_DOCUMENTS") as mock_dir,
-            patch("agenticlog.rag.DIR_VECTORDB"),
+            patch("agenticlog.ingestion.orchestrator.criar_embedding_model"),
+            patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS") as mock_dir,
+            patch("agenticlog.ingestion.orchestrator.DIR_VECTORDB"),
         ):
             mock_dir.glob.return_value = []
 
@@ -912,12 +894,12 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
 
             with (
                 patch("agenticlog.ingestion.orchestrator.Chroma", return_value=mock_vdb),
-                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.ingestion.orchestrator.criar_embedding_model"),
                 patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
-                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
-                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
-                patch("agenticlog.agent.invalidar_vector_db"),
+                patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.ingestion.orchestrator.DIR_VECTORDB", new=tmp_path / "vectordb"),
+                patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
             ):
                 mock_loader_cls.return_value.load.return_value = [
                     LCDocument(page_content="pedido v2", metadata={})
@@ -930,19 +912,19 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
         mock_vdb.add_documents.assert_called_once()
         mock_vdb.delete.assert_called_once_with(ids=old_ids)
 
-    @patch("agenticlog.rag._get_rag_embedding_model")
+    @patch("agenticlog.ingestion.orchestrator.criar_embedding_model")
     def teste_5_rejeita_seguranca(self, _mock_embedding: MagicMock) -> None:
         """Falha de validação de segurança levanta RAGSecurityError antes de tocar Chroma."""
-        with self.assertRaises(rag.RAGSecurityError):
-            rag.adicionar_documento_incrementalmente("arquivo.txt", b"{}")
+        with self.assertRaises(RAGSecurityError):
+            adicionar_documento_incrementalmente("arquivo.txt", b"{}")
 
-    @patch("agenticlog.rag._get_rag_embedding_model")
+    @patch("agenticlog.ingestion.orchestrator.criar_embedding_model")
     def teste_6_rejeita_limite_arquivos(self, _mock_embedding: MagicMock) -> None:
         """MAX_JSON_FILES atingido levanta RAGSecurityError."""
-        with patch("agenticlog.rag.DIR_DOCUMENTS") as mock_dir:
+        with patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS") as mock_dir:
             mock_dir.glob.return_value = [MagicMock()] * MAX_JSON_FILES
-            with self.assertRaises(rag.RAGSecurityError) as ctx:
-                rag.adicionar_documento_incrementalmente("novo.json", b'{"k": "v"}')
+            with self.assertRaises(RAGSecurityError) as ctx:
+                adicionar_documento_incrementalmente("novo.json", b'{"k": "v"}')
         self.assertIn(str(MAX_JSON_FILES), str(ctx.exception))
 
     def teste_7_falha_no_add_dispara_rollback(self) -> None:
@@ -956,11 +938,11 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
 
             with (
                 patch("agenticlog.ingestion.orchestrator.Chroma", return_value=mock_vdb),
-                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.ingestion.orchestrator.criar_embedding_model"),
                 patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
-                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
-                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
+                patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.ingestion.orchestrator.DIR_VECTORDB", new=tmp_path / "vectordb"),
             ):
                 mock_loader_cls.return_value.load.return_value = [LCDocument(page_content="d", metadata={})]
                 mock_splitter_cls.return_value.split_documents.return_value = [self._chunk()]
@@ -985,11 +967,11 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
 
             with (
                 patch("agenticlog.ingestion.orchestrator.Chroma", return_value=mock_vdb),
-                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.ingestion.orchestrator.criar_embedding_model"),
                 patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
-                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
-                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
+                patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.ingestion.orchestrator.DIR_VECTORDB", new=tmp_path / "vectordb"),
                 self.assertLogs("agenticlog.rag", level="WARNING") as log_ctx,
             ):
                 mock_loader_cls.return_value.load.return_value = [LCDocument(page_content="d", metadata={})]
@@ -1011,11 +993,11 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
 
             with (
                 patch("agenticlog.ingestion.orchestrator.Chroma", return_value=mock_vdb),
-                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.ingestion.orchestrator.criar_embedding_model"),
                 patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
-                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
-                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
+                patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.ingestion.orchestrator.DIR_VECTORDB", new=tmp_path / "vectordb"),
                 self.assertLogs("agenticlog.rag", level="WARNING") as log_ctx,
             ):
                 mock_loader_cls.return_value.load.return_value = [LCDocument(page_content="d", metadata={})]
@@ -1039,12 +1021,12 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
             tmp_path = Path(tmp_dir)
             with (
                 patch("agenticlog.ingestion.orchestrator.Chroma", return_value=mock_vdb),
-                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.ingestion.orchestrator.criar_embedding_model"),
                 patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
-                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
-                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
-                patch("agenticlog.agent.invalidar_vector_db"),
+                patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.ingestion.orchestrator.DIR_VECTORDB", new=tmp_path / "vectordb"),
+                patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
             ):
                 mock_loader_cls.return_value.load.return_value = [
                     LCDocument(page_content="campo: valor", metadata={})
@@ -1071,12 +1053,12 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
             tmp_path = Path(tmp_dir)
             with (
                 patch("agenticlog.ingestion.orchestrator.Chroma", return_value=mock_vdb),
-                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.ingestion.orchestrator.criar_embedding_model"),
                 patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
-                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
-                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
-                patch("agenticlog.agent.invalidar_vector_db"),
+                patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.ingestion.orchestrator.DIR_VECTORDB", new=tmp_path / "vectordb"),
+                patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
             ):
                 mock_loader_cls.return_value.load.return_value = [
                     LCDocument(page_content="campo_a: valor", metadata={}),
@@ -1113,11 +1095,11 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
 
             with (
                 patch("agenticlog.ingestion.orchestrator.Chroma", return_value=mock_vdb),
-                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.ingestion.orchestrator.criar_embedding_model"),
                 patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
-                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
-                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
+                patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.ingestion.orchestrator.DIR_VECTORDB", new=tmp_path / "vectordb"),
             ):
                 mock_loader_cls.return_value.load.return_value = [LCDocument(page_content="d", metadata={})]
                 mock_splitter_cls.return_value.split_documents.return_value = [self._chunk()]
@@ -1153,11 +1135,11 @@ class TestAdicionarDocumentoIncrementalmente(unittest.TestCase):
 
             with (
                 patch("agenticlog.ingestion.orchestrator.Chroma", return_value=mock_vdb),
-                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.ingestion.orchestrator.criar_embedding_model"),
                 patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
-                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
-                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
+                patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.ingestion.orchestrator.DIR_VECTORDB", new=tmp_path / "vectordb"),
             ):
                 mock_loader_cls.return_value.load.return_value = [LCDocument(page_content="d", metadata={})]
                 mock_splitter_cls.return_value.split_documents.side_effect = RuntimeError("embed fail")
@@ -1179,7 +1161,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        import agenticlog.agent  # garante que o módulo está em sys.modules antes dos patches  # noqa: F401
+        import agenticlog.retrieval.retriever  # garante que o módulo está em sys.modules antes dos patches  # noqa: F401
 
     def _valid_pdf_bytes(self) -> bytes:
         return b"%PDF-1.4 fake content"
@@ -1195,7 +1177,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
     @patch("agenticlog.ingestion.orchestrator.uuid")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.ingestion.orchestrator.shutil")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
@@ -1241,7 +1223,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
 
         mock_uuid.uuid4.return_value.hex = "abc123"
 
-        with patch("agenticlog.agent.invalidar_vector_db") as mock_invalidar:
+        with patch("agenticlog.retrieval.retriever.invalidar_vector_db") as mock_invalidar:
             result = adicionar_pdf_incrementalmente("contrato.pdf", conteudo)
 
         self.assertEqual(result["status"], "adicionado")
@@ -1260,7 +1242,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
         self.assertIn("source", meta)
         self.assertEqual(meta["doc_type"], "pdf")
 
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     def teste_2_duplicado_mesmo_hash(
@@ -1289,12 +1271,12 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
         mock_vdb.add_documents.assert_not_called()
 
     @patch("agenticlog.ingestion.store.shutil")
-    @patch("agenticlog.agent.invalidar_vector_db")
+    @patch("agenticlog.retrieval.retriever.invalidar_vector_db")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
     @patch("agenticlog.ingestion.orchestrator.shutil")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     def teste_3_upsert_hash_diferente_mesmo_nome(
@@ -1352,11 +1334,11 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
 
             with (
                 patch("agenticlog.ingestion.orchestrator.Chroma", return_value=mock_vdb),
-                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.ingestion.orchestrator.criar_embedding_model"),
                 patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf") as mock_extrair,
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
-                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
-                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
+                patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.ingestion.orchestrator.DIR_VECTORDB", new=tmp_path / "vectordb"),
             ):
                 mock_extrair.return_value = {"PÁGINA_1": "texto"}
                 mock_splitter_cls.return_value.split_documents.return_value = [self._chunk()]
@@ -1387,11 +1369,11 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
 
             with (
                 patch("agenticlog.ingestion.orchestrator.Chroma", return_value=mock_vdb),
-                patch("agenticlog.rag._get_rag_embedding_model"),
+                patch("agenticlog.ingestion.orchestrator.criar_embedding_model"),
                 patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf") as mock_extrair,
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
-                patch("agenticlog.rag.DIR_DOCUMENTS", new=tmp_path),
-                patch("agenticlog.rag.DIR_VECTORDB", new=tmp_path / "vectordb"),
+                patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS", new=tmp_path),
+                patch("agenticlog.ingestion.orchestrator.DIR_VECTORDB", new=tmp_path / "vectordb"),
             ):
                 mock_extrair.return_value = {"PÁGINA_1": "texto"}
                 mock_splitter_cls.return_value.split_documents.side_effect = RuntimeError("embed fail")
@@ -1409,13 +1391,13 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
 
     def teste_4_rejeita_extensao_invalida(self) -> None:
         """Extensão .docx → RAGSecurityError antes de qualquer operação em disco."""
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
+        with self.assertRaises(RAGSecurityError) as ctx:
             adicionar_pdf_incrementalmente("documento.docx", b"%PDF-1.4 content")
         self.assertIn("pdf", str(ctx.exception).lower())
 
     def teste_5_rejeita_magic_bytes_invalidos(self) -> None:
         """Conteúdo sem magic bytes %PDF → RAGSecurityError antes de qualquer escrita."""
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
+        with self.assertRaises(RAGSecurityError) as ctx:
             adicionar_pdf_incrementalmente("doc.pdf", b"PK\x03\x04 not a pdf")
         self.assertIn("PDF", str(ctx.exception))
 
@@ -1423,21 +1405,21 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
         """Conteúdo > MAX_DOCUMENT_FILE_SIZE_MB MB → RAGSecurityError antes de escrita em disco."""
         from agenticlog.config import MAX_DOCUMENT_FILE_SIZE_MB
         conteudo = b"%PDF" + b"x" * (MAX_DOCUMENT_FILE_SIZE_MB * 1024 * 1024 + 1)
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
+        with self.assertRaises(RAGSecurityError) as ctx:
             adicionar_pdf_incrementalmente("grande.pdf", conteudo)
         self.assertIn(str(MAX_DOCUMENT_FILE_SIZE_MB), str(ctx.exception))
 
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_7_rejeita_limite_de_arquivos(self, mock_dir: MagicMock) -> None:
         """json_count + pdf_count >= MAX_JSON_FILES → RAGSecurityError."""
         from agenticlog.config import MAX_JSON_FILES
         mock_dir.glob.return_value = [MagicMock()] * MAX_JSON_FILES
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
+        with self.assertRaises(RAGSecurityError) as ctx:
             adicionar_pdf_incrementalmente("novo.pdf", self._valid_pdf_bytes())
         self.assertIn(str(MAX_JSON_FILES), str(ctx.exception))
 
     @patch("agenticlog.ingestion.orchestrator.tempfile")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     def teste_8_rejeita_pdf_com_senha(
@@ -1463,14 +1445,14 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
         mock_tmp_file.name = "/tmp/tmpXXX.pdf"
         mock_tempfile.NamedTemporaryFile.return_value = mock_tmp_file
 
-        with patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf", side_effect=rag.RAGSecurityError("PDF protegido por senha.")):
-            with self.assertRaises(rag.RAGSecurityError) as ctx:
+        with patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf", side_effect=RAGSecurityError("PDF protegido por senha.")):
+            with self.assertRaises(RAGSecurityError) as ctx:
                 adicionar_pdf_incrementalmente("protegido.pdf", conteudo)
 
         self.assertIn("senha", str(ctx.exception))
 
     @patch("agenticlog.ingestion.orchestrator.tempfile")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     def teste_9_rejeita_pdf_somente_imagem(
@@ -1498,9 +1480,9 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
 
         with patch(
             "agenticlog.ingestion.orchestrator.extrair_texto_pdf",
-            side_effect=rag.RAGSecurityError("PDF não contém texto extraível (somente imagem)."),
+            side_effect=RAGSecurityError("PDF não contém texto extraível (somente imagem)."),
         ):
-            with self.assertRaises(rag.RAGSecurityError) as ctx:
+            with self.assertRaises(RAGSecurityError) as ctx:
                 adicionar_pdf_incrementalmente("scan.pdf", conteudo)
 
         self.assertIn("somente imagem", str(ctx.exception))
@@ -1508,7 +1490,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
     @patch("agenticlog.ingestion.orchestrator.uuid")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.ingestion.orchestrator.shutil")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
@@ -1557,7 +1539,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
     @patch("agenticlog.ingestion.orchestrator.uuid")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.ingestion.orchestrator.shutil")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
@@ -1609,7 +1591,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
     @patch("agenticlog.ingestion.orchestrator.uuid")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
     @patch("agenticlog.ingestion.orchestrator.shutil")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
@@ -1658,7 +1640,7 @@ class TestAdicionarPdfIncrementalmente(unittest.TestCase):
 
         mock_uuid.uuid4.return_value.hex = "aabbcc"
 
-        with patch("agenticlog.agent.invalidar_vector_db"):
+        with patch("agenticlog.retrieval.retriever.invalidar_vector_db"):
             adicionar_pdf_incrementalmente("multi.pdf", conteudo)
 
         called_chunks = mock_vdb.add_documents.call_args[0][0]
@@ -1722,13 +1704,13 @@ class TestIngerirIncrementalmente(unittest.TestCase):
 
             def _side(nome, conteudo, collection_name, **kwargs):
                 if nome == "malicioso.json":
-                    raise rag.RAGSecurityError("chave proibida")
+                    raise RAGSecurityError("chave proibida")
                 return {"status": "adicionado", "mensagem": "ok"}
 
             with patch.object(orchestrator, "DIR_DOCUMENTS", tmp), \
                  patch.object(orchestrator, "adicionar_documento_incrementalmente", side_effect=_side), \
                  patch.object(orchestrator, "adicionar_pdf_incrementalmente", MagicMock()):
-                with self.assertRaises(rag.RAGSecurityError):
+                with self.assertRaises(RAGSecurityError):
                     orchestrator.ingerir_incrementalmente()
 
     def teste_2c_propaga_collection_name(self):
@@ -1751,28 +1733,28 @@ class TestIngerirIncrementalmente(unittest.TestCase):
     def teste_3_sem_arquivos_retorna_dict_vazio(self):
         """Diretório sem documentos retorna contadores vazios sem erro."""
         with tempfile.TemporaryDirectory() as d:
-            with patch.object(rag, "DIR_DOCUMENTS", Path(d)):
+            with patch.object(orchestrator, "DIR_DOCUMENTS", Path(d)):
                 self.assertEqual(ingerir_incrementalmente(), {})
 
     def teste_4_cli_sem_flags_chama_ingestao_incremental(self):
         """_executar_main() sem flags invoca ingerir_incrementalmente, não cria_vectordb (REC-04)."""
-        with patch.object(rag, "ingerir_incrementalmente", return_value={}) as mock_inc, \
-             patch.object(rag, "cria_vectordb") as mock_rebuild:
-            rag._executar_main([])
+        with patch("agenticlog.ingestion.cli.ingerir_incrementalmente", return_value={}) as mock_inc, \
+             patch("agenticlog.ingestion.cli.cria_vectordb") as mock_rebuild:
+            _executar_main([])
 
         mock_inc.assert_called_once()
         mock_rebuild.assert_not_called()
 
     def teste_5_cli_rebuild_chama_cria_vectordb(self):
         """_executar_main(['--rebuild']) invoca cria_vectordb, não a ingestão incremental."""
-        with patch.object(rag, "ingerir_incrementalmente") as mock_inc, \
-             patch.object(rag, "cria_vectordb", return_value=None) as mock_rebuild:
-            rag._executar_main(["--rebuild"])
+        with patch("agenticlog.ingestion.cli.ingerir_incrementalmente") as mock_inc, \
+             patch("agenticlog.ingestion.cli.cria_vectordb", return_value=None) as mock_rebuild:
+            _executar_main(["--rebuild"])
 
         mock_rebuild.assert_called_once()
         mock_inc.assert_not_called()
 
 
 if __name__ == "__main__":
-    print("\nIniciando testes do RAG. Aguarde...\n")
+    print("\nIniciando testes do RAG. Aguarde...\n")  # noqa: T201
     unittest.main(verbosity=2)

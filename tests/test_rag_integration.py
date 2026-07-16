@@ -17,9 +17,9 @@ sys.path.insert(0, str(_root / "src"))
 
 from langchain_core.documents import Document as LCDocument
 
-from agenticlog.rag import adicionar_documento_incrementalmente, RAGSecurityError
 from agenticlog.config import DEFAULT_COLLECTION_NAME
-from agenticlog.agent import _get_retriever
+from agenticlog.ingestion.orchestrator import adicionar_documento_incrementalmente
+from agenticlog.retrieval.retriever import _get_retriever
 
 
 def _mock_emb():
@@ -46,9 +46,9 @@ class TestIngestionIntegration:
         mock_emb_instance = _mock_emb()
 
         with (
-            patch("agenticlog.rag.DIR_DOCUMENTS", new=doc_dir),
-            patch("agenticlog.rag.DIR_VECTORDB", new=vdb_dir),
-            patch("agenticlog.rag._get_rag_embedding_model", return_value=mock_emb_instance),
+            patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS", new=doc_dir),
+            patch("agenticlog.ingestion.orchestrator.DIR_VECTORDB", new=vdb_dir),
+            patch("agenticlog.ingestion.orchestrator.criar_embedding_model", return_value=mock_emb_instance),
             patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
         ):
             result_a = adicionar_documento_incrementalmente(
@@ -76,9 +76,9 @@ class TestIngestionIntegration:
         mock_emb_instance = _mock_emb()
 
         with (
-            patch("agenticlog.rag.DIR_DOCUMENTS", new=doc_dir),
-            patch("agenticlog.rag.DIR_VECTORDB", new=vdb_dir),
-            patch("agenticlog.rag._get_rag_embedding_model", return_value=mock_emb_instance),
+            patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS", new=doc_dir),
+            patch("agenticlog.ingestion.orchestrator.DIR_VECTORDB", new=vdb_dir),
+            patch("agenticlog.ingestion.orchestrator.criar_embedding_model", return_value=mock_emb_instance),
             patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
         ):
             result_a = adicionar_documento_incrementalmente(
@@ -105,9 +105,9 @@ class TestIngestionIntegration:
         mock_emb_instance = _mock_emb()
 
         with (
-            patch("agenticlog.rag.DIR_DOCUMENTS", new=doc_dir),
-            patch("agenticlog.rag.DIR_VECTORDB", new=vdb_dir),
-            patch("agenticlog.rag._get_rag_embedding_model", return_value=mock_emb_instance),
+            patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS", new=doc_dir),
+            patch("agenticlog.ingestion.orchestrator.DIR_VECTORDB", new=vdb_dir),
+            patch("agenticlog.ingestion.orchestrator.criar_embedding_model", return_value=mock_emb_instance),
             patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
         ):
             result = adicionar_documento_incrementalmente(
@@ -132,9 +132,9 @@ class TestIngestionIntegration:
         fail_vdb.add_documents.side_effect = RuntimeError("falha simulada")
 
         with (
-            patch("agenticlog.rag.DIR_DOCUMENTS", new=doc_dir),
-            patch("agenticlog.rag.DIR_VECTORDB", new=vdb_dir),
-            patch("agenticlog.rag._get_rag_embedding_model", return_value=mock_emb_instance),
+            patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS", new=doc_dir),
+            patch("agenticlog.ingestion.orchestrator.DIR_VECTORDB", new=vdb_dir),
+            patch("agenticlog.ingestion.orchestrator.criar_embedding_model", return_value=mock_emb_instance),
             patch("agenticlog.ingestion.orchestrator.Chroma", return_value=fail_vdb),
             patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
             patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
@@ -164,9 +164,9 @@ class TestIngestionIntegration:
         mock_emb_instance = _mock_emb()
 
         with (
-            patch("agenticlog.rag.DIR_DOCUMENTS", new=doc_dir),
-            patch("agenticlog.rag.DIR_VECTORDB", new=vdb_dir),
-            patch("agenticlog.rag._get_rag_embedding_model", return_value=mock_emb_instance),
+            patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS", new=doc_dir),
+            patch("agenticlog.ingestion.orchestrator.DIR_VECTORDB", new=vdb_dir),
+            patch("agenticlog.ingestion.orchestrator.criar_embedding_model", return_value=mock_emb_instance),
             patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
         ):
             result_forn = adicionar_documento_incrementalmente(
@@ -192,9 +192,9 @@ class TestIngestionIntegration:
         mock_emb_instance = _mock_emb()
 
         with (
-            patch("agenticlog.rag.DIR_DOCUMENTS", new=doc_dir),
-            patch("agenticlog.rag.DIR_VECTORDB", new=vdb_dir),
-            patch("agenticlog.rag._get_rag_embedding_model", return_value=mock_emb_instance),
+            patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS", new=doc_dir),
+            patch("agenticlog.ingestion.orchestrator.DIR_VECTORDB", new=vdb_dir),
+            patch("agenticlog.ingestion.orchestrator.criar_embedding_model", return_value=mock_emb_instance),
             patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
         ):
             result = adicionar_documento_incrementalmente(
@@ -230,9 +230,9 @@ class TestIngestionIntegration:
 
         # Ingere documentos nas duas coleções usando ChromaDB real em disco temporário
         with (
-            patch("agenticlog.rag.DIR_DOCUMENTS", new=doc_dir),
-            patch("agenticlog.rag.DIR_VECTORDB", new=vdb_dir),
-            patch("agenticlog.rag._get_rag_embedding_model", return_value=mock_emb_instance),
+            patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS", new=doc_dir),
+            patch("agenticlog.ingestion.orchestrator.DIR_VECTORDB", new=vdb_dir),
+            patch("agenticlog.ingestion.orchestrator.criar_embedding_model", return_value=mock_emb_instance),
             patch("agenticlog.retrieval.retriever.invalidar_vector_db"),
         ):
             adicionar_documento_incrementalmente(
@@ -259,8 +259,8 @@ class TestIngestionIntegration:
 
         # Executa _get_retriever com fan-out sobre as duas coleções de teste
         with (
-            patch("agenticlog.agent._listar_colecoes", return_value=["fornecedores", "contratos"]),
-            patch("agenticlog.agent._get_vector_db", side_effect=_fake_get_vector_db),
+            patch("agenticlog.retrieval.retriever._listar_colecoes", return_value=["fornecedores", "contratos"]),
+            patch("agenticlog.retrieval.retriever._get_vector_db", side_effect=_fake_get_vector_db),
         ):
             docs = _get_retriever("fornecedor contrato")
 

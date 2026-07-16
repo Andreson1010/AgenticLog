@@ -10,26 +10,28 @@ _root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_root / "src"))
 
 import unittest
-from unittest.mock import patch, MagicMock, call
-import httpx
+from unittest.mock import MagicMock, patch
 
+import httpx
 from langchain_core.documents import Document
 
-from agenticlog.agent import (
-    passo_decisao_agente,
-    usar_ferramenta_web,
-    retrieve_info,
-    gera_multiplas_respostas,
-    avalia_similaridade,
-    rank_respostas,
-    _invoke_chain,
-    AgentState,
-    _get_llm,
-    _get_vector_db,
-)
-import agenticlog.agent as agent_module
 import agenticlog.config as config
+import agenticlog.retrieval.generation as _gen
 from agenticlog.config import LLM_MAX_RETRY_ATTEMPTS, LLM_TIMEOUT_SECONDS
+from agenticlog.retrieval.generation import (
+    _get_llm,
+    _invoke_chain,
+    avalia_similaridade,
+    gera_multiplas_respostas,
+    rank_respostas,
+)
+from agenticlog.retrieval.graph import (
+    passo_decisao_agente,
+    retrieve_info,
+    usar_ferramenta_web,
+)
+from agenticlog.retrieval.retriever import _get_vector_db
+from agenticlog.retrieval.state import AgentState
 
 
 class TestAgenticRAG(unittest.TestCase):
@@ -53,7 +55,7 @@ class TestAgenticRAG(unittest.TestCase):
         self.assertEqual(new_state.next_step, "retrieve")
 
     @patch("agenticlog.retrieval.graph._invoke_chain")
-    @patch("agenticlog.agent.search")
+    @patch("agenticlog.retrieval.graph.search")
     def teste_4_usar_ferramenta_web(self, mock_search, mock_invoke_chain):
         mock_search.run.return_value = "resultados da busca"
         mock_invoke_chain.return_value = "Resposta da web."
@@ -144,7 +146,7 @@ class TestAgenticRAG(unittest.TestCase):
         invoke_arg = mock_chain.invoke.call_args[0][0]
         self.assertEqual(invoke_arg.get("context", ""), "")
 
-    @patch("agenticlog.agent._get_embedding_model")
+    @patch("agenticlog.retrieval.retriever._get_embedding_model")
     def teste_7_avalia_similaridade(self, mock_get_embedding_model):
         mock_embedding_model = MagicMock()
         mock_embedding_model.embed_documents.return_value = [[0.1] * 768]
@@ -157,7 +159,7 @@ class TestAgenticRAG(unittest.TestCase):
         new_state = avalia_similaridade(state)
         self.assertEqual(len(new_state.similarity_scores), 1)
 
-    @patch("agenticlog.agent._get_embedding_model")
+    @patch("agenticlog.retrieval.retriever._get_embedding_model")
     def teste_7b_avalia_similaridade_empty_retrieved(self, mock_get_embedding_model):
         """Recuperação vazia: retrieved_info vazio resulta em similarity_scores zerados."""
         state = AgentState(
@@ -182,15 +184,15 @@ class TestAgenticRAG(unittest.TestCase):
     def teste_9_import_sem_lmstudio(self, mock_chat_openai):
         """LAZY-01: recarregar o módulo não deve instanciar ChatOpenAI (init é lazy)."""
         import importlib
-        importlib.reload(agent_module)
+        importlib.reload(_gen)
         mock_chat_openai.assert_not_called()
-        self.assertIsNone(agent_module._llm)
+        self.assertIsNone(_gen._llm)
 
     @patch("agenticlog.retrieval.generation.ChatOpenAI")
     def teste_10_get_llm_singleton(self, mock_chat_openai):
         """LAZY-04: _get_llm() retorna a mesma instância em chamadas repetidas (singleton)
         e é criado com request_timeout=LLM_TIMEOUT_SECONDS."""
-        agent_module._llm = None
+        _gen._llm = None
         mock_instance = MagicMock()
         mock_chat_openai.return_value = mock_instance
 
@@ -203,13 +205,13 @@ class TestAgenticRAG(unittest.TestCase):
         self.assertEqual(kwargs.get("request_timeout"), LLM_TIMEOUT_SECONDS)
 
         # limpar singleton para não vazar entre testes
-        agent_module._llm = None
+        _gen._llm = None
 
     @patch("agenticlog.retrieval.retriever.Chroma")
-    @patch("agenticlog.agent._get_embedding_model")
+    @patch("agenticlog.retrieval.retriever._get_embedding_model")
     def teste_11_get_vector_db_singleton(self, mock_get_embedding, mock_chroma):
         """LAZY-05: _get_vector_db() retorna a mesma instância em chamadas repetidas (singleton)."""
-        agent_module._vector_db = None
+        import agenticlog.retrieval.retriever as _retr
         mock_db_instance = MagicMock()
         mock_chroma.return_value = mock_db_instance
         mock_get_embedding.return_value = MagicMock()
@@ -221,11 +223,11 @@ class TestAgenticRAG(unittest.TestCase):
         mock_chroma.assert_called_once()
 
         # limpar singleton para não vazar entre testes
-        agent_module._vector_db = None
+        _retr._vector_dbs.clear()
 
     def teste_12_sem_import_anthropic(self):
-        """LLMPORT-08/09/10: agent.py não referencia mais o pacote `anthropic`."""
-        self.assertNotIn("anthropic", agent_module.__dict__.keys())
+        """LLMPORT-08/09/10: generation não referencia o pacote `anthropic`."""
+        self.assertNotIn("anthropic", _gen.__dict__.keys())
 
 
 class TestRetryLogic(unittest.TestCase):
@@ -300,7 +302,7 @@ class TestRetryLogic(unittest.TestCase):
         self.assertEqual(mock_chain.invoke.call_count, 2)
 
     @patch("agenticlog.retrieval.graph._invoke_chain")
-    @patch("agenticlog.agent.search")
+    @patch("agenticlog.retrieval.graph.search")
     def teste_6_duckduckgo_falha_retorna_fallback_sem_propagar(
         self, mock_search, mock_invoke_chain
     ):
@@ -365,5 +367,5 @@ class TestRetryLogic(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    print("\nIniciando os testes. Aguarde...\n")
+    print("\nIniciando os testes. Aguarde...\n")  # noqa: T201
     unittest.main(verbosity=2)

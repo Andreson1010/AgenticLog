@@ -11,16 +11,15 @@ import httpx
 _root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_root / "src"))
 
+import agenticlog.serving.health as serving_health  # noqa: E402  # destino real das funcoes (ADR-018 Fase 5)
 from agenticlog.config import LLM_API_BASE, LLM_HEALTH_CHECK_TIMEOUT_SECONDS, LLM_MODEL
-from agenticlog.health import (
+from agenticlog.serving.health import (
     LMStudioUnavailableError,
     ModeloNaoCarregadoError,
     _extrair_ids_modelos,
     check_lmstudio_health,
     reset_health_check_sentinel,
 )
-import agenticlog.health as health_module
-import agenticlog.serving.health as serving_health  # noqa: E402  # destino real das funcoes (ADR-018 Fase 5)
 
 _MODELS_URL = f"{LLM_API_BASE.rstrip('/')}/models"
 
@@ -127,9 +126,9 @@ class TestLmstudioHealthCheck(TestCase):
 
     @patch("agenticlog.serving.health.httpx.Client")
     def teste_7_exportado_via_init(self, mock_client_cls):
+        from agenticlog import LMStudioUnavailableError as exported_error  # noqa: N813
+        from agenticlog import ModeloNaoCarregadoError as exported_modelo_error  # noqa: N813
         from agenticlog import check_lmstudio_health as exported_check
-        from agenticlog import LMStudioUnavailableError as exported_error
-        from agenticlog import ModeloNaoCarregadoError as exported_modelo_error
 
         self.assertIs(exported_check, check_lmstudio_health)
         self.assertIs(exported_error, LMStudioUnavailableError)

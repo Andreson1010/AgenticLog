@@ -22,7 +22,7 @@ Cobre LLMPORT-01..16 (spec.md, .specs/features/llm-provider-portability/spec.md)
 
   P2 — Sem dependencia `anthropic`:
     LLMPORT-08: agent.py nao importa/referencia `anthropic`
-    LLMPORT-09: `import agenticlog.agent` funciona sem ImportError/ModuleNotFoundError
+    LLMPORT-09: `import agenticlog.retrieval.generation` funciona sem ImportError/ModuleNotFoundError
     LLMPORT-10: tests/test_agentic_rag.py nao importa/referencia `anthropic`
     LLMPORT-11: requirements.txt nao contem `anthropic==0.104.1`
 
@@ -54,7 +54,6 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 import httpx
-import pytest
 from openai import APIConnectionError
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
@@ -219,7 +218,7 @@ class TestAC05to07RetryTargetsOpenAIConnectionError(TestCase):
         first attempt AND a subsequent attempt does not raise THEN
         _invoke_chain SHALL retry and SHALL return the successful result.
         """
-        from agenticlog.agent import _invoke_chain
+        from agenticlog.retrieval.generation import _invoke_chain
 
         mock_chain = MagicMock()
         mock_chain.invoke.side_effect = [
@@ -245,8 +244,8 @@ class TestAC05to07RetryTargetsOpenAIConnectionError(TestCase):
         """
         from tenacity import RetryError
 
-        from agenticlog.agent import _invoke_chain
         from agenticlog.config import LLM_MAX_RETRY_ATTEMPTS
+        from agenticlog.retrieval.generation import _invoke_chain
 
         mock_chain = MagicMock()
         mock_chain.invoke.side_effect = APIConnectionError(
@@ -271,7 +270,7 @@ class TestAC05to07RetryTargetsOpenAIConnectionError(TestCase):
         httpx.RemoteProtocolError, and openai.APIConnectionError — and SHALL
         NOT contain anthropic.APIConnectionError.
         """
-        import agenticlog.agent as agent_module
+        import agenticlog.retrieval.generation as agent_module
 
         retry_predicate = agent_module._invoke_chain.retry.retry
         exception_types = retry_predicate.exception_types
@@ -297,7 +296,7 @@ class TestAC08to11NoAnthropicDependency(TestCase):
     """
     LLMPORT-08..11: WHEN agent.py, tests/test_agentic_rag.py, and
     requirements.txt are inspected THEN none SHALL contain `import anthropic`
-    or any reference to `anthropic`; importing agenticlog.agent SHALL succeed
+    or any reference to `anthropic`; importing agenticlog.retrieval.generation SHALL succeed
     without ImportError/ModuleNotFoundError.
     """
 
@@ -306,18 +305,18 @@ class TestAC08to11NoAnthropicDependency(TestCase):
         LLMPORT-08: src/agenticlog/agent.py SHALL NOT contain `import anthropic`
         or any reference to `anthropic`.
         """
-        agent_source = (_ROOT / "src" / "agenticlog" / "agent.py").read_text(encoding="utf-8")
+        agent_source = (_ROOT / "src" / "agenticlog" / "retrieval" / "generation.py").read_text(encoding="utf-8")
 
         self.assertNotIn("anthropic", agent_source.lower())
 
     def test_ac09_import_agenticlog_agent_succeeds_in_subprocess(self):
         """
-        LLMPORT-09: WHEN agenticlog.agent is imported THEN no
+        LLMPORT-09: WHEN agenticlog.retrieval.generation is imported THEN no
         ImportError/ModuleNotFoundError SHALL occur. Run in a clean subprocess
-        (per spec's "Independent Test": `python -c "import agenticlog.agent"`).
+        (per spec's "Independent Test": `python -c "import agenticlog.retrieval.generation"`).
         """
         result = subprocess.run(
-            [sys.executable, "-c", "import agenticlog.agent"],
+            [sys.executable, "-c", "import agenticlog.retrieval.generation"],
             cwd=str(_ROOT),
             capture_output=True,
             text=True,
@@ -326,7 +325,7 @@ class TestAC08to11NoAnthropicDependency(TestCase):
 
         self.assertEqual(
             result.returncode, 0,
-            f"import agenticlog.agent failed:\nstdout={result.stdout}\nstderr={result.stderr}",
+            f"import agenticlog.retrieval.generation failed:\nstdout={result.stdout}\nstderr={result.stderr}",
         )
         self.assertNotIn("ImportError", result.stderr)
         self.assertNotIn("ModuleNotFoundError", result.stderr)
@@ -375,7 +374,7 @@ class TestAC08to11NoAnthropicDependency(TestCase):
         that specifically asserts the ABSENCE of `anthropic`, per spec note).
         """
         targets = [
-            _ROOT / "src" / "agenticlog" / "agent.py",
+            _ROOT / "src" / "agenticlog" / "retrieval" / "generation.py",
             _ROOT / "tests" / "test_agentic_rag.py",
             _ROOT / "requirements.txt",
         ]
@@ -410,7 +409,7 @@ class TestAC12to16GetLlmProtocolType(TestCase):
     """
 
     def setUp(self):
-        import agenticlog.agent as agent_module
+        import agenticlog.retrieval.generation as agent_module
         self.agent_module = agent_module
         self._saved_llm = agent_module._llm
         agent_module._llm = None
@@ -427,7 +426,6 @@ class TestAC12to16GetLlmProtocolType(TestCase):
         openai_api_key=LLM_API_KEY, temperature=LLM_TEMPERATURE,
         max_tokens=LLM_MAX_TOKENS, request_timeout=LLM_TIMEOUT_SECONDS.
         """
-        from agenticlog.agent import _get_llm
         from agenticlog.config import (
             LLM_API_BASE,
             LLM_API_KEY,
@@ -436,6 +434,7 @@ class TestAC12to16GetLlmProtocolType(TestCase):
             LLM_TEMPERATURE,
             LLM_TIMEOUT_SECONDS,
         )
+        from agenticlog.retrieval.generation import _get_llm
 
         mock_instance = MagicMock()
         mock_chat_openai.return_value = mock_instance
@@ -459,8 +458,7 @@ class TestAC12to16GetLlmProtocolType(TestCase):
         """
         import inspect
 
-        from agenticlog.retrieval.generation import ChatOpenAI
-        from agenticlog.agent import LLMClient, _get_llm
+        from agenticlog.retrieval.generation import ChatOpenAI, LLMClient, _get_llm
 
         return_annotation = inspect.signature(_get_llm).return_annotation
 
@@ -473,7 +471,7 @@ class TestAC12to16GetLlmProtocolType(TestCase):
         LLMPORT-14: WHEN the new Protocol type is inspected THEN it SHALL
         define exactly: __or__, __ror__, invoke (no more, no less).
         """
-        from agenticlog.agent import LLMClient
+        from agenticlog.retrieval.generation import LLMClient
 
         self.assertTrue(issubclass(LLMClient, typing.Protocol))
 
@@ -500,7 +498,7 @@ class TestAC12to16GetLlmProtocolType(TestCase):
         THEN it SHALL satisfy it structurally (isinstance returns True given
         @runtime_checkable) — no wrapper, adapter, or subclass introduced.
         """
-        from agenticlog.agent import LLMClient
+        from agenticlog.retrieval.generation import LLMClient
 
         self.assertTrue(getattr(LLMClient, "_is_runtime_protocol", False))
 
@@ -521,7 +519,7 @@ class TestAC12to16GetLlmProtocolType(TestCase):
 
     def test_ac16_existing_chatopenai_patching_tests_pass_unmodified(self):
         """
-        LLMPORT-16: WHEN existing tests that patch("agenticlog.agent.ChatOpenAI")
+        LLMPORT-16: WHEN existing tests that patch("agenticlog.retrieval.generation.ChatOpenAI")
         (teste_9_import_sem_lmstudio, teste_10_get_llm_singleton in
         tests/test_agentic_rag.py, and test_ac06_llm_created_with_timeout_from_config
         in tests/acceptance/test_retry_logic.py) run THEN they SHALL continue to
@@ -606,7 +604,7 @@ class TestEdgeCasesRetryBoundsAndLogging(TestCase):
         """_invoke_chain's tenacity decorator stop/wait bounds match config.py
         (not hardcoded duplicates), confirming the exception-type swap did not
         alter the retry bounds."""
-        import agenticlog.agent as agent_module
+        import agenticlog.retrieval.generation as agent_module
         from agenticlog.config import (
             LLM_MAX_RETRY_ATTEMPTS,
             LLM_RETRY_WAIT_INITIAL_SECONDS,
@@ -624,9 +622,8 @@ class TestEdgeCasesRetryBoundsAndLogging(TestCase):
         """WHEN a retry occurs due to openai.APIConnectionError THEN a WARNING-level
         log record SHALL be emitted via before_sleep_log (logging unaffected by the
         anthropic -> openai exception-type swap)."""
-        import logging
 
-        from agenticlog.agent import _invoke_chain
+        from agenticlog.retrieval.generation import _invoke_chain
 
         mock_chain = MagicMock()
         mock_chain.invoke.side_effect = [
@@ -648,7 +645,7 @@ class TestEdgeCasesRetryBoundsAndLogging(TestCase):
         import logging
 
         class _Capture:
-            def __enter__(self_inner):
+            def __enter__(self_inner):  # noqa: N805
                 self_inner.records = []
                 self_inner.handler = logging.Handler()
                 self_inner.handler.setLevel(logging.WARNING)
@@ -659,7 +656,7 @@ class TestEdgeCasesRetryBoundsAndLogging(TestCase):
                 self_inner.logger.addHandler(self_inner.handler)
                 return self_inner
 
-            def __exit__(self_inner, exc_type, exc, tb):
+            def __exit__(self_inner, exc_type, exc, tb):  # noqa: N805
                 self_inner.logger.removeHandler(self_inner.handler)
                 self_inner.logger.setLevel(self_inner.previous_level)
                 warning_records = [

@@ -4,7 +4,7 @@
 TestGetRagEmbeddingModel/TestEmbeddingModelConfig movidos de tests/test_rag.py;
 `@patch("agenticlog.rag.HuggingFaceEmbeddings")` repontado para
 `agenticlog.ingestion.embeddings.HuggingFaceEmbeddings` (construção migrou p/ o factory).
-O cache `_rag_embedding_model` fica em rag.py — o reset no setUp/tearDown continua válido.
+O cache `_rag_embedding_model` fica em ingestion/embeddings.py (Fase 6).
 """
 
 import sys
@@ -16,7 +16,7 @@ _root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_root / "src"))
 
 import agenticlog.config as config  # noqa: E402
-import agenticlog.rag as rag  # noqa: E402
+import agenticlog.ingestion.embeddings as rag  # noqa: E402
 from agenticlog.ingestion.embeddings import criar_embedding_model  # noqa: E402
 
 

@@ -23,9 +23,10 @@ import pytest
 from langchain_chroma import Chroma
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
-from agenticlog.agent import AgentState, agent_workflow
 from agenticlog.config import DEFAULT_COLLECTION_NAME, ROUTING_KEYWORDS_WEB
-from agenticlog.rag import adicionar_documento_incrementalmente
+from agenticlog.ingestion.orchestrator import adicionar_documento_incrementalmente
+from agenticlog.retrieval.graph import agent_workflow
+from agenticlog.retrieval.state import AgentState
 
 # Todo o módulo toca o Chroma real → marcado integration (gate = CI Linux).
 pytestmark = pytest.mark.integration
@@ -112,16 +113,19 @@ def rag_caracterizacao_env(tmp_path, monkeypatch):
     vdb = tmp_path / "vectordb"
     vdb.mkdir()
 
-    monkeypatch.setattr("agenticlog.rag.DIR_DOCUMENTS", docs)
-    monkeypatch.setattr("agenticlog.rag.DIR_VECTORDB", vdb)
-    monkeypatch.setattr("agenticlog.agent.DIR_VECTORDB", vdb)  # R1 — agente lê aqui
+    monkeypatch.setattr("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS", docs)
+    monkeypatch.setattr("agenticlog.ingestion.orchestrator.DIR_VECTORDB", vdb)
+    # Retrieve path usa DIR_VECTORDB do próprio retrieval.retriever (from-import separado).
+    monkeypatch.setattr("agenticlog.retrieval.retriever.DIR_VECTORDB", vdb)
 
     emb = _stub_embedding()  # compartilhado (R4)
-    monkeypatch.setattr("agenticlog.rag._rag_embedding_model", emb)
-    monkeypatch.setattr("agenticlog.agent._embedding_model", emb)
-    monkeypatch.setattr("agenticlog.agent._llm", _stub_llm())  # R3
+    # ADR-018 Fase 6: adicionar_documento_incrementalmente (orchestrator) usa
+    # criar_embedding_model() (não mais o singleton _rag_embedding_model do rag.py).
+    monkeypatch.setattr("agenticlog.ingestion.orchestrator.criar_embedding_model", lambda *a, **k: emb)
+    monkeypatch.setattr("agenticlog.retrieval.retriever._embedding_model", emb)
+    monkeypatch.setattr("agenticlog.retrieval.generation._llm", _stub_llm())  # R3
 
-    monkeypatch.setattr("agenticlog.agent._vector_dbs", {})  # R2
+    monkeypatch.setattr("agenticlog.retrieval.retriever._vector_dbs", {})  # R2
 
     return SimpleNamespace(docs=docs, vdb=vdb, emb=emb)
 
@@ -207,7 +211,7 @@ def teste_3_rota_web_alcanca_end(rag_caracterizacao_env, monkeypatch):
         return "resultado web simulado"
 
     # agent.search é um seam de fronteira (wrapper DuckDuckGo) — ALLOWED.
-    monkeypatch.setattr("agenticlog.agent.search", SimpleNamespace(run=_fake_run))
+    monkeypatch.setattr("agenticlog.retrieval.graph.search", SimpleNamespace(run=_fake_run))
 
     query_web = f"{ROUTING_KEYWORDS_WEB[0]} sobre logistica"
     estado = _invoke(query_web)
@@ -261,8 +265,10 @@ def teste_5_upsert_falho_no_embedding_reverte_disco_e_colecao(
 
     # Gatilho de falha (locked decision 1): SÓ o embed_documents do boundary de
     # ingestão levanta — não dirs read-only, não patch em Chroma.
+    # ADR-018 Fase 6: orchestrator usa criar_embedding_model() (não o singleton _rag_embedding_model).
     monkeypatch.setattr(
-        "agenticlog.rag._rag_embedding_model", _stub_embedding_que_falha()
+        "agenticlog.ingestion.orchestrator.criar_embedding_model",
+        lambda *a, **k: _stub_embedding_que_falha(),
     )
 
     conteudo_novo = json.dumps({"contrato": "C-001 valor 99999 ALTERADO"}).encode()

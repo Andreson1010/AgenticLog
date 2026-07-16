@@ -14,25 +14,24 @@ _root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_root / "src"))
 
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import httpx
 from openai import AuthenticationError
 
-import agenticlog.agent as agent_module
-from agenticlog.agent import (
-    _invoke_chain,
-    usar_ferramenta_web,
-    gera_multiplas_respostas,
-    AgentState,
-)
+import agenticlog.retrieval.generation as agent_module
 from agenticlog.config import (
     LLM_MAX_RETRY_ATTEMPTS,
     LLM_RETRY_WAIT_INITIAL_SECONDS,
     LLM_RETRY_WAIT_MAX_SECONDS,
     LLM_TIMEOUT_SECONDS,
 )
-
+from agenticlog.retrieval.generation import (
+    _invoke_chain,
+    gera_multiplas_respostas,
+)
+from agenticlog.retrieval.graph import usar_ferramenta_web
+from agenticlog.retrieval.state import AgentState
 
 # ---------------------------------------------------------------------------
 # Helper: replicate app.py error-classification logic for AC-04 tests
@@ -147,7 +146,7 @@ class TestAC02UsarWebRetries(unittest.TestCase):
         self.assertEqual(mock_chain.invoke.call_count, 2)
 
     @patch("time.sleep")
-    @patch("agenticlog.agent.search")
+    @patch("agenticlog.retrieval.graph.search")
     def test_ac02_usar_ferramenta_web_llm_retries_connect_error_end_to_end(
         self, mock_search, mock_sleep
     ):
@@ -336,7 +335,7 @@ class TestAC06ConstantsInConfig(unittest.TestCase):
         mock_instance = MagicMock()
         mock_chat_openai.return_value = mock_instance
 
-        from agenticlog.agent import _get_llm
+        from agenticlog.retrieval.generation import _get_llm
         _get_llm()
 
         _, kwargs = mock_chat_openai.call_args
@@ -413,7 +412,7 @@ class TestAC08DuckDuckGoFallback(unittest.TestCase):
     THEN the system SHALL return a fallback string and SHALL NOT propagate the exception.
     """
 
-    @patch("agenticlog.agent.search")
+    @patch("agenticlog.retrieval.graph.search")
     def test_ac08_duckduckgo_failure_returns_fallback_string(self, mock_search):
         """AC-08: DuckDuckGo exception → ranked_response='Busca indisponível no momento.'"""
         mock_search.run.side_effect = Exception("DuckDuckGo rate-limited")
@@ -425,7 +424,7 @@ class TestAC08DuckDuckGoFallback(unittest.TestCase):
         self.assertEqual(new_state.confidence_score, 0.0)
 
     @patch("agenticlog.retrieval.generation._invoke_chain")
-    @patch("agenticlog.agent.search")
+    @patch("agenticlog.retrieval.graph.search")
     def test_ac08_duckduckgo_failure_does_not_call_llm_executor(
         self, mock_search, mock_invoke_chain
     ):
@@ -437,7 +436,7 @@ class TestAC08DuckDuckGoFallback(unittest.TestCase):
 
         mock_invoke_chain.assert_not_called()
 
-    @patch("agenticlog.agent.search")
+    @patch("agenticlog.retrieval.graph.search")
     def test_ac08_duckduckgo_failure_does_not_propagate_exception(self, mock_search):
         """AC-08: usar_ferramenta_web must not raise when DuckDuckGo fails."""
         mock_search.run.side_effect = RuntimeError("network error")

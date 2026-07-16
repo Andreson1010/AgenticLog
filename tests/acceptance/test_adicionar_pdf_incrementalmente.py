@@ -16,21 +16,21 @@ Mapeamento de critérios:
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 _root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_root / "src"))
 
-import agenticlog.rag as rag
+import agenticlog.ingestion.orchestrator as rag
 from agenticlog.config import (
     DEFAULT_COLLECTION_NAME,
-    METADATA_FILE_HASH,
     METADATA_CHUNK_INDEX,
-    METADATA_PAGE,
     METADATA_DOC_TYPE,
     METADATA_DOC_TYPE_PDF,
+    METADATA_FILE_HASH,
+    METADATA_PAGE,
 )
 
 # ---------------------------------------------------------------------------
@@ -96,7 +96,7 @@ class TestAC1HappyPath:
     and return {"status": "adicionado", ...}.
     """
 
-    @patch("agenticlog.rag.invalidar_vector_db", create=True)
+    @patch("agenticlog.retrieval.retriever.invalidar_vector_db", create=True)
     @patch("agenticlog.ingestion.orchestrator.uuid")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
@@ -104,7 +104,7 @@ class TestAC1HappyPath:
     @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
     @patch("agenticlog.ingestion.orchestrator.shutil")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_1_happy_path_retorna_adicionado(
         self,
         mock_dir: MagicMock,
@@ -145,17 +145,17 @@ class TestAC1HappyPath:
         # uuid
         mock_uuid.uuid4.return_value.hex = "abcdef1234"
 
-        # Patch lazy import of invalidar_vector_db inside rag module
-        with patch.dict("sys.modules", {"agenticlog.agent": MagicMock(invalidar_vector_db=mock_invalidar)}):
-            resultado = rag.adicionar_pdf_incrementalmente(
-                _VALID_FILENAME, _VALID_PDF_BYTES, DEFAULT_COLLECTION_NAME
-            )
+        # invalidar_vector_db está mockado via @patch — lazy import usa
+        # agenticlog.retrieval.retriever.invalidar_vector_db
+        resultado = rag.adicionar_pdf_incrementalmente(
+            _VALID_FILENAME, _VALID_PDF_BYTES, DEFAULT_COLLECTION_NAME
+        )
 
         assert resultado["status"] == "adicionado"
         assert "adicionado com sucesso" in resultado["mensagem"]
         assert "2 chunks" in resultado["mensagem"]
 
-    @patch("agenticlog.rag.invalidar_vector_db", create=True)
+    @patch("agenticlog.retrieval.retriever.invalidar_vector_db", create=True)
     @patch("agenticlog.ingestion.orchestrator.uuid")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
@@ -163,7 +163,7 @@ class TestAC1HappyPath:
     @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
     @patch("agenticlog.ingestion.orchestrator.shutil")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_2_extrair_texto_chamado_exatamente_uma_vez(
         self,
         mock_dir: MagicMock,
@@ -197,16 +197,17 @@ class TestAC1HappyPath:
 
         mock_uuid.uuid4.return_value.hex = "abc123"
 
-        with patch.dict("sys.modules", {"agenticlog.agent": MagicMock(invalidar_vector_db=mock_invalidar)}):
-            rag.adicionar_pdf_incrementalmente(
-                _VALID_FILENAME, _VALID_PDF_BYTES, DEFAULT_COLLECTION_NAME
-            )
+        # invalidar_vector_db já está mockado via @patch decorator — o lazy import em
+        # orchestrator._notificar_invalidacao usa agenticlog.retrieval.retriever.invalidar_vector_db
+        rag.adicionar_pdf_incrementalmente(
+            _VALID_FILENAME, _VALID_PDF_BYTES, DEFAULT_COLLECTION_NAME
+        )
 
         assert mock_extrair.call_count == 1, (
             f"extrair_texto_pdf deve ser chamado exatamente 1 vez, foi chamado {mock_extrair.call_count} vezes"
         )
 
-    @patch("agenticlog.rag.invalidar_vector_db", create=True)
+    @patch("agenticlog.retrieval.retriever.invalidar_vector_db", create=True)
     @patch("agenticlog.ingestion.orchestrator.uuid")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
@@ -214,7 +215,7 @@ class TestAC1HappyPath:
     @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
     @patch("agenticlog.ingestion.orchestrator.shutil")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_3_chunks_tem_5_campos_de_metadados(
         self,
         mock_dir: MagicMock,
@@ -260,10 +261,11 @@ class TestAC1HappyPath:
 
         mock_vdb.add_documents.side_effect = capture_add_documents
 
-        with patch.dict("sys.modules", {"agenticlog.agent": MagicMock(invalidar_vector_db=mock_invalidar)}):
-            rag.adicionar_pdf_incrementalmente(
-                _VALID_FILENAME, _VALID_PDF_BYTES, DEFAULT_COLLECTION_NAME
-            )
+        # invalidar_vector_db já está mockado via @patch decorator — o lazy import em
+        # orchestrator._notificar_invalidacao usa agenticlog.retrieval.retriever.invalidar_vector_db
+        rag.adicionar_pdf_incrementalmente(
+            _VALID_FILENAME, _VALID_PDF_BYTES, DEFAULT_COLLECTION_NAME
+        )
 
         assert len(inserted_chunks) == 1
         chunk = inserted_chunks[0]
@@ -276,7 +278,7 @@ class TestAC1HappyPath:
             f"doc_type deve ser 'pdf', recebeu {chunk.metadata[METADATA_DOC_TYPE]!r}"
         )
 
-    @patch("agenticlog.rag.invalidar_vector_db", create=True)
+    @patch("agenticlog.retrieval.retriever.invalidar_vector_db", create=True)
     @patch("agenticlog.ingestion.orchestrator.uuid")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
@@ -284,7 +286,7 @@ class TestAC1HappyPath:
     @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
     @patch("agenticlog.ingestion.orchestrator.shutil")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_4_invalidar_cache_chamado_apos_insercao(
         self,
         mock_dir: MagicMock,
@@ -317,13 +319,9 @@ class TestAC1HappyPath:
         mock_splitter_cls.return_value = mock_splitter_instance
         mock_uuid.uuid4.return_value.hex = "abc123"
 
-        mock_agent = MagicMock()
-        mock_agent.invalidar_vector_db = mock_invalidar
-
-        with patch.dict("sys.modules", {"agenticlog.agent": mock_agent}):
-            rag.adicionar_pdf_incrementalmente(
-                _VALID_FILENAME, _VALID_PDF_BYTES, DEFAULT_COLLECTION_NAME
-            )
+        rag.adicionar_pdf_incrementalmente(
+            _VALID_FILENAME, _VALID_PDF_BYTES, DEFAULT_COLLECTION_NAME
+        )
 
         mock_invalidar.assert_called_once()
 
@@ -342,7 +340,7 @@ class TestAC2DedupMesmoHash:
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.ingestion.orchestrator.shutil")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_5_duplicado_mesmo_hash_retorna_sem_escrita(
         self,
         mock_dir: MagicMock,
@@ -375,7 +373,7 @@ class TestAC2DedupMesmoHash:
 
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.Chroma")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_6_duplicado_mensagem_contem_nome_arquivo(
         self,
         mock_dir: MagicMock,
@@ -410,14 +408,14 @@ class TestAC3Upsert:
     return {"status": "substituido", ...}.
     """
 
-    @patch("agenticlog.agent.invalidar_vector_db")
+    @patch("agenticlog.retrieval.retriever.invalidar_vector_db")
     @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.ingestion.orchestrator.shutil")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_7_upsert_substitui_chunks_antigos(
         self,
         mock_dir: MagicMock,
@@ -463,14 +461,14 @@ class TestAC3Upsert:
         mock_tempfile.NamedTemporaryFile.assert_called_once()
         mock_shutil.move.assert_called_once()
 
-    @patch("agenticlog.agent.invalidar_vector_db")
+    @patch("agenticlog.retrieval.retriever.invalidar_vector_db")
     @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.ingestion.orchestrator.shutil")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_8_upsert_mensagem_contem_nome(
         self,
         mock_dir: MagicMock,
@@ -520,7 +518,7 @@ class TestAC4SecurityValidation:
 
     @patch("agenticlog.ingestion.orchestrator.shutil")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_9_extensao_invalida_levanta_security_error(
         self,
         mock_dir: MagicMock,
@@ -537,7 +535,7 @@ class TestAC4SecurityValidation:
 
     @patch("agenticlog.ingestion.orchestrator.shutil")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_10_magic_bytes_invalidos_levanta_security_error(
         self,
         mock_dir: MagicMock,
@@ -556,7 +554,7 @@ class TestAC4SecurityValidation:
 
     @patch("agenticlog.ingestion.orchestrator.shutil")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_11_tamanho_excedido_levanta_security_error(
         self,
         mock_dir: MagicMock,
@@ -578,7 +576,7 @@ class TestAC4SecurityValidation:
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.ingestion.orchestrator.shutil")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_12_limite_de_arquivos_levanta_security_error(
         self,
         mock_dir: MagicMock,
@@ -607,7 +605,7 @@ class TestAC4SecurityValidation:
     @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
     @patch("agenticlog.ingestion.orchestrator.shutil")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_13_pdf_com_senha_levanta_security_error_e_limpa_tempfile(
         self,
         mock_dir: MagicMock,
@@ -648,7 +646,7 @@ class TestAC4SecurityValidation:
     @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
     @patch("agenticlog.ingestion.orchestrator.shutil")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_14_pdf_somente_imagem_levanta_security_error(
         self,
         mock_dir: MagicMock,
@@ -700,7 +698,7 @@ class TestAC5RollbackOnFailure:
     @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
     @patch("agenticlog.ingestion.orchestrator.shutil")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_15_rollback_deleta_ids_e_unlink_arquivo(
         self,
         mock_dir: MagicMock,
@@ -754,7 +752,7 @@ class TestAC5RollbackOnFailure:
     @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
     @patch("agenticlog.ingestion.orchestrator.shutil")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_16_rollback_reraise_excecao_original(
         self,
         mock_dir: MagicMock,
@@ -978,7 +976,7 @@ class TestAC7ZeroChunks:
     @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
     @patch("agenticlog.ingestion.orchestrator.shutil")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_23_zero_chunks_retorna_mensagem_e_unlink(
         self,
         mock_dir: MagicMock,
@@ -1029,7 +1027,7 @@ class TestAC7ZeroChunks:
     @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
     @patch("agenticlog.ingestion.orchestrator.shutil")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_24_zero_chunks_mensagem_contem_nome_arquivo(
         self,
         mock_dir: MagicMock,
@@ -1078,7 +1076,7 @@ class TestAC8GlobalChunkIndex:
     globally sequential across all pages (not reset per page).
     """
 
-    @patch("agenticlog.rag.invalidar_vector_db", create=True)
+    @patch("agenticlog.retrieval.retriever.invalidar_vector_db", create=True)
     @patch("agenticlog.ingestion.orchestrator.uuid")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
@@ -1086,7 +1084,7 @@ class TestAC8GlobalChunkIndex:
     @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
     @patch("agenticlog.ingestion.orchestrator.shutil")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_25_chunk_index_global_entre_paginas(
         self,
         mock_dir: MagicMock,
@@ -1155,10 +1153,11 @@ class TestAC8GlobalChunkIndex:
 
         mock_vdb.add_documents.side_effect = capture_add
 
-        with patch.dict("sys.modules", {"agenticlog.agent": MagicMock(invalidar_vector_db=mock_invalidar)}):
-            resultado = rag.adicionar_pdf_incrementalmente(
-                _VALID_FILENAME, _VALID_PDF_BYTES, DEFAULT_COLLECTION_NAME
-            )
+        # invalidar_vector_db já está mockado via @patch decorator — o lazy import em
+        # orchestrator._notificar_invalidacao usa agenticlog.retrieval.retriever.invalidar_vector_db
+        resultado = rag.adicionar_pdf_incrementalmente(
+            _VALID_FILENAME, _VALID_PDF_BYTES, DEFAULT_COLLECTION_NAME
+        )
 
         assert resultado["status"] == "adicionado"
         assert len(inserted_chunks) == 4
@@ -1169,7 +1168,7 @@ class TestAC8GlobalChunkIndex:
             f"chunk_index deve ser global sequencial [0,1,2,3], recebeu {chunk_indices}"
         )
 
-    @patch("agenticlog.rag.invalidar_vector_db", create=True)
+    @patch("agenticlog.retrieval.retriever.invalidar_vector_db", create=True)
     @patch("agenticlog.ingestion.orchestrator.uuid")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
@@ -1177,7 +1176,7 @@ class TestAC8GlobalChunkIndex:
     @patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf")
     @patch("agenticlog.ingestion.orchestrator.shutil")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_26_metadado_page_nao_usa_sentinel_zero(
         self,
         mock_dir: MagicMock,
@@ -1192,6 +1191,7 @@ class TestAC8GlobalChunkIndex:
     ) -> None:
         """AC-8: campo page em chunks PDF deve ser 1-based, nunca 0 (METADATA_PAGE_JSON_SENTINEL)."""
         from langchain_core.documents import Document
+
         from agenticlog.config import METADATA_PAGE_JSON_SENTINEL
 
         mock_dir.__truediv__ = lambda self_inner, other: Path("/fake/documents") / other
@@ -1219,8 +1219,9 @@ class TestAC8GlobalChunkIndex:
         inserted_chunks = []
         mock_vdb.add_documents.side_effect = lambda chunks, ids=None: inserted_chunks.extend(chunks)
 
-        with patch.dict("sys.modules", {"agenticlog.agent": MagicMock(invalidar_vector_db=mock_invalidar)}):
-            rag.adicionar_pdf_incrementalmente(_VALID_FILENAME, _VALID_PDF_BYTES)
+        # invalidar_vector_db já está mockado via @patch decorator — o lazy import em
+        # orchestrator._notificar_invalidacao usa agenticlog.retrieval.retriever.invalidar_vector_db
+        rag.adicionar_pdf_incrementalmente(_VALID_FILENAME, _VALID_PDF_BYTES)
 
         assert len(inserted_chunks) == 1
         page_val = inserted_chunks[0].metadata.get(METADATA_PAGE)

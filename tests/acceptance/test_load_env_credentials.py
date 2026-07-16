@@ -11,7 +11,7 @@ import os
 import sys
 from pathlib import Path
 from unittest import TestCase
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import patch
 
 # Worktree root — used to locate .env and .env.example on disk for AC-07/AC-08.
 _WORKTREE_ROOT = Path(__file__).resolve().parent.parent.parent

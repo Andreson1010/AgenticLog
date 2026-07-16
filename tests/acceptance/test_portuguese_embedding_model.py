@@ -31,7 +31,6 @@ sys.path.insert(0, str(_root / "src"))
 
 from agenticlog import config
 
-
 # ---------------------------------------------------------------------------
 # AC1: config.EMBEDDING_MODEL aponta para o modelo multilíngue
 # ---------------------------------------------------------------------------
@@ -69,8 +68,10 @@ class TestAC02RagEmbeddingCallSitesUsamConfig(unittest.TestCase):
     """
 
     def setUp(self) -> None:
-        import agenticlog.rag as rag_mod
-        self._rag_mod = rag_mod
+        import agenticlog.ingestion.embeddings as emb_mod
+        import agenticlog.ingestion.orchestrator as orch_mod
+        self._rag_mod = emb_mod
+        self._orch_mod = orch_mod
         self._rag_mod._rag_embedding_model = None
 
     def tearDown(self) -> None:
@@ -93,7 +94,7 @@ class TestAC02RagEmbeddingCallSitesUsamConfig(unittest.TestCase):
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.carregar_json")
     @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
     @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
@@ -123,7 +124,7 @@ class TestAC02RagEmbeddingCallSitesUsamConfig(unittest.TestCase):
         ]
         mock_splitter.return_value = splitter_instance
 
-        self._rag_mod.cria_vectordb()
+        self._orch_mod.cria_vectordb()
 
         mock_emb.assert_called_with(
             model_name=config.EMBEDDING_MODEL,
@@ -139,7 +140,7 @@ class TestAC02AgentEmbeddingCallSiteUsaConfig(unittest.TestCase):
     """
 
     def setUp(self) -> None:
-        import agenticlog.agent as agent_mod
+        import agenticlog.retrieval.retriever as agent_mod
         self._agent_mod = agent_mod
         self._agent_mod._embedding_model = None
 
@@ -189,15 +190,17 @@ class TestAC05StaleVectordbDimensoesCompativeisNaoLevantaExcecao(unittest.TestCa
     fiquem degradados/não confiáveis (mitigação documental, não de runtime).
     """
 
-    @patch("agenticlog.agent._get_embedding_model")
+    @patch("agenticlog.retrieval.retriever._get_embedding_model")
     def teste_1_avalia_similaridade_com_vetores_768d_de_espacos_diferentes_nao_levanta(
         self, mock_get_embedding: MagicMock
     ) -> None:
         """AC5: avalia_similaridade roda sem exceção quando doc-vectors (espaço 'antigo')
         e response-vectors (espaço 'novo') são ambos 768-dim, mesmo vindo de
         'modelos' numericamente diferentes (espaços incompatíveis simulados)."""
-        from agenticlog.agent import AgentState, avalia_similaridade
         from langchain_core.documents import Document
+
+        from agenticlog.retrieval.generation import avalia_similaridade
+        from agenticlog.retrieval.state import AgentState
 
         mock_model = MagicMock()
         # Simula vetores "stale" (modelo antigo) para os documentos recuperados
@@ -227,7 +230,7 @@ class TestAC05StaleVectordbDimensoesCompativeisNaoLevantaExcecao(unittest.TestCa
         self.assertEqual(len(result.similarity_scores), 1)
         self.assertIsInstance(result.similarity_scores[0], float)
 
-    @patch("agenticlog.agent._get_embedding_model")
+    @patch("agenticlog.retrieval.retriever._get_embedding_model")
     def teste_2_dimensao_768_consistente_entre_doc_e_query_vectors(
         self, mock_get_embedding: MagicMock
     ) -> None:
@@ -345,8 +348,15 @@ class TestAC08SemLogicaDePrefixoQueryPassage(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.rag_source = (_root / "src" / "agenticlog" / "rag.py").read_text(encoding="utf-8")
-        cls.agent_source = (_root / "src" / "agenticlog" / "agent.py").read_text(encoding="utf-8")
+        # ADR-018 Fase 6: rag.py/agent.py deletados — construção/uso de embedding migraram.
+        cls.rag_source = (
+            (_root / "src" / "agenticlog" / "ingestion" / "embeddings.py").read_text(encoding="utf-8")
+            + (_root / "src" / "agenticlog" / "ingestion" / "orchestrator.py").read_text(encoding="utf-8")
+        )
+        cls.agent_source = (
+            (_root / "src" / "agenticlog" / "retrieval" / "retriever.py").read_text(encoding="utf-8")
+            + (_root / "src" / "agenticlog" / "retrieval" / "generation.py").read_text(encoding="utf-8")
+        )
 
     def teste_1_rag_py_nao_contem_prefixo_query_dois_pontos(self) -> None:
         """AC8: rag.py não contém literais 'query:' ou 'passage:' usados como prefixo de embedding."""
@@ -367,18 +377,20 @@ class TestAC08SemLogicaDePrefixoQueryPassage(unittest.TestCase):
         self, mock_emb: MagicMock
     ) -> None:
         """AC8: embed_documents/embed_query recebem o texto original, sem prefixo 'query:'/'passage:'."""
-        import agenticlog.agent as agent_mod
+        import agenticlog.retrieval.retriever as agent_mod
         agent_mod._embedding_model = None
 
         mock_instance = MagicMock()
         mock_instance.embed_documents.return_value = [[0.1] * 768]
         mock_emb.return_value = mock_instance
 
-        from agenticlog.agent import AgentState, avalia_similaridade
         from langchain_core.documents import Document
 
+        from agenticlog.retrieval.generation import avalia_similaridade
+        from agenticlog.retrieval.state import AgentState
+
         agent_mod._embedding_model = None
-        with patch("agenticlog.agent._get_embedding_model", return_value=mock_instance):
+        with patch("agenticlog.retrieval.retriever._get_embedding_model", return_value=mock_instance):
             state = AgentState(
                 query="Qual o prazo de entrega?",
                 retrieved_info=[Document(page_content="texto do documento")],
@@ -413,8 +425,7 @@ class TestAC09ModelKwargsEncodeKwargsInalterados(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.rag_source = (_root / "src" / "agenticlog" / "rag.py").read_text(encoding="utf-8")
-        cls.agent_source = (_root / "src" / "agenticlog" / "agent.py").read_text(encoding="utf-8")
+        # ADR-018 Fase 6: rag.py/agent.py deletados — símbolos migraram (aliases p/ os testes).
         # ADR-018 Fase 3a: a construção do embedding incremental migrou p/ ingestion/embeddings.py
         cls.embeddings_source = (
             _root / "src" / "agenticlog" / "ingestion" / "embeddings.py"
@@ -423,6 +434,12 @@ class TestAC09ModelKwargsEncodeKwargsInalterados(unittest.TestCase):
         cls.orchestrator_source = (
             _root / "src" / "agenticlog" / "ingestion" / "orchestrator.py"
         ).read_text(encoding="utf-8")
+        # ADR-018 Fase 4: _embedding_model migrou p/ retrieval/retriever.py
+        cls.retriever_source = (
+            _root / "src" / "agenticlog" / "retrieval" / "retriever.py"
+        ).read_text(encoding="utf-8")
+        cls.rag_source = cls.embeddings_source  # _rag_embedding_model agora em ingestion/embeddings.py
+        cls.agent_source = cls.retriever_source  # _embedding_model agora em retrieval/retriever.py
 
     def teste_1_cria_vectordb_passa_model_kwargs_device_e_encode_kwargs_normalize(self) -> None:
         """cria_vectordb() passa model_kwargs={"device": device} e
@@ -461,7 +478,7 @@ class TestAC09ModelKwargsEncodeKwargsInalterados(unittest.TestCase):
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.carregar_json")
     @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
     @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
@@ -480,7 +497,8 @@ class TestAC09ModelKwargsEncodeKwargsInalterados(unittest.TestCase):
         """AC9: cria_vectordb() chama HuggingFaceEmbeddings com exatamente os três kwargs
         esperados (model_name, model_kwargs com device, encode_kwargs com normalize_embeddings)."""
         from langchain_core.documents import Document
-        import agenticlog.rag as rag_mod
+
+        import agenticlog.ingestion.orchestrator as rag_mod
 
         mock_loader.return_value = [
             Document(page_content="conteúdo")

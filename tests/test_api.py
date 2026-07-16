@@ -15,8 +15,9 @@ import pytest
 from fastapi.testclient import TestClient
 from openai import APIConnectionError
 
-from agenticlog.agent import AgentState
-from agenticlog.api import (
+from agenticlog.config import RESPOSTA_PADRAO_SEGURA
+from agenticlog.retrieval.state import AgentState
+from agenticlog.serving.api import (
     MSG_VECTORDB_AUSENTE,
     DocumentInfo,
     _normalizar_estado,
@@ -25,8 +26,7 @@ from agenticlog.api import (
     _verificar_vectordb,
     app,
 )
-from agenticlog.config import RESPOSTA_PADRAO_SEGURA
-from agenticlog.health import (
+from agenticlog.serving.health import (
     LMStudioUnavailableError,
     ModeloNaoCarregadoError,
     reset_health_check_sentinel,

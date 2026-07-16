@@ -14,9 +14,9 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from agenticlog.agent import AgentState
-from agenticlog.api import app
-from agenticlog.history import HistoryStore
+from agenticlog.observability.history import HistoryStore
+from agenticlog.retrieval.state import AgentState
+from agenticlog.serving.api import app
 
 
 def _make_estado(**kwargs) -> AgentState:

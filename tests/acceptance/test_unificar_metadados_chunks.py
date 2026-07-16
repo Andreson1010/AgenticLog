@@ -6,9 +6,8 @@ adicionar_documento_incrementalmente() carries the 5 unified metadata fields:
   source, file_hash, chunk_index, page, doc_type
 """
 
-import re
 import unittest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 from langchain_core.documents import Document
 
@@ -51,7 +50,7 @@ class TestAC01JsonFullRebuild(unittest.TestCase):
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.carregar_json")
     @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
     @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
@@ -67,7 +66,7 @@ class TestAC01JsonFullRebuild(unittest.TestCase):
         mock_chroma: MagicMock,
         mock_hash: MagicMock,
     ) -> None:
-        import agenticlog.rag as rag_mod
+        import agenticlog.ingestion.orchestrator as rag_mod
 
         source_path = "data/documents/test.json"
         doc = Document(page_content="campo1: valor1", metadata={"source": source_path})
@@ -109,7 +108,7 @@ class TestAC01JsonFullRebuild(unittest.TestCase):
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.carregar_json")
     @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
     @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
@@ -125,7 +124,7 @@ class TestAC01JsonFullRebuild(unittest.TestCase):
         mock_chroma: MagicMock,
         mock_hash: MagicMock,
     ) -> None:
-        import agenticlog.rag as rag_mod
+        import agenticlog.ingestion.orchestrator as rag_mod
 
         source_path = "data/documents/test.json"
         chunks = [
@@ -158,7 +157,7 @@ class TestAC02PdfFullRebuild(unittest.TestCase):
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.carregar_json")
     @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
     @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
@@ -174,7 +173,7 @@ class TestAC02PdfFullRebuild(unittest.TestCase):
         mock_chroma: MagicMock,
         mock_hash: MagicMock,
     ) -> None:
-        import agenticlog.rag as rag_mod
+        import agenticlog.ingestion.orchestrator as rag_mod
 
         pdf_source = "data/documents/manual.pdf"
         mock_loader.return_value = []  # no JSON docs
@@ -216,7 +215,7 @@ class TestAC02PdfFullRebuild(unittest.TestCase):
     @patch("agenticlog.ingestion.orchestrator.Chroma")
     @patch("agenticlog.ingestion.orchestrator.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.carregar_json")
     @patch("agenticlog.ingestion.orchestrator._valida_arquivos_json")
     @patch("agenticlog.ingestion.orchestrator._valida_path_documentos")
@@ -232,7 +231,7 @@ class TestAC02PdfFullRebuild(unittest.TestCase):
         mock_chroma: MagicMock,
         mock_hash: MagicMock,
     ) -> None:
-        import agenticlog.rag as rag_mod
+        import agenticlog.ingestion.orchestrator as rag_mod
 
         pdf_source = "data/documents/relatorio.pdf"
         mock_loader.return_value = []
@@ -266,7 +265,7 @@ class TestAC03IncrementalJson(unittest.TestCase):
     @patch("agenticlog.ingestion.orchestrator.SemanticChunker")
     @patch("agenticlog.ingestion.extraction.JSONLoader")
     @patch("agenticlog.ingestion.orchestrator._valida_json_sem_chaves_proibidas")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     @patch("agenticlog.ingestion.orchestrator.shutil")
     @patch("agenticlog.ingestion.orchestrator.tempfile")
     def teste_1_chunks_incrementais_tem_5_campos_metadados(
@@ -280,8 +279,9 @@ class TestAC03IncrementalJson(unittest.TestCase):
         mock_chroma: MagicMock,
         mock_emb: MagicMock,
     ) -> None:
-        import agenticlog.rag as rag_mod
         from pathlib import Path
+
+        import agenticlog.ingestion.orchestrator as rag_mod
 
         # Setup tempfile mock
         tmp_mock = MagicMock()
@@ -334,16 +334,17 @@ class TestAC04DedupUsesFileHash(unittest.TestCase):
 
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.Chroma")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_1_duplicata_detectada_via_file_hash(
         self,
         mock_dir: MagicMock,
         mock_chroma: MagicMock,
         mock_emb: MagicMock,
     ) -> None:
-        import agenticlog.rag as rag_mod
-        from pathlib import Path
         import hashlib
+        from pathlib import Path
+
+        import agenticlog.ingestion.orchestrator as rag_mod
 
         conteudo = b'{"campo": "valor"}'
         expected_hash = hashlib.sha256(conteudo).hexdigest()
@@ -367,7 +368,7 @@ class TestAC04DedupUsesFileHash(unittest.TestCase):
     @patch("agenticlog.ingestion.extraction.JSONLoader")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.Chroma")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_2_hash_diferente_upsert_via_file_hash(
         self,
         mock_dir: MagicMock,
@@ -377,9 +378,10 @@ class TestAC04DedupUsesFileHash(unittest.TestCase):
         mock_splitter_cls: MagicMock,
         mock_invalidar: MagicMock,
     ) -> None:
-        import agenticlog.rag as rag_mod
-        from pathlib import Path
         import tempfile as tmpmod
+        from pathlib import Path
+
+        import agenticlog.ingestion.orchestrator as rag_mod
 
         conteudo_novo = b'{"campo": "valor_novo"}'
 
@@ -412,7 +414,7 @@ class TestAC04DedupUsesFileHash(unittest.TestCase):
     @patch("agenticlog.ingestion.extraction.JSONLoader")
     @patch("agenticlog.ingestion.embeddings.HuggingFaceEmbeddings")
     @patch("agenticlog.ingestion.orchestrator.Chroma")
-    @patch("agenticlog.rag.DIR_DOCUMENTS")
+    @patch("agenticlog.ingestion.orchestrator.DIR_DOCUMENTS")
     def teste_3_campo_content_hash_nao_e_usado_para_dedup(
         self,
         mock_dir: MagicMock,
@@ -423,10 +425,11 @@ class TestAC04DedupUsesFileHash(unittest.TestCase):
         mock_invalidar: MagicMock,
     ) -> None:
         """Metadata key must be 'file_hash', not the old 'content_hash' — mismatch causes upsert."""
-        import agenticlog.rag as rag_mod
-        from pathlib import Path
         import hashlib
         import tempfile as tmpmod
+        from pathlib import Path
+
+        import agenticlog.ingestion.orchestrator as rag_mod
 
         conteudo = b'{"campo": "valor"}'
         expected_hash = hashlib.sha256(conteudo).hexdigest()

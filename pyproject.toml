@@ -50,6 +50,7 @@ show_missing = true
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+extend-exclude = [".claude"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "T20", "PGH"]
@@ -57,10 +58,10 @@ ignore = []
 
 [tool.ruff.lint.per-file-ignores]
 "src/agenticlog/__init__.py" = ["E501"]
-"src/agenticlog/rag.py" = ["E501", "I001", "B904"]
 "src/agenticlog/ingestion/*.py" = ["E501", "B904"]
-"src/agenticlog/agent.py" = ["E501"]
 "src/agenticlog/config.py" = ["E501"]
+"tests/**/*.py" = ["E402", "E501"]
+"scripts/**/*.py" = ["T201"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -69,7 +70,7 @@ disallow_untyped_defs = false
 warn_unused_ignores = false
 
 [[tool.mypy.overrides]]
-module = ["agenticlog.rag", "agenticlog.api", "agenticlog.serving.api"]
+module = ["agenticlog.serving.api"]
 ignore_errors = true
 
 [tool.bandit]

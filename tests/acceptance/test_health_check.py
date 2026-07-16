@@ -15,22 +15,21 @@ _root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_root / "src"))
 
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import httpx
 
 from agenticlog import (
-    check_lmstudio_health,
     LMStudioUnavailableError,
     ModeloNaoCarregadoError,
+    check_lmstudio_health,
 )
-from agenticlog.health import reset_health_check_sentinel
 from agenticlog.config import (
-    LLM_HEALTH_CHECK_TIMEOUT_SECONDS,
     LLM_API_BASE,
+    LLM_HEALTH_CHECK_TIMEOUT_SECONDS,
     LLM_MODEL,
 )
-
+from agenticlog.serving.health import reset_health_check_sentinel
 
 # ---------------------------------------------------------------------------
 # AC-HC-01: Happy path — LMStudio responde com 2xx, workflow permanece acessível
@@ -97,7 +96,7 @@ class TestACHC02ConnectErrorBlocksWorkflow(unittest.TestCase):
         reset_health_check_sentinel()
 
     @patch("agenticlog.serving.health.logger")
-    @patch("agenticlog.agent.agent_workflow")
+    @patch("agenticlog.retrieval.graph.agent_workflow")
     @patch("agenticlog.serving.health.httpx.Client")
     def test_ac_hc_02_connect_error_raises_and_blocks_workflow(
         self,
@@ -225,7 +224,7 @@ class TestACHC05ModeloNaoCarregadoBlocksWorkflow(unittest.TestCase):
         reset_health_check_sentinel()
 
     @patch("agenticlog.serving.health.logger")
-    @patch("agenticlog.agent.agent_workflow")
+    @patch("agenticlog.retrieval.graph.agent_workflow")
     @patch("agenticlog.serving.health.httpx.Client")
     def test_ac_hc_05_modelo_ausente_raises_and_blocks_workflow(
         self,

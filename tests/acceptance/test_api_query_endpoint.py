@@ -12,13 +12,13 @@ from unittest.mock import MagicMock, patch
 import httpx
 from fastapi.testclient import TestClient
 
-from agenticlog.agent import AgentState
-from agenticlog.api import (
+from agenticlog.config import RESPOSTA_PADRAO_SEGURA
+from agenticlog.retrieval.state import AgentState
+from agenticlog.serving.api import (
     MSG_VECTORDB_AUSENTE,
     app,
 )
-from agenticlog.config import RESPOSTA_PADRAO_SEGURA
-from agenticlog.health import (
+from agenticlog.serving.health import (
     LMStudioUnavailableError,
     reset_health_check_sentinel,
 )

@@ -14,7 +14,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from agenticlog.rag import RAGSecurityError, extrair_texto_pdf
+from agenticlog.ingestion.extraction import extrair_texto_pdf
+from agenticlog.shared.errors import RAGSecurityError
 
 
 def pdf_para_dict(pdf_path: Path) -> dict[str, str]:
@@ -39,7 +40,9 @@ def converter(pdf_path: Path, output_dir: Path) -> Path:
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Converte PDFs para JSON (formato RAG AgenticLog).")
+    parser = argparse.ArgumentParser(
+        description="Converte PDFs para JSON (formato RAG AgenticLog)."
+    )
     parser.add_argument("pdfs", nargs="+", type=Path, help="Arquivos PDF a converter.")
     parser.add_argument(
         "--output",

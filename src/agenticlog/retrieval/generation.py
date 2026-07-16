@@ -46,6 +46,10 @@ from agenticlog.retrieval.state import AgentState
 
 logger = logging.getLogger(__name__)
 
+# Singleton do LLM — inicializado na primeira chamada (local, não mais em agent.py).
+# Anotação como string (forward-ref): LLMClient é definido mais abaixo neste módulo.
+_llm: "LLMClient | None" = None
+
 _llm_retry = retry(
     stop=stop_after_attempt(LLM_MAX_RETRY_ATTEMPTS),
     wait=wait_exponential(min=LLM_RETRY_WAIT_INITIAL_SECONDS, max=LLM_RETRY_WAIT_MAX_SECONDS),
@@ -81,15 +85,11 @@ class LLMClient(Protocol):
 def _get_llm() -> LLMClient:
     """Retorna o singleton do LLM, criando-o na primeira chamada.
 
-    Acessa o singleton `_llm` via lazy import de `agenticlog.agent` (DN-2),
-    resolvido a cada chamada para que monkeypatch e inicialização funcionem.
-
     Saída: instância de ChatOpenAI configurada com as constantes do config.
     """
-    import agenticlog.agent as _agent_mod  # lazy — resolvido a cada chamada
-
-    if _agent_mod._llm is None:
-        _agent_mod._llm = ChatOpenAI(  # type: ignore[call-arg]
+    global _llm
+    if _llm is None:
+        _llm = ChatOpenAI(  # type: ignore[call-arg]
             model_name=LLM_MODEL,
             openai_api_base=LLM_API_BASE,
             openai_api_key=LLM_API_KEY,
@@ -97,7 +97,7 @@ def _get_llm() -> LLMClient:
             max_tokens=LLM_MAX_TOKENS,
             request_timeout=LLM_TIMEOUT_SECONDS,
         )
-    return _agent_mod._llm
+    return _llm
 
 
 # Prompts — inicializados na importação do módulo
@@ -198,8 +198,8 @@ resposta e o contexto recuperado.
     têm maior fidelidade factual: quanto mais o espaço vetorial da resposta coincide com o do
     contexto, menos o LLM alucionou informações externas.
     """
-    from agenticlog.agent import (
-        _get_embedding_model as _get_emb_wrapper,  # lazy — o wrapper de agent.py (DN-2a)
+    from agenticlog.retrieval.retriever import (
+        _get_embedding_model as _get_emb_wrapper,  # lazy — getter local (Fase 6)
     )
     _emb_model = _get_emb_wrapper()
 

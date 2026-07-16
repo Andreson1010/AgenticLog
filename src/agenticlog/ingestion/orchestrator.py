@@ -193,7 +193,9 @@ def _indexar_no_chroma(
 def _notificar_invalidacao(invalidation_msg: str) -> None:
     """Invalida o singleton de vector DB do agente (lazy import evita ciclo/CLI pesado)."""
     try:
-        from agenticlog.agent import invalidar_vector_db  # lazy — evita importação pesada no CLI
+        from agenticlog.retrieval.retriever import (
+            invalidar_vector_db,  # lazy — evita importação pesada no CLI
+        )
         invalidar_vector_db()
     except ImportError as e:
         logger.warning(invalidation_msg, e)

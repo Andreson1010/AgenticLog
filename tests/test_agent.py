@@ -9,10 +9,11 @@ from unittest.mock import ANY, MagicMock, patch
 _root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_root / "src"))
 
-import agenticlog.agent as agent_mod
-import agenticlog.config as config
-from agenticlog.agent import invalidar_vector_db
 from langchain_core.documents import Document as LCDocument
+
+import agenticlog.config as config
+import agenticlog.retrieval.retriever as agent_mod
+from agenticlog.retrieval.retriever import invalidar_vector_db
 
 
 class TestGetEmbeddingModel(unittest.TestCase):

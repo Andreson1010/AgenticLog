@@ -15,7 +15,7 @@ sys.path.insert(0, str(_root / "src"))
 
 from langchain_core.documents import Document as LCDocument  # noqa: E402
 
-import agenticlog.rag as rag  # noqa: E402  # shim ainda re-exporta os símbolos (identidade)
+import agenticlog.ingestion.metadata as rag  # noqa: E402
 from agenticlog.ingestion.metadata import _computar_hash_conteudo  # noqa: E402
 
 
