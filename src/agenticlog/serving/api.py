@@ -43,7 +43,7 @@ MSG_LMSTUDIO_INDISPONIVEL = (
     "LMStudio indisponivel. Inicie o servidor e carregue o modelo."
 )
 MSG_VECTORDB_AUSENTE = (
-    "Base vetorial nao encontrada. Execute: python -m agenticlog.rag"
+    "Base vetorial nao encontrada. Execute: python -m agenticlog.ingestion"
 )
 
 # Excecoes que disparam o modo seguro (200-degraded) no /query. ModeloNaoCarregadoError

@@ -257,7 +257,7 @@ class TestAC04Http503Vectordb(unittest.TestCase):
     def teste_1_503_vectordb_shows_correct_error(self) -> None:
         import app as app_module  # noqa: PLC0415
 
-        mock = _error_mock(503, "Base vetorial não encontrada. Execute: python -m agenticlog.rag")
+        mock = _error_mock(503, "Base vetorial não encontrada. Execute: python -m agenticlog.ingestion")
         at = _run_query(MagicMock(return_value=mock))
 
         self.assertFalse(at.exception, msg=f"Unexpected exception: {at.exception}")
@@ -268,7 +268,7 @@ class TestAC04Http503Vectordb(unittest.TestCase):
         )
 
     def teste_2_503_vectordb_does_not_mutate_session_state(self) -> None:
-        mock = _error_mock(503, "Base vetorial não encontrada. Execute: python -m agenticlog.rag")
+        mock = _error_mock(503, "Base vetorial não encontrada. Execute: python -m agenticlog.ingestion")
         at = _run_query(MagicMock(return_value=mock))
 
         self.assertIsNone(at.session_state.ranked_response)

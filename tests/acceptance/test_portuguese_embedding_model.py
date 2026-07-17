@@ -13,7 +13,7 @@ Mapeamento de critérios:
   AC5 — vectordb "stale" (768-dim, modelo antigo) consultado com modelo novo (768-dim) NÃO
         levanta exceção de dimensão — avalia_similaridade roda normalmente (768=768)
   AC6 — CLAUDE.md documenta o procedimento de upgrade (parar app → apagar data/vectordb/ →
-        rerun python -m agenticlog.rag → retomar queries) e o aumento do download
+        rerun python -m agenticlog.ingestion → retomar queries) e o aumento do download
   AC7 — mocks existentes [0.1]*768 em tests/test_agentic_rag.py::teste_7_avalia_similaridade
         e tests/acceptance/test_agent_workflow_integration.py continuam passando inalterados
   AC8 — nenhuma lógica de prefixo "query:"/"passage:" foi adicionada nos call sites de embedding
@@ -258,7 +258,7 @@ class TestAC06ClaudeMdDocumentaProcedimentoDeUpgrade(unittest.TestCase):
     """
     AC6: WHEN um operador lê CLAUDE.md
     THEN ele SHALL documentar o procedimento de upgrade: parar o app →
-    apagar data/vectordb/ → rerun python -m agenticlog.rag → retomar queries.
+    apagar data/vectordb/ → rerun python -m agenticlog.ingestion → retomar queries.
     """
 
     @classmethod
@@ -274,9 +274,9 @@ class TestAC06ClaudeMdDocumentaProcedimentoDeUpgrade(unittest.TestCase):
             "CLAUDE.md deve instruir a apagar/deletar data/vectordb/",
         )
 
-    def teste_2_documenta_rerun_python_m_agenticlog_rag(self) -> None:
-        """AC6: CLAUDE.md menciona rerun de `python -m agenticlog.rag`."""
-        self.assertIn("python -m agenticlog.rag", self.conteudo)
+    def teste_2_documenta_rerun_python_m_agenticlog_ingestion(self) -> None:
+        """AC6: CLAUDE.md menciona rerun de `python -m agenticlog.ingestion`."""
+        self.assertIn("python -m agenticlog.ingestion", self.conteudo)
 
     def teste_3_documenta_nome_do_novo_modelo(self) -> None:
         """AC6: CLAUDE.md referencia o novo modelo multilíngue."""

@@ -20,18 +20,18 @@ uv pip install -e .
 ### Build VectorDB (first time, after changing documents, or after changing chunking/embedding configuration)
 ```bash
 # Default: incremental ingestion of every file in data/documents/ (skips unchanged, upserts changed)
-python -m agenticlog.rag
+python -m agenticlog.ingestion
 
 # Full rebuild from scratch (legacy behavior)
-python -m agenticlog.rag --rebuild
+python -m agenticlog.ingestion --rebuild
 ```
 
 The CLI is **incremental by default** (REC-04): with no flags it ingests each `*.json` and `*.pdf` in `data/documents/`, skipping files already indexed with the same content-hash and upserting changed ones — no full rebuild. Use `--rebuild` to discard `data/vectordb/` content and recompute every chunk (required after any chunking-strategy or embedding-model change; see Silent-degradation risk below).
 
-**After changing any of the following in `config.py`** — `EMBEDDING_MODEL`, `SEMANTIC_BREAKPOINT_TYPE`, `SEMANTIC_BREAKPOINT_THRESHOLD`, `JQ_SCHEMA_CAMPOS_JSON` (jq_schema), or PDF-extraction logic in `extrair_texto_pdf` (`src/agenticlog/rag.py`) — rebuild the vector DB from scratch:
+**After changing any of the following in `config.py`** — `EMBEDDING_MODEL`, `SEMANTIC_BREAKPOINT_TYPE`, `SEMANTIC_BREAKPOINT_THRESHOLD`, `JQ_SCHEMA_CAMPOS_JSON` (jq_schema), or PDF-extraction logic in `extrair_texto_pdf` (`src/agenticlog/ingestion/extraction.py`) — rebuild the vector DB from scratch:
 1. Stop the running app (if any).
 2. Delete `data/vectordb/` (gitignored, fully regenerable).
-3. Rerun `python -m agenticlog.rag --rebuild`.
+3. Rerun `python -m agenticlog.ingestion --rebuild`.
 4. Resume queries with `streamlit run app.py`.
 
 The current embedding model is `sentence-transformers/paraphrase-multilingual-mpnet-base-v2` (multilingual, 768-dim, optimized for Portuguese among other languages). On first run with this model, expect a larger download (~1.0–1.1 GB, vs ~440 MB for the previous `BAAI/bge-base-en`), so initial setup takes longer.
@@ -69,17 +69,17 @@ User Query → Decision Node → [retrieve → generate_multiple → evaluate_si
 
 - **`src/agenticlog/config.py`** — Single source of truth for all constants: paths, model names, LLM settings (temperature, max_tokens), RAG chunk sizes, and security limits. Change behavior here, not scattered throughout the code.
 
-- **`src/agenticlog/rag.py`** — Builds the ChromaDB vector database from JSON files in `data/documents/`. Has security validation (path traversal, forbidden JSON keys, file size limits) raising `RAGSecurityError`. Run once to populate `data/vectordb/`.
+- **`src/agenticlog/ingestion/`** — Builds the ChromaDB vector database from JSON/PDF files in `data/documents/`. Security validation (path traversal, forbidden JSON keys, file size limits) lives in `ingestion/security.py` and raises `RAGSecurityError` (defined in `shared/errors.py`). Stages are split across `extraction`, `cleaning`, `chunking`, `embeddings`, `metadata`, `store`, and `orchestrator`; the CLI entrypoint is `python -m agenticlog.ingestion` (`ingestion/cli.py`).
 
-- **`src/agenticlog/agent.py`** — LangGraph workflow. `AgentState` (Pydantic model) carries all state between nodes. The decision node routes to `retrieve`, `gerar`, or `usar_web` based on query type. Multiple responses are generated and scored by cosine similarity against the query before returning the best one.
+- **`src/agenticlog/retrieval/`** — LangGraph workflow. `AgentState` (Pydantic model, `retrieval/state.py`) carries state between nodes. `retrieval/graph.py` defines the workflow; the decision node routes to `retrieve`, `gerar`, or `usar_web`. `retrieval/generation.py` holds the `_llm` singleton and response generation; `retrieval/retriever.py` holds the ChromaDB retriever + `_vector_dbs` cache. Multiple responses are generated and scored by cosine similarity against the query before returning the best one.
 
 - **`app.py`** — Streamlit UI. Invokes `agent_workflow.invoke(AgentState(query=query))` and displays `ranked_response`, `confidence_score`, and retrieved documents.
 
 ### Data Flow
 ```
-data/documents/*.json → rag.py → data/vectordb/ (ChromaDB)
+data/documents/*.json → ingestion/ → data/vectordb/ (ChromaDB)
                                          ↓
-                              agent.py retriever → LMStudio LLM → ranked answer
+                              retrieval/ retriever → LMStudio LLM → ranked answer
 ```
 
 ## Testing Conventions

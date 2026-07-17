@@ -109,7 +109,7 @@ Após ativar, o prompt mostrará `(.venv)` indicando que o ambiente está ativo.
 **Criar o VectorDB** (primeira vez, antes de rodar a app):
 
 ```bash
-python -m agenticlog.rag
+python -m agenticlog.ingestion
 ```
 
 ## Commands
@@ -149,7 +149,7 @@ python tests/test_agentic_rag.py -v
 **Alternativa sem ativar o ambiente** (uv run usa o .venv automaticamente):
 
 ```bash
-uv run python -m agenticlog.rag
+uv run python -m agenticlog.ingestion
 uv run streamlit run app.py
 uv run python tests/test_agentic_rag.py -v
 ```
@@ -174,13 +174,16 @@ deactivate
 AgenticLog/
 ├── src/agenticlog/
 │   ├── __init__.py
-│   ├── rag.py
-│   ├── agent.py
-│   └── config.py
+│   ├── config.py
+│   ├── ingestion/        # build do VectorDB (CLI: python -m agenticlog.ingestion)
+│   ├── retrieval/        # workflow LangGraph (AgentState, retriever, geração)
+│   ├── serving/          # API FastAPI + health check LMStudio
+│   ├── observability/    # logging + histórico de queries
+│   └── shared/           # erros compartilhados (RAGSecurityError)
 ├── app.py
 ├── data/documents/
 ├── data/vectordb/
-├── tests/test_agentic_rag.py
+├── tests/
 ├── docs/
 ├── pyproject.toml
 ├── requirements.txt

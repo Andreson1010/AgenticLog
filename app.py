@@ -23,7 +23,7 @@ from agenticlog.shared.errors import RAGSecurityError
 NOVA_COLECAO_SENTINEL = "Nova coleção…"
 
 MSG_LMSTUDIO_DOWN = "LMStudio indisponível. Inicie o servidor e carregue o modelo."
-MSG_VECTORDB_AUSENTE = "Base vetorial não encontrada. Execute: python -m agenticlog.rag"
+MSG_VECTORDB_AUSENTE = "Base vetorial não encontrada. Execute: python -m agenticlog.ingestion"
 MSG_CONNECT_ERROR = (
     "Não foi possível conectar ao servidor FastAPI. "
     "Inicie com: uvicorn agenticlog.serving.api:app"
