@@ -106,7 +106,7 @@ class TestAC2JsonIncremental(unittest.TestCase):
             tmp_path = Path(tmp)
             with (
                 patch("agenticlog.ingestion.orchestrator.Chroma", return_value=mock_vdb),
-                patch("agenticlog.ingestion.embeddings._get_rag_embedding_model"),
+                patch("agenticlog.ingestion.orchestrator.criar_embedding_model"),
                 patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.config.DIR_DOCUMENTS", new=tmp_path),
@@ -134,7 +134,7 @@ class TestAC2JsonIncremental(unittest.TestCase):
             tmp_path = Path(tmp)
             with (
                 patch("agenticlog.ingestion.orchestrator.Chroma", return_value=mock_vdb),
-                patch("agenticlog.ingestion.embeddings._get_rag_embedding_model"),
+                patch("agenticlog.ingestion.orchestrator.criar_embedding_model"),
                 patch("agenticlog.ingestion.extraction.JSONLoader") as mock_loader_cls,
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.config.DIR_DOCUMENTS", new=tmp_path),
@@ -170,7 +170,7 @@ class TestAC3PdfIncremental(unittest.TestCase):
             tmp_path = Path(tmp)
             with (
                 patch("agenticlog.ingestion.orchestrator.Chroma", return_value=mock_vdb),
-                patch("agenticlog.ingestion.embeddings._get_rag_embedding_model"),
+                patch("agenticlog.ingestion.orchestrator.criar_embedding_model"),
                 patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf", return_value={"PÁGINA_1": "texto"}),
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.config.DIR_DOCUMENTS", new=tmp_path),
@@ -196,7 +196,7 @@ class TestAC3PdfIncremental(unittest.TestCase):
             tmp_path = Path(tmp)
             with (
                 patch("agenticlog.ingestion.orchestrator.Chroma", return_value=mock_vdb),
-                patch("agenticlog.ingestion.embeddings._get_rag_embedding_model"),
+                patch("agenticlog.ingestion.orchestrator.criar_embedding_model"),
                 patch("agenticlog.ingestion.orchestrator.extrair_texto_pdf", return_value={"PÁGINA_1": "texto"}),
                 patch("agenticlog.ingestion.orchestrator.SemanticChunker") as mock_splitter_cls,
                 patch("agenticlog.config.DIR_DOCUMENTS", new=tmp_path),

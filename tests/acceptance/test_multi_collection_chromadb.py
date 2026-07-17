@@ -507,7 +507,7 @@ class TestAC06DefaultCollectionName(unittest.TestCase):
         from agenticlog.ingestion.orchestrator import adicionar_documento_incrementalmente
 
         with patch("agenticlog.ingestion.orchestrator.Chroma") as mock_chroma, \
-             patch("agenticlog.ingestion.embeddings._get_rag_embedding_model"), \
+             patch("agenticlog.ingestion.orchestrator.criar_embedding_model"), \
              patch("agenticlog.config.DIR_DOCUMENTS") as mock_dir, \
              patch("agenticlog.ingestion.orchestrator._sanitizar_nome_arquivo", return_value="doc.json"), \
              patch("agenticlog.ingestion.orchestrator._valida_json_sem_chaves_proibidas"), \
@@ -602,7 +602,7 @@ class TestAC07NomeMuitoCurto(unittest.TestCase):
         from agenticlog.ingestion.orchestrator import adicionar_documento_incrementalmente
 
         with patch("agenticlog.ingestion.orchestrator.Chroma") as mock_chroma, \
-             patch("agenticlog.ingestion.embeddings._get_rag_embedding_model"):
+             patch("agenticlog.ingestion.orchestrator.criar_embedding_model"):
             with self.assertRaises(RAGSecurityError):
                 adicionar_documento_incrementalmente("doc.json", b'{}', "ab")
 
@@ -613,7 +613,7 @@ class TestAC07NomeMuitoCurto(unittest.TestCase):
         from agenticlog.ingestion.security import salvar_pdf_enviado
 
         with patch("agenticlog.ingestion.orchestrator.Chroma") as mock_chroma, \
-             patch("agenticlog.ingestion.embeddings._get_rag_embedding_model"):
+             patch("agenticlog.ingestion.orchestrator.criar_embedding_model"):
             with self.assertRaises(RAGSecurityError):
                 salvar_pdf_enviado("doc.pdf", b"%PDF-1.4 fake", "ab")
 
@@ -653,7 +653,7 @@ class TestAC08NomeMuitoLongo(unittest.TestCase):
         from agenticlog.ingestion.orchestrator import adicionar_documento_incrementalmente
 
         with patch("agenticlog.ingestion.orchestrator.Chroma") as mock_chroma, \
-             patch("agenticlog.ingestion.embeddings._get_rag_embedding_model"):
+             patch("agenticlog.ingestion.orchestrator.criar_embedding_model"):
             with self.assertRaises(RAGSecurityError):
                 adicionar_documento_incrementalmente("doc.json", b'{}', "a" * 64)
 
@@ -759,7 +759,7 @@ class TestAC12SanitizacaoAntesDeEscrita(unittest.TestCase):
         from agenticlog.ingestion.orchestrator import adicionar_documento_incrementalmente
 
         with patch("agenticlog.ingestion.orchestrator.Chroma") as mock_chroma, \
-             patch("agenticlog.ingestion.embeddings._get_rag_embedding_model"):
+             patch("agenticlog.ingestion.orchestrator.criar_embedding_model"):
             with self.assertRaises(RAGSecurityError):
                 adicionar_documento_incrementalmente("f.json", b'{}', "a!")
 
