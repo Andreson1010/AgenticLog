@@ -19,7 +19,9 @@ from agenticlog.shared.errors import RAGSecurityError
 
 
 def pdf_para_dict(pdf_path: Path) -> dict[str, str]:
-    """Extrai texto por página de um PDF (wrapper fino sobre agenticlog.rag.extrair_texto_pdf).
+    """Extrai texto por página de um PDF.
+
+    Wrapper fino sobre `agenticlog.ingestion.extraction.extrair_texto_pdf`.
 
     Entrada: pdf_path — Path para o arquivo PDF.
     Saída: dict {"PÁGINA_1": "...", ...}.

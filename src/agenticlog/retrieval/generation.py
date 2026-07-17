@@ -2,12 +2,14 @@
 """
 Módulo de geração e ranqueamento de respostas LLM.
 
-Extraído verbatim de `agent.py` (ADR-018 Fase 4). Contém o Protocol LLMClient,
-decorator _llm_retry, prompts, _get_llm (acessa singleton via lazy import de agent),
+Extraído de `agent.py` (ADR-018 Fase 4; fachada deletada na Fase 6). Contém o
+Protocol LLMClient, decorator _llm_retry, prompts, o singleton `_llm` + `_get_llm`,
 _invoke_chain, gera_multiplas_respostas, avalia_similaridade e rank_respostas.
 
-NADA importa `agent` em nível de módulo — todos os acessos a singletons de
-`agent.py` são lazy imports DENTRO de funções (DN-2).
+O singleton `_llm` vive neste módulo (realocado de `agent.py` na Fase 6). Os
+demais singletons (`_get_embedding_model`, `_get_vector_db`) são acessados via
+lazy imports de `agenticlog.retrieval.retriever` DENTRO de funções (DN-2), para
+preservar o grafo de imports acíclico.
 """
 
 import logging
@@ -68,7 +70,7 @@ _llm_retry = retry(
 
 @runtime_checkable
 class LLMClient(Protocol):
-    """Interface estrutural mínima do cliente LLM usada por agent.py.
+    """Interface estrutural mínima do cliente LLM usada pelo pipeline de geração/ranqueamento.
 
     Cobre apenas as operações utilizadas nas chains (`prompt | _get_llm() | parser`):
     composição via pipe (__or__/__ror__) e invocação (invoke). `ChatOpenAI` satisfaz

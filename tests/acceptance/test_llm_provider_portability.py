@@ -302,7 +302,7 @@ class TestAC08to11NoAnthropicDependency(TestCase):
 
     def test_ac08_agent_source_has_no_anthropic_reference(self):
         """
-        LLMPORT-08: src/agenticlog/agent.py SHALL NOT contain `import anthropic`
+        LLMPORT-08: src/agenticlog/retrieval/generation.py SHALL NOT contain `import anthropic`
         or any reference to `anthropic`.
         """
         agent_source = (_ROOT / "src" / "agenticlog" / "retrieval" / "generation.py").read_text(encoding="utf-8")
@@ -369,7 +369,7 @@ class TestAC08to11NoAnthropicDependency(TestCase):
     def test_ac08_to_11_grep_independent_test_from_spec(self):
         """
         Spec's exact "Independent Test":
-        `grep -ri anthropic src/agenticlog/agent.py tests/test_agentic_rag.py
+        `grep -ri anthropic src/agenticlog/retrieval/generation.py tests/test_agentic_rag.py
          requirements.txt` returns no matches (or only matches inside a test
         that specifically asserts the ABSENCE of `anthropic`, per spec note).
         """

@@ -1,18 +1,19 @@
 # AgenticLog - Orquestradores da ingestão
 """Orquestradores do pipeline RAG: rebuild + ingestão incremental (ADR-018 Fase 3b).
 
-Movido de `agenticlog.rag` preservando comportamento byte-idêntico. Contém os 5
-orquestradores (`cria_vectordb`, `adicionar_documento_incrementalmente`,
+Movido de `agenticlog.rag` preservando comportamento byte-idêntico (fachada deletada na
+Fase 6). Contém os 5 orquestradores (`cria_vectordb`, `adicionar_documento_incrementalmente`,
 `adicionar_pdf_incrementalmente`, `ingerir_incrementalmente`, `reconstruir_vectordb`)
 e o helper privado compartilhado `_ingerir_arquivo_incrementalmente` que deduplica os
 dois `adicionar_*` (parametrizado por passo de extração por-tipo).
 
 Importa `config`, `shared`, `store` e os estágios da Fase 3a (`extraction`, `cleaning`,
-`chunking`, `embeddings`, `metadata`, `security`). NUNCA importa `rag`/`agent` no nível
-de módulo (`invalidar_vector_db` é importado lazy dentro da função) — mantém o grafo de
-imports acíclico. Os seams `docs_dir`/`vectordb_dir`/`embedding_model` têm default `None`
-e são resolvidos no CORPO (fallback `config.*`), permitindo injeção via os wrappers de
-`rag.py`, que ligam os globais no momento da chamada (§4 do design).
+`chunking`, `embeddings`, `metadata`, `security`). NUNCA importa `retrieval` no nível de
+módulo (`invalidar_vector_db` é importado lazy dentro da função, de
+`agenticlog.retrieval.retriever`) — mantém o grafo de imports acíclico. Os seams
+`docs_dir`/`vectordb_dir`/`embedding_model` têm default `None` e são resolvidos no CORPO
+(fallback `config.*`), permitindo injeção via os wrappers do CLI
+(`agenticlog.ingestion.cli`), que ligam os globais no momento da chamada (§4 do design).
 """
 
 import logging
@@ -68,7 +69,7 @@ from agenticlog.ingestion.store import (
 from agenticlog.shared.errors import RAGSecurityError
 
 # Loga sob "agenticlog.rag" (não __name__): preserva a saída byte-idêntica dos registros
-# e mantém os `assertLogs("agenticlog.rag")` existentes verdes na fase de shims/wrappers.
+# e mantém os `assertLogs("agenticlog.rag")` existentes verdes (logger name histórico).
 logger = logging.getLogger("agenticlog.rag")
 
 

@@ -2,18 +2,18 @@
 """
 Orquestração do grafo LangGraph: nós, FSM routing, workflow compilado.
 
-Extraído de `agent.py` (ADR-018 Fase 4). Contém os 6 nós do grafo, a
-compilação do StateGraph e a inicialização de recursos.
+Extraído de `agent.py` (ADR-018 Fase 4; fachada deletada na Fase 6). Contém os 6
+nós do grafo, a compilação do StateGraph e a inicialização de recursos.
 
-`search` permanece FISICAMENTE em `agent.py` (DN-1) — `usar_ferramenta_web`
-o acessa via lazy import dentro do corpo da função.
+`search` (DuckDuckGo) vive neste módulo (realocado de `agent.py` na Fase 6);
+`usar_ferramenta_web` o acessa diretamente.
 
 `inicializar_recursos` acessa `_get_embedding_model`, `_get_llm` e
-`_get_vector_db` via lazy imports de `agent.py` para garantir que os
-singletons sejam criados no namespace de `agent`.
+`_get_vector_db` via imports de `agenticlog.retrieval.{generation,retriever}`
+para garantir que os singletons sejam criados nos namespaces canônicos.
 
-NADA importa `agent` em nível de módulo — todos os acessos são lazy
-imports DENTRO de funções (DN-2, RETR-13).
+NADA importa código de `retrieval` em nível de módulo além do necessário ao
+StateGraph — os acessos a singletons são feitos DENTRO de funções (DN-2, RETR-13).
 """
 
 import logging

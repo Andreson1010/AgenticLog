@@ -11,7 +11,7 @@ Exportações públicas:
 - LMStudioUnavailableError    — LMStudio inacessível ou HTTP não-2xx no health check.
 - ModeloNaoCarregadoError     — LMStudio responde mas LLM_MODEL não está na lista de /models.
 
-Para detalhes do fluxo completo de nós e roteamento, consulte agent.py.
+Para detalhes do fluxo completo de nós e roteamento, consulte `agenticlog.retrieval.graph`.
 """
 
 from agenticlog.retrieval.graph import agent_workflow
