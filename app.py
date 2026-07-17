@@ -6,25 +6,28 @@ from typing import Any
 import httpx
 import streamlit as st
 
-from agenticlog.agent import _listar_colecoes
 from agenticlog.config import (
     API_CLIENT_TIMEOUT_SECONDS,
     API_HOST,
     API_PORT,
     DEFAULT_COLLECTION_NAME,
 )
-from agenticlog.rag import (
-    RAGSecurityError,
+from agenticlog.ingestion.orchestrator import (
     adicionar_documento_incrementalmente,
     adicionar_pdf_incrementalmente,
-    sanitizar_nome_colecao,
 )
+from agenticlog.ingestion.security import sanitizar_nome_colecao
+from agenticlog.retrieval.retriever import _listar_colecoes
+from agenticlog.shared.errors import RAGSecurityError
 
 NOVA_COLECAO_SENTINEL = "Nova coleção…"
 
 MSG_LMSTUDIO_DOWN = "LMStudio indisponível. Inicie o servidor e carregue o modelo."
-MSG_VECTORDB_AUSENTE = "Base vetorial não encontrada. Execute: python -m agenticlog.rag"
-MSG_CONNECT_ERROR = "Não foi possível conectar ao servidor FastAPI. Inicie com: uvicorn agenticlog.api:app"
+MSG_VECTORDB_AUSENTE = "Base vetorial não encontrada. Execute: python -m agenticlog.ingestion"
+MSG_CONNECT_ERROR = (
+    "Não foi possível conectar ao servidor FastAPI. "
+    "Inicie com: uvicorn agenticlog.serving.api:app"
+)
 MSG_TIMEOUT = "Tempo limite excedido. O servidor pode estar sobrecarregado."
 MSG_ERRO_VALIDACAO = "Erro de validação na consulta. Verifique o texto enviado."
 MSG_ERRO_INTERNO = "Erro interno do servidor."
@@ -87,7 +90,9 @@ def _ingerir_documento(uploaded_file: Any, collection_name: str = DEFAULT_COLLEC
     else:
         try:
             with st.spinner("Adicionando documento à base vetorial..."):
-                resultado = adicionar_documento_incrementalmente(filename, conteudo, collection_name)
+                resultado = adicionar_documento_incrementalmente(
+                    filename, conteudo, collection_name
+                )
         except RAGSecurityError as e:
             st.error(str(e))
             return
@@ -479,7 +484,8 @@ with st.sidebar:
 
     st.divider()
     st.markdown(
-        "<small style='color:#aaa;'>IA Generativa comete erros.<br>Sempre valide as respostas.</small>",
+        "<small style='color:#aaa;'>IA Generativa comete erros."
+        "<br>Sempre valide as respostas.</small>",
         unsafe_allow_html=True,
     )
 
@@ -488,7 +494,10 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 
 st.markdown('<div class="cl-title">Assistente Logístico</div>', unsafe_allow_html=True)
-st.markdown('<div class="cl-subtitle">Especialista em logística e supply chain</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="cl-subtitle">Especialista em logística e supply chain</div>',
+    unsafe_allow_html=True,
+)
 
 # ---------------------------------------------------------------------------
 # Input
@@ -537,7 +546,13 @@ if enviar and query.strip():
             code = e.response.status_code
             detail = _safe_detail(e.response)
             if code == 503:
-                st.error(MSG_LMSTUDIO_DOWN if "LMStudio" in detail else MSG_VECTORDB_AUSENTE if "vetorial" in detail else MSG_ERRO_INTERNO)
+                st.error(
+                    MSG_LMSTUDIO_DOWN
+                    if "LMStudio" in detail
+                    else MSG_VECTORDB_AUSENTE
+                    if "vetorial" in detail
+                    else MSG_ERRO_INTERNO
+                )
             elif code == 422:
                 st.error(MSG_ERRO_VALIDACAO)
             else:
@@ -599,7 +614,9 @@ elif st.session_state.ranked_response is not None:
 
     if st.session_state.last_query:
         st.markdown(
-            f'<div class="cl-chat-row cl-user"><div class="cl-bubble cl-bubble-user">{html.escape(st.session_state.last_query)}</div></div>',
+            f'<div class="cl-chat-row cl-user">'
+            f'<div class="cl-bubble cl-bubble-user">'
+            f"{html.escape(st.session_state.last_query)}</div></div>",
             unsafe_allow_html=True,
         )
 
@@ -616,14 +633,18 @@ elif st.session_state.ranked_response is not None:
     """, unsafe_allow_html=True)
 
     st.markdown(
-        f'<div class="cl-conf-label"><span>Confiança</span><span class="cl-conf-value">{confidence:.0%}</span></div>',
+        f'<div class="cl-conf-label"><span>Confiança</span>'
+        f'<span class="cl-conf-value">{confidence:.0%}</span></div>',
         unsafe_allow_html=True,
     )
     st.progress(min(max(confidence, 0.0), 1.0))
 
     retrieved = st.session_state.retrieved_info or []
     if retrieved:
-        st.markdown(f'<div class="cl-sources-title">Fontes ({len(retrieved)})</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="cl-sources-title">Fontes ({len(retrieved)})</div>',
+            unsafe_allow_html=True,
+        )
         for i, doc in enumerate(retrieved):
             meta = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
             source_raw = meta.get("source", "Desconhecida")

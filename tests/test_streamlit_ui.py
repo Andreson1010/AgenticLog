@@ -67,7 +67,6 @@ class TestStreamlitUI(unittest.TestCase):
         self.assertEqual(at.session_state["confidence_score"], 0.85)
         self.assertEqual(at.session_state["next_step"], "retrieve")
         error_texts = [e.value for e in at.error]
-        confidence_errors = [t for t in error_texts if "0." in t]
         non_confidence_errors = [
             t for t in error_texts
             if not any(kw in t for kw in ["Confiança baixa", "Confiança média"])

@@ -1,4 +1,4 @@
-"""Testes para scripts/pdf_to_json.py (wrapper fino sobre agenticlog.rag.extrair_texto_pdf)."""
+"""Testes para scripts/pdf_to_json.py (wrapper fino sobre agenticlog.ingestion.extraction.extrair_texto_pdf)."""
 
 import io
 import sys
@@ -13,7 +13,7 @@ sys.path.insert(0, str(_root / "scripts"))
 
 import pdf_to_json  # noqa: E402
 
-from agenticlog.rag import RAGSecurityError  # noqa: E402
+from agenticlog.shared.errors import RAGSecurityError  # noqa: E402
 
 
 class TestPdfParaDict:

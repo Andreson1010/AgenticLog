@@ -1,15 +1,29 @@
 # AgenticLog - Estágio de embeddings da ingestão
-"""Factory de construção do modelo de embedding (ADR-018 Fase 3a).
+"""Factory e singleton do modelo de embedding (ADR-018 Fase 3a + Fase 6).
 
-Contém APENAS a construção do modelo (verbatim de rag.py). O singleton global
-`_rag_embedding_model` e o getter `_get_rag_embedding_model` FICAM em `agenticlog.rag`
-para preservar o monkeypatch do oráculo de caracterização (ver design §5).
+Contém a construção do modelo (`criar_embedding_model`), o cache singleton
+`_rag_embedding_model` e o getter `_get_rag_embedding_model` — realocados de
+`agenticlog.rag` na Fase 6.
 """
 
 import torch
 from langchain_huggingface import HuggingFaceEmbeddings
 
 from agenticlog.config import EMBEDDING_MODEL
+
+_rag_embedding_model = None
+
+
+def _get_rag_embedding_model() -> HuggingFaceEmbeddings:
+    """Retorna singleton de HuggingFaceEmbeddings para ingestão incremental.
+
+    Entrada: nenhuma.
+    Saída: instância de HuggingFaceEmbeddings (criada uma única vez por processo).
+    """
+    global _rag_embedding_model
+    if _rag_embedding_model is None:
+        _rag_embedding_model = criar_embedding_model()
+    return _rag_embedding_model
 
 
 def criar_embedding_model() -> HuggingFaceEmbeddings:

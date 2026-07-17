@@ -32,12 +32,11 @@ _root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_root / "src"))
 
 import unittest
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import MagicMock, patch
 
-import agenticlog.rag as _rag_module
+import agenticlog.shared.errors as _rag_module
 from agenticlog.config import DEFAULT_COLLECTION_NAME
-from agenticlog.rag import RAGSecurityError
-
+from agenticlog.shared.errors import RAGSecurityError
 
 # ---------------------------------------------------------------------------
 # Helper — cria um UploadedFile fake do Streamlit
@@ -164,7 +163,7 @@ class TestDOCING03NonJsonExtensionRejected(unittest.TestCase):
 
     def test_docing_03_salvar_rejeita_extensao_nao_json_diretamente(self) -> None:
         """DOCING-03: salvar_documento_enviado lança RAGSecurityError para extensão inválida."""
-        from agenticlog.rag import salvar_documento_enviado
+        from agenticlog.ingestion.security import salvar_documento_enviado
 
         with self.assertRaises(RAGSecurityError) as ctx:
             salvar_documento_enviado("evil.txt", b"data")
@@ -203,7 +202,7 @@ class TestDOCING04FileSizeRejected(unittest.TestCase):
 
     def test_docing_04_salvar_rejeita_tamanho_excedido_diretamente(self) -> None:
         """DOCING-04: salvar_documento_enviado lança RAGSecurityError para conteúdo > 10 MB."""
-        from agenticlog.rag import salvar_documento_enviado
+        from agenticlog.ingestion.security import salvar_documento_enviado
 
         conteudo_grande = b"x" * (10 * 1024 * 1024 + 1)
 
@@ -247,8 +246,8 @@ class TestDOCING05ForbiddenKeyRejected(unittest.TestCase):
     def test_docing_05_salvar_rejeita_chave_proibida_diretamente(self) -> None:
         """DOCING-05: salvar_documento_enviado lança RAGSecurityError para chave 'lc'."""
         import json
-        import tempfile
-        from agenticlog.rag import salvar_documento_enviado
+
+        from agenticlog.ingestion.security import salvar_documento_enviado
 
         conteudo = json.dumps({"lc": "evil", "tipo": "frete"}).encode()
 
@@ -289,7 +288,8 @@ class TestDOCING06FilenameCollisionRejected(unittest.TestCase):
     def test_docing_06_salvar_rejeita_colisao_diretamente(self) -> None:
         """DOCING-06: salvar_documento_enviado lança RAGSecurityError se arquivo já existe."""
         import tempfile
-        from agenticlog.rag import salvar_documento_enviado, DIR_DOCUMENTS as _REAL_DIR
+
+        from agenticlog.ingestion.security import salvar_documento_enviado
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
@@ -337,14 +337,14 @@ class TestDOCING07PathTraversalRejected(unittest.TestCase):
 
     def test_docing_07_sanitizar_rejeita_path_traversal(self) -> None:
         """DOCING-07: _sanitizar_nome_arquivo lança RAGSecurityError para '../evil.json'."""
-        from agenticlog.rag import _sanitizar_nome_arquivo
+        from agenticlog.ingestion.security import _sanitizar_nome_arquivo
 
         with self.assertRaises(RAGSecurityError):
             _sanitizar_nome_arquivo("../evil.json")
 
     def test_docing_07_sanitizar_rejeita_chars_invalidos_windows(self) -> None:
         """DOCING-07: _sanitizar_nome_arquivo lança RAGSecurityError para chars inválidos do Windows."""
-        from agenticlog.rag import _sanitizar_nome_arquivo
+        from agenticlog.ingestion.security import _sanitizar_nome_arquivo
 
         for char in '<>:"|?*':
             with self.subTest(char=char):
@@ -353,7 +353,7 @@ class TestDOCING07PathTraversalRejected(unittest.TestCase):
 
     def test_docing_07_sanitizar_rejeita_null_byte(self) -> None:
         """DOCING-07: _sanitizar_nome_arquivo lança RAGSecurityError para null byte no nome."""
-        from agenticlog.rag import _sanitizar_nome_arquivo
+        from agenticlog.ingestion.security import _sanitizar_nome_arquivo
 
         with self.assertRaises(RAGSecurityError):
             _sanitizar_nome_arquivo("arq\x00ivo.json")
@@ -389,10 +389,10 @@ class TestDOCING08FileCountLimitRejected(unittest.TestCase):
 
     def test_docing_08_salvar_rejeita_limite_arquivos_diretamente(self) -> None:
         """DOCING-08: salvar_documento_enviado lança RAGSecurityError quando há 1000 arquivos."""
-        import json
         import tempfile
-        from agenticlog.rag import salvar_documento_enviado
+
         from agenticlog.config import MAX_JSON_FILES
+        from agenticlog.ingestion.security import salvar_documento_enviado
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
@@ -888,7 +888,7 @@ class TestColecaoSeletor(unittest.TestCase):
         """MCC-16: nome 'ab' (muito curto) → _sanitizar_nome_colecao levanta
         RAGSecurityError na UI → st.caption exibe mensagem de erro,
         adicionar_documento_incrementalmente NÃO é chamado."""
-        from agenticlog.rag import sanitizar_nome_colecao
+        from agenticlog.ingestion.security import sanitizar_nome_colecao
 
         # Confirma que "ab" levanta RAGSecurityError (pré-condição do teste)
         with self.assertRaises(RAGSecurityError):

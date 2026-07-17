@@ -163,4 +163,4 @@ if LOG_FORMAT not in _VALID_LOG_FORMATS:
     )
 
 
-from agenticlog.observability.logging import _JsonFormatter  # noqa: E402,F401,I001  # Re-export shim (ADR-018 Fase 2) — remover na Fase 6
+# _JsonFormatter removido na Fase 6 — importar de agenticlog.observability.logging

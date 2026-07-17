@@ -20,7 +20,6 @@ from langchain_chroma import Chroma
 from openai import APIConnectionError
 from pydantic import BaseModel, Field, field_validator
 
-from agenticlog.agent import AgentState, agent_workflow, inicializar_recursos
 from agenticlog.config import (
     DEFAULT_COLLECTION_NAME,
     DIR_VECTORDB,
@@ -28,13 +27,14 @@ from agenticlog.config import (
     HISTORY_MAX_ENTRIES,
     RESPOSTA_PADRAO_SEGURA,
 )
-from agenticlog.health import (
+from agenticlog.ingestion.embeddings import _get_rag_embedding_model
+from agenticlog.observability.history import HistoryStore
+from agenticlog.retrieval.graph import AgentState, agent_workflow, inicializar_recursos
+from agenticlog.serving.health import (
     LMStudioUnavailableError,
     ModeloNaoCarregadoError,
     check_lmstudio_health,
 )
-from agenticlog.history import HistoryStore
-from agenticlog.rag import _get_rag_embedding_model
 
 logger = logging.getLogger("agenticlog.api")
 
@@ -43,7 +43,7 @@ MSG_LMSTUDIO_INDISPONIVEL = (
     "LMStudio indisponivel. Inicie o servidor e carregue o modelo."
 )
 MSG_VECTORDB_AUSENTE = (
-    "Base vetorial nao encontrada. Execute: python -m agenticlog.rag"
+    "Base vetorial nao encontrada. Execute: python -m agenticlog.ingestion"
 )
 
 # Excecoes que disparam o modo seguro (200-degraded) no /query. ModeloNaoCarregadoError

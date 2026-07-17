@@ -14,7 +14,7 @@ _root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_root / "src"))
 
 import agenticlog.config as config  # noqa: E402
-import agenticlog.rag as rag  # noqa: E402  # shim ainda re-exporta os símbolos (identidade)
+import agenticlog.shared.errors as rag  # noqa: E402
 from agenticlog.ingestion.extraction import carregar_json, extrair_texto_pdf  # noqa: E402
 
 

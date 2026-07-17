@@ -34,15 +34,15 @@ _root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_root / "src"))
 
 import unittest
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 from agenticlog.config import (
     COLLECTION_NAME_MAX_LEN,
     COLLECTION_NAME_MIN_LEN,
     DEFAULT_COLLECTION_NAME,
 )
-from agenticlog.rag import RAGSecurityError, sanitizar_nome_colecao
-
+from agenticlog.ingestion.security import sanitizar_nome_colecao
+from agenticlog.shared.errors import RAGSecurityError
 
 # ---------------------------------------------------------------------------
 # Utilitários
@@ -100,7 +100,8 @@ class TestAC01AC16DropdownColecoes(unittest.TestCase):
         via sys.modules para interceptar o import dinâmico.
         """
         import sys
-        from agenticlog.agent import _listar_colecoes
+
+        from agenticlog.retrieval.retriever import _listar_colecoes
 
         col1 = MagicMock()
         col1.name = "fornecedores"
@@ -122,7 +123,8 @@ class TestAC01AC16DropdownColecoes(unittest.TestCase):
     def teste_3_listar_colecoes_sem_colecoes_retorna_default(self) -> None:
         """AC1: WHEN ChromaDB vazio THEN _listar_colecoes retorna [DEFAULT_COLLECTION_NAME]."""
         import sys
-        from agenticlog.agent import _listar_colecoes
+
+        from agenticlog.retrieval.retriever import _listar_colecoes
 
         client_mock = MagicMock()
         client_mock.list_collections.return_value = []
@@ -138,7 +140,8 @@ class TestAC01AC16DropdownColecoes(unittest.TestCase):
     def teste_4_listar_colecoes_erro_retorna_default(self) -> None:
         """AC1: WHEN ChromaDB lança exceção THEN _listar_colecoes retorna [DEFAULT_COLLECTION_NAME]."""
         import sys
-        from agenticlog.agent import _listar_colecoes
+
+        from agenticlog.retrieval.retriever import _listar_colecoes
 
         mock_chromadb = MagicMock()
         mock_chromadb.PersistentClient.side_effect = RuntimeError("disk error")
@@ -308,7 +311,7 @@ class TestAC05FanOutRetrieval(unittest.TestCase):
 
     def teste_1_fanout_recupera_de_duas_colecoes_e_mescla(self) -> None:
         """AC5: fan-out em 2 coleções → documentos de ambas incluídos no resultado."""
-        from agenticlog.agent import _get_retriever
+        from agenticlog.retrieval.retriever import _get_retriever
 
         doc_a = _make_doc("Fornecedor XYZ prazo 30 dias")
         doc_b = _make_doc("Contrato ABC valor 50000")
@@ -328,8 +331,8 @@ class TestAC05FanOutRetrieval(unittest.TestCase):
         def _fake_get_vector_db(name: str):
             return db_a if name == "fornecedores" else db_b
 
-        with patch("agenticlog.agent._listar_colecoes", return_value=["fornecedores", "contratos"]):
-            with patch("agenticlog.agent._get_vector_db", side_effect=_fake_get_vector_db):
+        with patch("agenticlog.retrieval.retriever._listar_colecoes", return_value=["fornecedores", "contratos"]):
+            with patch("agenticlog.retrieval.retriever._get_vector_db", side_effect=_fake_get_vector_db):
                 result = _get_retriever("prazo de entrega")
 
         contents = [doc.page_content for doc in result]
@@ -338,7 +341,7 @@ class TestAC05FanOutRetrieval(unittest.TestCase):
 
     def teste_2_fanout_deduplica_documentos_identicos(self) -> None:
         """AC5: doc duplicado em duas coleções → aparece apenas uma vez no resultado."""
-        from agenticlog.agent import _get_retriever
+        from agenticlog.retrieval.retriever import _get_retriever
 
         doc = _make_doc("conteúdo duplicado")
 
@@ -348,8 +351,8 @@ class TestAC05FanOutRetrieval(unittest.TestCase):
         db_mock = MagicMock()
         db_mock.as_retriever.return_value = retriever_mock
 
-        with patch("agenticlog.agent._listar_colecoes", return_value=["col1", "col2"]):
-            with patch("agenticlog.agent._get_vector_db", return_value=db_mock):
+        with patch("agenticlog.retrieval.retriever._listar_colecoes", return_value=["col1", "col2"]):
+            with patch("agenticlog.retrieval.retriever._get_vector_db", return_value=db_mock):
                 result = _get_retriever("query")
 
         occurrences = sum(1 for d in result if d.page_content == "conteúdo duplicado")
@@ -357,7 +360,7 @@ class TestAC05FanOutRetrieval(unittest.TestCase):
 
     def teste_3_fanout_retorna_no_maximo_tres_documentos(self) -> None:
         """AC5: fan-out com 10 docs únicos → resultado limitado a 3."""
-        from agenticlog.agent import _get_retriever
+        from agenticlog.retrieval.retriever import _get_retriever
 
         docs = [_make_doc(f"doc único {i}") for i in range(10)]
         retriever_mock = MagicMock()
@@ -366,8 +369,8 @@ class TestAC05FanOutRetrieval(unittest.TestCase):
         db_mock = MagicMock()
         db_mock.as_retriever.return_value = retriever_mock
 
-        with patch("agenticlog.agent._listar_colecoes", return_value=["col1"]):
-            with patch("agenticlog.agent._get_vector_db", return_value=db_mock):
+        with patch("agenticlog.retrieval.retriever._listar_colecoes", return_value=["col1"]):
+            with patch("agenticlog.retrieval.retriever._get_vector_db", return_value=db_mock):
                 result = _get_retriever("query")
 
         self.assertLessEqual(len(result), 3)
@@ -386,7 +389,7 @@ class TestAC17ColecaoVaziaSkipSilencioso(unittest.TestCase):
 
     def teste_1_colecao_vazia_nao_levanta_excecao(self) -> None:
         """AC17: coleção vazia contribui 0 docs e não lança exceção."""
-        from agenticlog.agent import _get_retriever
+        from agenticlog.retrieval.retriever import _get_retriever
 
         doc = _make_doc("doc de fornecedores")
 
@@ -405,8 +408,8 @@ class TestAC17ColecaoVaziaSkipSilencioso(unittest.TestCase):
         def _fake_get_vector_db(name: str):
             return db_vazio if name == "vazia" else db_cheio
 
-        with patch("agenticlog.agent._listar_colecoes", return_value=["vazia", "fornecedores"]):
-            with patch("agenticlog.agent._get_vector_db", side_effect=_fake_get_vector_db):
+        with patch("agenticlog.retrieval.retriever._listar_colecoes", return_value=["vazia", "fornecedores"]):
+            with patch("agenticlog.retrieval.retriever._get_vector_db", side_effect=_fake_get_vector_db):
                 result = _get_retriever("query")
 
         self.assertEqual(len(result), 1)
@@ -414,7 +417,7 @@ class TestAC17ColecaoVaziaSkipSilencioso(unittest.TestCase):
 
     def teste_2_todas_colecoes_vazias_retorna_lista_vazia(self) -> None:
         """AC17: WHEN todas as coleções estão vazias THEN retorna lista vazia sem exceção."""
-        from agenticlog.agent import _get_retriever
+        from agenticlog.retrieval.retriever import _get_retriever
 
         retriever_vazio = MagicMock()
         retriever_vazio.invoke.return_value = []
@@ -422,8 +425,8 @@ class TestAC17ColecaoVaziaSkipSilencioso(unittest.TestCase):
         db_vazio = MagicMock()
         db_vazio.as_retriever.return_value = retriever_vazio
 
-        with patch("agenticlog.agent._listar_colecoes", return_value=["col1", "col2"]):
-            with patch("agenticlog.agent._get_vector_db", return_value=db_vazio):
+        with patch("agenticlog.retrieval.retriever._listar_colecoes", return_value=["col1", "col2"]):
+            with patch("agenticlog.retrieval.retriever._get_vector_db", return_value=db_vazio):
                 result = _get_retriever("query")
 
         self.assertEqual(result, [])
@@ -442,7 +445,7 @@ class TestAC18ErroChromeDBFanOutPropagate(unittest.TestCase):
 
     def teste_1_excecao_chromadb_propagada_imediatamente(self) -> None:
         """AC18: RuntimeError no retriever.invoke → _get_retriever propaga sem capturar."""
-        from agenticlog.agent import _get_retriever
+        from agenticlog.retrieval.retriever import _get_retriever
 
         retriever_falho = MagicMock()
         retriever_falho.invoke.side_effect = RuntimeError("ChromaDB disk error")
@@ -450,8 +453,8 @@ class TestAC18ErroChromeDBFanOutPropagate(unittest.TestCase):
         db_falho = MagicMock()
         db_falho.as_retriever.return_value = retriever_falho
 
-        with patch("agenticlog.agent._listar_colecoes", return_value=["fornecedores"]):
-            with patch("agenticlog.agent._get_vector_db", return_value=db_falho):
+        with patch("agenticlog.retrieval.retriever._listar_colecoes", return_value=["fornecedores"]):
+            with patch("agenticlog.retrieval.retriever._get_vector_db", return_value=db_falho):
                 with self.assertRaises(RuntimeError) as ctx:
                     _get_retriever("query")
 
@@ -459,7 +462,7 @@ class TestAC18ErroChromeDBFanOutPropagate(unittest.TestCase):
 
     def teste_2_excecao_em_segunda_colecao_interrompe_fanout(self) -> None:
         """AC18: WHEN segunda coleção falha THEN _get_retriever re-lança imediatamente."""
-        from agenticlog.agent import _get_retriever
+        from agenticlog.retrieval.retriever import _get_retriever
 
         retriever_ok = MagicMock()
         retriever_ok.invoke.return_value = [_make_doc("doc ok")]
@@ -476,8 +479,8 @@ class TestAC18ErroChromeDBFanOutPropagate(unittest.TestCase):
         def _fake_get_vector_db(name: str):
             return db_ok if name == "boa" else db_falho
 
-        with patch("agenticlog.agent._listar_colecoes", return_value=["boa", "corrompida"]):
-            with patch("agenticlog.agent._get_vector_db", side_effect=_fake_get_vector_db):
+        with patch("agenticlog.retrieval.retriever._listar_colecoes", return_value=["boa", "corrompida"]):
+            with patch("agenticlog.retrieval.retriever._get_vector_db", side_effect=_fake_get_vector_db):
                 with self.assertRaises(Exception) as ctx:
                     _get_retriever("query")
 
@@ -501,11 +504,11 @@ class TestAC06DefaultCollectionName(unittest.TestCase):
 
     def teste_2_adicionar_documento_usa_default_quando_omitido(self) -> None:
         """AC6: adicionar_documento_incrementalmente sem collection_name usa 'logistica'."""
-        from agenticlog.rag import adicionar_documento_incrementalmente
+        from agenticlog.ingestion.orchestrator import adicionar_documento_incrementalmente
 
         with patch("agenticlog.ingestion.orchestrator.Chroma") as mock_chroma, \
-             patch("agenticlog.rag._get_rag_embedding_model"), \
-             patch("agenticlog.rag.DIR_DOCUMENTS") as mock_dir, \
+             patch("agenticlog.ingestion.orchestrator.criar_embedding_model"), \
+             patch("agenticlog.config.DIR_DOCUMENTS") as mock_dir, \
              patch("agenticlog.ingestion.orchestrator._sanitizar_nome_arquivo", return_value="doc.json"), \
              patch("agenticlog.ingestion.orchestrator._valida_json_sem_chaves_proibidas"), \
              patch("agenticlog.ingestion.orchestrator.shutil.move"), \
@@ -596,10 +599,10 @@ class TestAC07NomeMuitoCurto(unittest.TestCase):
 
     def teste_5_adicionar_com_nome_muito_curto_levanta_antes_de_chroma(self) -> None:
         """AC7: adicionar_documento_incrementalmente com nome < 3 chars → RAGSecurityError."""
-        from agenticlog.rag import adicionar_documento_incrementalmente
+        from agenticlog.ingestion.orchestrator import adicionar_documento_incrementalmente
 
         with patch("agenticlog.ingestion.orchestrator.Chroma") as mock_chroma, \
-             patch("agenticlog.rag._get_rag_embedding_model"):
+             patch("agenticlog.ingestion.orchestrator.criar_embedding_model"):
             with self.assertRaises(RAGSecurityError):
                 adicionar_documento_incrementalmente("doc.json", b'{}', "ab")
 
@@ -607,10 +610,10 @@ class TestAC07NomeMuitoCurto(unittest.TestCase):
 
     def teste_6_salvar_pdf_com_nome_muito_curto_levanta_antes_de_chroma(self) -> None:
         """AC7: salvar_pdf_enviado com nome < 3 chars → RAGSecurityError sem escrita."""
-        from agenticlog.rag import salvar_pdf_enviado
+        from agenticlog.ingestion.security import salvar_pdf_enviado
 
         with patch("agenticlog.ingestion.orchestrator.Chroma") as mock_chroma, \
-             patch("agenticlog.rag._get_rag_embedding_model"):
+             patch("agenticlog.ingestion.orchestrator.criar_embedding_model"):
             with self.assertRaises(RAGSecurityError):
                 salvar_pdf_enviado("doc.pdf", b"%PDF-1.4 fake", "ab")
 
@@ -647,10 +650,10 @@ class TestAC08NomeMuitoLongo(unittest.TestCase):
 
     def teste_4_adicionar_com_nome_muito_longo_levanta_antes_de_chroma(self) -> None:
         """AC8: adicionar_documento_incrementalmente com nome > 63 chars → RAGSecurityError."""
-        from agenticlog.rag import adicionar_documento_incrementalmente
+        from agenticlog.ingestion.orchestrator import adicionar_documento_incrementalmente
 
         with patch("agenticlog.ingestion.orchestrator.Chroma") as mock_chroma, \
-             patch("agenticlog.rag._get_rag_embedding_model"):
+             patch("agenticlog.ingestion.orchestrator.criar_embedding_model"):
             with self.assertRaises(RAGSecurityError):
                 adicionar_documento_incrementalmente("doc.json", b'{}', "a" * 64)
 
@@ -753,10 +756,10 @@ class TestAC12SanitizacaoAntesDeEscrita(unittest.TestCase):
 
     def teste_1_adicionar_com_nome_invalido_rejeita_antes_chroma(self) -> None:
         """AC12: adicionar_documento_incrementalmente → RAGSecurityError antes de Chroma."""
-        from agenticlog.rag import adicionar_documento_incrementalmente
+        from agenticlog.ingestion.orchestrator import adicionar_documento_incrementalmente
 
         with patch("agenticlog.ingestion.orchestrator.Chroma") as mock_chroma, \
-             patch("agenticlog.rag._get_rag_embedding_model"):
+             patch("agenticlog.ingestion.orchestrator.criar_embedding_model"):
             with self.assertRaises(RAGSecurityError):
                 adicionar_documento_incrementalmente("f.json", b'{}', "a!")
 
@@ -764,7 +767,7 @@ class TestAC12SanitizacaoAntesDeEscrita(unittest.TestCase):
 
     def teste_2_salvar_documento_com_nome_invalido_rejeita_antes_escrita(self) -> None:
         """AC12: salvar_documento_enviado → RAGSecurityError antes de disco."""
-        from agenticlog.rag import salvar_documento_enviado
+        from agenticlog.ingestion.security import salvar_documento_enviado
 
         with patch("agenticlog.ingestion.security.shutil.move") as mock_move:
             with self.assertRaises(RAGSecurityError):
@@ -774,7 +777,7 @@ class TestAC12SanitizacaoAntesDeEscrita(unittest.TestCase):
 
     def teste_3_salvar_pdf_com_nome_invalido_rejeita_antes_escrita(self) -> None:
         """AC12: salvar_pdf_enviado → RAGSecurityError antes de disco."""
-        from agenticlog.rag import salvar_pdf_enviado
+        from agenticlog.ingestion.security import salvar_pdf_enviado
 
         with patch("agenticlog.ingestion.security.shutil.move") as mock_move:
             with self.assertRaises(RAGSecurityError):
@@ -784,7 +787,7 @@ class TestAC12SanitizacaoAntesDeEscrita(unittest.TestCase):
 
     def teste_4_reconstruir_vectordb_com_nome_invalido_rejeita(self) -> None:
         """AC12: reconstruir_vectordb → RAGSecurityError antes de cria_vectordb."""
-        from agenticlog.rag import reconstruir_vectordb
+        from agenticlog.ingestion.orchestrator import reconstruir_vectordb
 
         with patch("agenticlog.ingestion.orchestrator.cria_vectordb") as mock_criar:
             with self.assertRaises(RAGSecurityError):
@@ -806,7 +809,7 @@ class TestAC13InvalidarVectorDb(unittest.TestCase):
 
     def teste_1_invalidar_limpa_o_dicionario(self) -> None:
         """AC13: após invalidar_vector_db(), _vector_dbs está vazio."""
-        import agenticlog.agent as _agent
+        import agenticlog.retrieval.retriever as _agent
 
         _agent._vector_dbs["logistica"] = MagicMock()
         _agent._vector_dbs["fornecedores"] = MagicMock()
@@ -817,7 +820,7 @@ class TestAC13InvalidarVectorDb(unittest.TestCase):
 
     def teste_2_invalidar_em_dict_vazio_nao_levanta_excecao(self) -> None:
         """AC13: invalidar_vector_db() em _vector_dbs vazio → sem exceção."""
-        import agenticlog.agent as _agent
+        import agenticlog.retrieval.retriever as _agent
 
         _agent._vector_dbs.clear()
 
@@ -828,13 +831,13 @@ class TestAC13InvalidarVectorDb(unittest.TestCase):
 
     def teste_3_get_vector_db_repopula_apos_invalidar(self) -> None:
         """AC13: após invalidar, _get_vector_db cria nova instância Chroma ao ser chamado."""
-        import agenticlog.agent as _agent
+        import agenticlog.retrieval.retriever as _agent
 
         _agent.invalidar_vector_db()
         self.assertEqual(len(_agent._vector_dbs), 0)
 
         with patch("agenticlog.retrieval.retriever.Chroma") as mock_chroma, \
-             patch("agenticlog.agent._get_embedding_model"):
+             patch("agenticlog.retrieval.retriever._get_embedding_model"):
             mock_chroma.return_value = MagicMock()
             _agent._get_vector_db("logistica")
 
@@ -853,7 +856,7 @@ class TestAC14QueryRequestSemCollectionName(unittest.TestCase):
 
     def teste_1_query_request_nao_tem_collection_name(self) -> None:
         """AC14: QueryRequest.model_fields não contém 'collection_name'."""
-        from agenticlog.api import QueryRequest
+        from agenticlog.serving.api import QueryRequest
 
         self.assertNotIn(
             "collection_name",
@@ -863,14 +866,14 @@ class TestAC14QueryRequestSemCollectionName(unittest.TestCase):
 
     def teste_2_query_request_tem_apenas_query(self) -> None:
         """AC14: QueryRequest contém apenas o campo 'query'."""
-        from agenticlog.api import QueryRequest
+        from agenticlog.serving.api import QueryRequest
 
         fields = set(QueryRequest.model_fields.keys())
         self.assertEqual(fields, {"query"})
 
     def teste_3_query_request_instancia_valida_sem_collection_name(self) -> None:
         """AC14: QueryRequest({'query': 'teste'}) instancia sem erros."""
-        from agenticlog.api import QueryRequest
+        from agenticlog.serving.api import QueryRequest
 
         req = QueryRequest(query="teste de logistica")
         self.assertEqual(req.query, "teste de logistica")

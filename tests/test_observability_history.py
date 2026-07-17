@@ -17,8 +17,6 @@ _src = str(_root / "src")
 if _src not in sys.path:
     sys.path.insert(0, _src)
 
-import agenticlog.api as api_module
-import agenticlog.history as history_shim
 import agenticlog.observability as obs_pkg
 import agenticlog.observability.history as obs_history
 from agenticlog.observability.history import HistoryStore
@@ -43,12 +41,6 @@ def test_reexport_pacote_observability_e_mesmo_objeto() -> None:
     """OBS-14/OBS-15: `agenticlog.observability` re-exporta o MESMO objeto canônico."""
     assert obs_pkg.HistoryStore is obs_history.HistoryStore
     assert "HistoryStore" in obs_pkg.__all__
-
-
-def test_shim_history_e_api_namespace_sao_mesmo_objeto() -> None:
-    """OBS-13/OBS-15/OBS-17: shim `history` e consumidor `api` IS o objeto canônico."""
-    assert history_shim.HistoryStore is obs_history.HistoryStore
-    assert api_module.HistoryStore is obs_history.HistoryStore
 
 
 def test_append_read_all_round_trip_e_ordenacao_desc(tmp_path: Path) -> None:

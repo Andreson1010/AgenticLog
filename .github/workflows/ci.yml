@@ -104,7 +104,7 @@ jobs:
       - name: Build vector DB (full rebuild from committed corpus)
         # --rebuild (não incremental) garante que o índice casa com a config atual
         # de chunking/embedding — evita silent-degradation (CLAUDE.md).
-        run: python -m agenticlog.rag --rebuild
+        run: python -m agenticlog.ingestion --rebuild
 
       - name: Run RAG eval gate against golden set
         run: python scripts/rag_eval.py --golden evals/rag_golden.json --out rag_eval_results.json --k 3 --gate

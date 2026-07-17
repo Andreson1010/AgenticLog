@@ -12,13 +12,12 @@ Paths de mock:
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 _root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_root / "src"))
 
-from agenticlog.rag import RAGSecurityError  # noqa: E402
-import app  # noqa: E402 — importa módulo app para acessar _ingerir_documento
+from agenticlog.shared.errors import RAGSecurityError  # noqa: E402
 from app import _ingerir_documento  # noqa: E402
 
 

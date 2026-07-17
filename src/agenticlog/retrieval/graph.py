@@ -2,22 +2,23 @@
 """
 Orquestração do grafo LangGraph: nós, FSM routing, workflow compilado.
 
-Extraído de `agent.py` (ADR-018 Fase 4). Contém os 6 nós do grafo, a
-compilação do StateGraph e a inicialização de recursos.
+Extraído de `agent.py` (ADR-018 Fase 4; fachada deletada na Fase 6). Contém os 6
+nós do grafo, a compilação do StateGraph e a inicialização de recursos.
 
-`search` permanece FISICAMENTE em `agent.py` (DN-1) — `usar_ferramenta_web`
-o acessa via lazy import dentro do corpo da função.
+`search` (DuckDuckGo) vive neste módulo (realocado de `agent.py` na Fase 6);
+`usar_ferramenta_web` o acessa diretamente.
 
 `inicializar_recursos` acessa `_get_embedding_model`, `_get_llm` e
-`_get_vector_db` via lazy imports de `agent.py` para garantir que os
-singletons sejam criados no namespace de `agent`.
+`_get_vector_db` via imports de `agenticlog.retrieval.{generation,retriever}`
+para garantir que os singletons sejam criados nos namespaces canônicos.
 
-NADA importa `agent` em nível de módulo — todos os acessos são lazy
-imports DENTRO de funções (DN-2, RETR-13).
+NADA importa código de `retrieval` em nível de módulo além do necessário ao
+StateGraph — os acessos a singletons são feitos DENTRO de funções (DN-2, RETR-13).
 """
 
 import logging
 
+from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
 from langchain_core.output_parsers import StrOutputParser
 from langgraph.graph import StateGraph  # type: ignore[import-untyped]
 
@@ -37,6 +38,9 @@ from agenticlog.retrieval.retriever import _get_retriever
 from agenticlog.retrieval.state import AgentState
 
 logger = logging.getLogger(__name__)
+
+# Ferramenta de busca web — DuckDuckGo não requer LMStudio, inicializado na importação
+search = DuckDuckGoSearchAPIWrapper(region="br-pt", max_results=5)
 
 
 def passo_decisao_agente(state: AgentState) -> AgentState:
@@ -61,11 +65,7 @@ def usar_ferramenta_web(state: AgentState) -> AgentState:
     Entrada: state.query.
     Saída:   state.ranked_response (resultado da busca), state.confidence_score = 0.0
              (sem base vetorial para calcular similaridade).
-
-    Acessa `search` via lazy import de `agenticlog.agent` (DN-1) — o global
-    `search` permanece fisicamente em agent.py para preservar monkeypatch.
     """
-    from agenticlog.agent import search  # lazy — resolvido a cada chamada (DN-1)
 
     try:
         resultados = search.run(state.query)
@@ -106,7 +106,7 @@ def retrieve_info(state: AgentState) -> AgentState:
 
 
 def inicializar_recursos() -> None:
-    """Inicializa singletons do agente (LLM, ChromaDB, embeddings) na inicialização do servidor.
+    """Inicializa singletons (LLM, ChromaDB, embeddings) na inicialização do servidor.
 
     Entrada: nenhuma
     Saída: nenhuma — efeito colateral: singletons globais inicializados
@@ -114,13 +114,14 @@ def inicializar_recursos() -> None:
     Ordem de inicialização: embeddings → vector_db → llm.
     Chamada única a partir do lifespan do FastAPI; elimina race condition \
 em requisições concorrentes.
-
-    Acessa os 3 getters via lazy import de `agenticlog.agent` para garantir que
-    os singletons sejam criados no namespace de `agent` (DN-2).
     """
-    from agenticlog.agent import _get_embedding_model as _get_emb
-    from agenticlog.agent import _get_llm as _get_llm_fn
-    from agenticlog.agent import _get_vector_db as _get_vdb
+    from agenticlog.retrieval.generation import _get_llm as _get_llm_fn
+    from agenticlog.retrieval.retriever import (
+        _get_embedding_model as _get_emb,
+    )
+    from agenticlog.retrieval.retriever import (
+        _get_vector_db as _get_vdb,
+    )
 
     _get_emb()
     _get_vdb(DEFAULT_COLLECTION_NAME)

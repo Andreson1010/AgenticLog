@@ -13,13 +13,13 @@ _root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_root / "src"))
 
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from langchain_core.documents import Document
 
-from agenticlog.agent import AgentState, agent_workflow
 from agenticlog.config import NUM_CANDIDATE_RESPONSES
-
+from agenticlog.retrieval.graph import agent_workflow
+from agenticlog.retrieval.state import AgentState
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -58,7 +58,7 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
     # Caminho 1: retrieve
     # ------------------------------------------------------------------
 
-    @patch("agenticlog.agent._get_embedding_model")
+    @patch("agenticlog.retrieval.retriever._get_embedding_model")
     @patch("agenticlog.retrieval.graph._get_retriever")
     @patch("agenticlog.retrieval.generation._invoke_chain")
     def teste_1_caminho_retrieve_retorna_ranked_response(
@@ -86,7 +86,7 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
         self.assertTrue(ranked, "ranked_response não pode ser vazio ou None")
         self.assertIsInstance(result["confidence_score"], float)
 
-    @patch("agenticlog.agent._get_embedding_model")
+    @patch("agenticlog.retrieval.retriever._get_embedding_model")
     @patch("agenticlog.retrieval.graph._get_retriever")
     @patch("agenticlog.retrieval.generation._invoke_chain")
     def teste_2_caminho_retrieve_agentstate_chaves_obrigatorias(
@@ -122,7 +122,7 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
     # Caminho 2: gerar (geração conceitual sem retrieval)
     # ------------------------------------------------------------------
 
-    @patch("agenticlog.agent._get_embedding_model")
+    @patch("agenticlog.retrieval.retriever._get_embedding_model")
     @patch("agenticlog.retrieval.graph._get_retriever")
     @patch("agenticlog.retrieval.generation._invoke_chain")
     def teste_3_caminho_gerar_retorna_ranked_response(
@@ -148,7 +148,7 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
         # Retrieve-first: decisão roteia para retrieve; base vazia faz fallback para gerar.
         self.assertEqual(result["next_step"], "gerar")
 
-    @patch("agenticlog.agent._get_embedding_model")
+    @patch("agenticlog.retrieval.retriever._get_embedding_model")
     @patch("agenticlog.retrieval.graph._get_retriever")
     @patch("agenticlog.retrieval.generation._invoke_chain")
     def teste_4_caminho_gerar_retrieved_info_vazio(
@@ -174,7 +174,7 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
     # ------------------------------------------------------------------
 
     @patch("agenticlog.retrieval.graph._invoke_chain")
-    @patch("agenticlog.agent.search")
+    @patch("agenticlog.retrieval.graph.search")
     def teste_5_caminho_usar_web_retorna_ranked_response(
         self,
         mock_search,
@@ -198,7 +198,7 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
         self.assertEqual(result["next_step"], "usar_web")
 
     @patch("agenticlog.retrieval.graph._invoke_chain")
-    @patch("agenticlog.agent.search")
+    @patch("agenticlog.retrieval.graph.search")
     def teste_6_caminho_usar_web_agentstate_chaves_obrigatorias(
         self,
         mock_search,
@@ -217,7 +217,7 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
             self.assertIn(key, result, f"Chave obrigatória ausente: {key}")
 
     @patch("agenticlog.retrieval.graph._invoke_chain")
-    @patch("agenticlog.agent.search")
+    @patch("agenticlog.retrieval.graph.search")
     def teste_7_caminho_usar_web_duckduckgo_falha_retorna_fallback(
         self,
         mock_search,
@@ -238,7 +238,7 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
     # Casos de borda
     # ------------------------------------------------------------------
 
-    @patch("agenticlog.agent._get_embedding_model")
+    @patch("agenticlog.retrieval.retriever._get_embedding_model")
     @patch("agenticlog.retrieval.graph._get_retriever")
     @patch("agenticlog.retrieval.generation._invoke_chain")
     def teste_8_caminho_retrieve_sem_documentos_retorna_resposta(
@@ -263,7 +263,7 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
             "Todos os scores devem ser 0.0 quando não há documentos recuperados",
         )
 
-    @patch("agenticlog.agent._get_embedding_model")
+    @patch("agenticlog.retrieval.retriever._get_embedding_model")
     @patch("agenticlog.retrieval.graph._get_retriever")
     @patch("agenticlog.retrieval.generation._invoke_chain")
     def teste_9_caminho_gerar_possible_responses_tem_n_itens(
@@ -287,5 +287,5 @@ class TestAgentWorkflowIntegration(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    print("\nIniciando testes de integração do agent_workflow. Aguarde...\n")
+    print("\nIniciando testes de integração do agent_workflow. Aguarde...\n")  # noqa: T201
     unittest.main(verbosity=2)

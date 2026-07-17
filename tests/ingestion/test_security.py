@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 _root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_root / "src"))
 
-import agenticlog.rag as rag  # noqa: E402  # shim ainda re-exporta os símbolos (identidade)
+import agenticlog.ingestion.security as rag  # noqa: E402
 from agenticlog.ingestion.security import (  # noqa: E402
     _sanitizar_nome_arquivo,
     _valida_arquivos_json,
@@ -38,7 +38,7 @@ class TestValidaPathDocumentos(unittest.TestCase):
         resolved_dir.relative_to.side_effect = ValueError("fora")
         mock_dir.resolve.return_value = resolved_dir
 
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
+        with self.assertRaises(RAGSecurityError) as ctx:
             _valida_path_documentos()
         self.assertIn("fora do projeto", str(ctx.exception))
 
@@ -51,7 +51,7 @@ class TestValidaPathDocumentos(unittest.TestCase):
         resolved_dir.exists.return_value = False
         mock_dir.resolve.return_value = resolved_dir
 
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
+        with self.assertRaises(RAGSecurityError) as ctx:
             _valida_path_documentos()
         self.assertIn("não existe", str(ctx.exception))
 
@@ -65,7 +65,7 @@ class TestValidaPathDocumentos(unittest.TestCase):
         resolved_dir.is_dir.return_value = False
         mock_dir.resolve.return_value = resolved_dir
 
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
+        with self.assertRaises(RAGSecurityError) as ctx:
             _valida_path_documentos()
         self.assertIn("não é um diretório", str(ctx.exception))
 
@@ -93,7 +93,7 @@ class TestValidaJsonSemChavesProibidas(unittest.TestCase):
             f.write("{ invalido }")
             path = Path(f.name)
         try:
-            with self.assertRaises(rag.RAGSecurityError) as ctx:
+            with self.assertRaises(RAGSecurityError) as ctx:
                 _valida_json_sem_chaves_proibidas(path)
             self.assertIn("JSON inválido", str(ctx.exception))
         finally:
@@ -107,7 +107,7 @@ class TestValidaJsonSemChavesProibidas(unittest.TestCase):
             json.dump({"lc": "valor", "outro": "campo"}, f)
             path = Path(f.name)
         try:
-            with self.assertRaises(rag.RAGSecurityError) as ctx:
+            with self.assertRaises(RAGSecurityError) as ctx:
                 _valida_json_sem_chaves_proibidas(path)
             self.assertIn("chave proibida", str(ctx.exception))
             self.assertIn("lc", str(ctx.exception))
@@ -122,7 +122,7 @@ class TestValidaJsonSemChavesProibidas(unittest.TestCase):
             json.dump([{"campo": "ok"}, {"lc": "invalido"}], f)
             path = Path(f.name)
         try:
-            with self.assertRaises(rag.RAGSecurityError) as ctx:
+            with self.assertRaises(RAGSecurityError) as ctx:
                 _valida_json_sem_chaves_proibidas(path)
             self.assertIn("chave proibida", str(ctx.exception))
             self.assertIn("item 1", str(ctx.exception))
@@ -155,7 +155,7 @@ class TestValidaArquivosJson(unittest.TestCase):
             Path("b.json"),
             Path("c.json"),
         ]
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
+        with self.assertRaises(RAGSecurityError) as ctx:
             _valida_arquivos_json()
         self.assertIn("Excesso de arquivos", str(ctx.exception))
         self.assertIn("3", str(ctx.exception))
@@ -170,7 +170,7 @@ class TestValidaArquivosJson(unittest.TestCase):
         mock_path.stat.return_value.st_size = 2 * 1024 * 1024  # 2MB
         mock_dir.glob.return_value = [mock_path]
 
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
+        with self.assertRaises(RAGSecurityError) as ctx:
             _valida_arquivos_json()
         self.assertIn("excede", str(ctx.exception).lower())
         mock_valida.assert_not_called()
@@ -186,17 +186,17 @@ class TestSanitizarNomeArquivo(unittest.TestCase):
 
     def teste_2_sanitizar_rejeita_path_traversal(self):
         """Nome com '../' levanta RAGSecurityError."""
-        with self.assertRaises(rag.RAGSecurityError):
+        with self.assertRaises(RAGSecurityError):
             _sanitizar_nome_arquivo("../evil.json")
 
     def teste_3_sanitizar_rejeita_chars_invalidos(self):
         """Nome com caracteres inválidos do Windows levanta RAGSecurityError."""
-        with self.assertRaises(rag.RAGSecurityError):
+        with self.assertRaises(RAGSecurityError):
             _sanitizar_nome_arquivo("file<>.json")
 
     def teste_4_sanitizar_rejeita_nome_vazio(self):
         """Nome vazio levanta RAGSecurityError."""
-        with self.assertRaises(rag.RAGSecurityError):
+        with self.assertRaises(RAGSecurityError):
             _sanitizar_nome_arquivo("")
 
     def teste_5_sanitizar_rejeita_nomes_reservados_windows(self):
@@ -204,7 +204,7 @@ class TestSanitizarNomeArquivo(unittest.TestCase):
         reserved = ["CON.json", "PRN.json", "AUX.json", "NUL.json", "COM1.json", "LPT9.json"]
         for name in reserved:
             with self.subTest(name=name):
-                with self.assertRaises(rag.RAGSecurityError):
+                with self.assertRaises(RAGSecurityError):
                     _sanitizar_nome_arquivo(name)
 
 
@@ -217,13 +217,13 @@ class TestSanitizarNomeColecao(unittest.TestCase):
 
     def teste_1_nome_vazio_levanta_erro(self) -> None:
         """String vazia levanta RAGSecurityError."""
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
+        with self.assertRaises(RAGSecurityError) as ctx:
             self._sanitizar("")
         self.assertIn("vazio", str(ctx.exception))
 
     def teste_2_nome_muito_curto_dois_chars_levanta_erro(self) -> None:
         """Nome com 2 caracteres levanta RAGSecurityError (mínimo é 3)."""
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
+        with self.assertRaises(RAGSecurityError) as ctx:
             self._sanitizar("ab")
         self.assertIn("curto", str(ctx.exception))
 
@@ -240,23 +240,23 @@ class TestSanitizarNomeColecao(unittest.TestCase):
 
     def teste_5_nome_64_chars_levanta_erro(self) -> None:
         """Nome com 64 caracteres levanta RAGSecurityError (máximo é 63)."""
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
+        with self.assertRaises(RAGSecurityError) as ctx:
             self._sanitizar("a" * 64)
         self.assertIn("longo", str(ctx.exception))
 
     def teste_6_nome_com_espaco_levanta_erro(self) -> None:
         """Nome com espaço levanta RAGSecurityError."""
-        with self.assertRaises(rag.RAGSecurityError):
+        with self.assertRaises(RAGSecurityError):
             self._sanitizar("nome colecao")
 
     def teste_7_nome_comecando_com_hifen_levanta_erro(self) -> None:
         """Nome iniciando com hífen levanta RAGSecurityError."""
-        with self.assertRaises(rag.RAGSecurityError):
+        with self.assertRaises(RAGSecurityError):
             self._sanitizar("-inicio")
 
     def teste_8_nome_terminando_com_hifen_levanta_erro(self) -> None:
         """Nome terminando com hífen levanta RAGSecurityError."""
-        with self.assertRaises(rag.RAGSecurityError):
+        with self.assertRaises(RAGSecurityError):
             self._sanitizar("fim-")
 
     def teste_9_nome_valido_com_hifen_e_underscore(self) -> None:
@@ -288,14 +288,14 @@ class TestSalvarDocumentoEnviado(unittest.TestCase):
 
     def teste_2_salvar_rejeita_extensao_invalida(self):
         """Extensão não-.json levanta RAGSecurityError antes de qualquer escrita."""
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
+        with self.assertRaises(RAGSecurityError) as ctx:
             salvar_documento_enviado("dados.csv", self._valid_json_bytes())
         self.assertIn(".json", str(ctx.exception))
 
     def teste_3_salvar_rejeita_tamanho_excedido(self):
         """Arquivo maior que 10 MB levanta RAGSecurityError."""
         conteudo_grande = b"x" * (10 * 1024 * 1024 + 1)
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
+        with self.assertRaises(RAGSecurityError) as ctx:
             salvar_documento_enviado("grande.json", conteudo_grande)
         self.assertIn("10", str(ctx.exception))
 
@@ -305,7 +305,7 @@ class TestSalvarDocumentoEnviado(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
             with patch("agenticlog.ingestion.security.DIR_DOCUMENTS", new=tmp_path):
-                with self.assertRaises(rag.RAGSecurityError):
+                with self.assertRaises(RAGSecurityError):
                     salvar_documento_enviado("malicioso.json", conteudo)
 
     def teste_5_salvar_rejeita_colisao_de_nome(self):
@@ -314,13 +314,13 @@ class TestSalvarDocumentoEnviado(unittest.TestCase):
             tmp_path = Path(tmp_dir)
             (tmp_path / "existente.json").write_bytes(b"{}")
             with patch("agenticlog.ingestion.security.DIR_DOCUMENTS", new=tmp_path):
-                with self.assertRaises(rag.RAGSecurityError) as ctx:
+                with self.assertRaises(RAGSecurityError) as ctx:
                     salvar_documento_enviado("existente.json", self._valid_json_bytes())
             self.assertIn("já existe", str(ctx.exception))
 
     def teste_6_salvar_rejeita_path_traversal(self):
         """Nome de arquivo com path traversal levanta RAGSecurityError."""
-        with self.assertRaises(rag.RAGSecurityError):
+        with self.assertRaises(RAGSecurityError):
             salvar_documento_enviado("../evil.json", self._valid_json_bytes())
 
     def teste_7_salvar_rejeita_limite_de_arquivos(self):
@@ -330,7 +330,7 @@ class TestSalvarDocumentoEnviado(unittest.TestCase):
             for i in range(1000):
                 (tmp_path / f"arquivo_{i:04d}.json").write_bytes(b"{}")
             with patch("agenticlog.ingestion.security.DIR_DOCUMENTS", new=tmp_path):
-                with self.assertRaises(rag.RAGSecurityError) as ctx:
+                with self.assertRaises(RAGSecurityError) as ctx:
                     salvar_documento_enviado("novo.json", self._valid_json_bytes())
             self.assertIn("1000", str(ctx.exception))
 
@@ -354,13 +354,13 @@ class TestSalvarPdfEnviado(unittest.TestCase):
 
     def teste_2_salvar_rejeita_extensao_invalida(self):
         """Extensão .txt levanta RAGSecurityError."""
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
+        with self.assertRaises(RAGSecurityError) as ctx:
             salvar_pdf_enviado("documento.txt", self._valid_pdf_bytes())
         self.assertIn(".pdf", str(ctx.exception))
 
     def teste_2b_salvar_rejeita_magic_bytes_invalidos(self):
         """Conteúdo sem magic bytes %PDF levanta RAGSecurityError antes de escrita em disco."""
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
+        with self.assertRaises(RAGSecurityError) as ctx:
             salvar_pdf_enviado("fake.pdf", b"PK\x03\x04 not a pdf")
         self.assertIn("PDF válido", str(ctx.exception))
 
@@ -371,13 +371,13 @@ class TestSalvarPdfEnviado(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
             with patch("agenticlog.ingestion.security.DIR_DOCUMENTS", new=tmp_path):
-                result = salvar_pdf_enviado("CONTRATO.PDF", self._valid_pdf_bytes())
+                salvar_pdf_enviado("CONTRATO.PDF", self._valid_pdf_bytes())
             self.assertTrue((tmp_path / "CONTRATO.PDF").exists())
 
     def teste_4_salvar_rejeita_tamanho_excedido(self):
         """Conteúdo maior que 10 MB levanta RAGSecurityError antes de extração."""
         conteudo_grande = b"%PDF" + b"x" * (10 * 1024 * 1024 + 1)
-        with self.assertRaises(rag.RAGSecurityError) as ctx:
+        with self.assertRaises(RAGSecurityError) as ctx:
             salvar_pdf_enviado("grande.pdf", conteudo_grande)
         self.assertIn("10", str(ctx.exception))
 
@@ -387,18 +387,18 @@ class TestSalvarPdfEnviado(unittest.TestCase):
             tmp_path = Path(tmp_dir)
             (tmp_path / "existente.pdf").write_bytes(b"%PDF")
             with patch("agenticlog.ingestion.security.DIR_DOCUMENTS", new=tmp_path):
-                with self.assertRaises(rag.RAGSecurityError) as ctx:
+                with self.assertRaises(RAGSecurityError) as ctx:
                     salvar_pdf_enviado("existente.pdf", self._valid_pdf_bytes())
             self.assertIn("já existe", str(ctx.exception))
 
     def teste_6_salvar_rejeita_path_traversal(self):
         """Nome com path traversal levanta RAGSecurityError."""
-        with self.assertRaises(rag.RAGSecurityError):
+        with self.assertRaises(RAGSecurityError):
             salvar_pdf_enviado("../evil.pdf", self._valid_pdf_bytes())
 
     def teste_7_salvar_rejeita_nome_reservado_windows(self):
         """Nome reservado Windows levanta RAGSecurityError."""
-        with self.assertRaises(rag.RAGSecurityError):
+        with self.assertRaises(RAGSecurityError):
             salvar_pdf_enviado("CON.pdf", self._valid_pdf_bytes())
 
     @patch("agenticlog.ingestion.security.extrair_texto_pdf")
@@ -424,6 +424,6 @@ class TestSalvarPdfEnviado(unittest.TestCase):
             (tmp_path / "doc_1.pdf").write_bytes(b"%PDF")
             (tmp_path / "doc_2.json").write_bytes(b"{}")
             with patch("agenticlog.ingestion.security.DIR_DOCUMENTS", new=tmp_path):
-                with self.assertRaises(rag.RAGSecurityError) as ctx:
+                with self.assertRaises(RAGSecurityError) as ctx:
                     salvar_pdf_enviado("novo.pdf", self._valid_pdf_bytes())
         self.assertIn("Limite", str(ctx.exception))

@@ -83,7 +83,7 @@ class TestAppErrorHandler(unittest.TestCase):
 
         mock_response = _make_error_response(
             503,
-            "Base vetorial não encontrada. Execute: python -m agenticlog.rag",
+            "Base vetorial não encontrada. Execute: python -m agenticlog.ingestion",
         )
         at = self._run_with_query(MagicMock(return_value=mock_response))
 

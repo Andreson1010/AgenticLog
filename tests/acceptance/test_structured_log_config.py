@@ -9,7 +9,6 @@ and the _executar_main() entry point) exactly as an operator would encounter the
 """
 
 import importlib
-import io
 import json
 import logging
 import sys
@@ -25,8 +24,7 @@ if _src not in sys.path:
     sys.path.insert(0, _src)
 
 import agenticlog.config as config
-import agenticlog.rag as rag_module
-
+import agenticlog.ingestion.orchestrator as rag_module
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -135,17 +133,13 @@ def test_ac05_json_format_produces_valid_json_lines(monkeypatch, capsys):
 
     _reload_rag(monkeypatch, log_level=None, log_format="json")
 
-    import agenticlog.rag as rag  # noqa: PLC0415
+    from agenticlog.ingestion.cli import _executar_main as _executar_main_fn
 
     def _fake_rebuild(*_args: object, **_kwargs: object) -> None:
-        # cria_vectordb é a origem do log no fluxo --rebuild. Emitimos uma linha
-        # representativa para validar a FORMATAÇÃO JSON do logging CLI sem disparar
-        # um rebuild real (carregaria o modelo de ~1GB e exigiria ChromaDB/hnswlib).
-        # *_args/**_kwargs: tolera qualquer assinatura com que cria_vectordb seja chamado.
-        rag.logger.info("Banco de Dados Vetorial Criado com sucesso!")
+        rag_module.logger.info("Banco de Dados Vetorial Criado com sucesso!")
 
-    with _patch("agenticlog.rag.cria_vectordb", side_effect=_fake_rebuild):
-        rag._executar_main(["--rebuild"])
+    with _patch("agenticlog.ingestion.cli.cria_vectordb", side_effect=_fake_rebuild):
+        _executar_main_fn(["--rebuild"])
 
     captured = capsys.readouterr()
     lines = [line for line in captured.err.splitlines() if line.strip()]
@@ -188,19 +182,23 @@ def test_ac06_text_format_does_not_use_json_formatter(monkeypatch):
     THEN log output SHALL be plain text; no _JsonFormatter SHALL be
     attached to the root logger after _executar_main() completes.
     """
-    rag = _reload_rag(monkeypatch, log_level=None, log_format=None)
+    _reload_config(monkeypatch, log_level=None, log_format=None)
 
-    assert rag.LOG_FORMAT == "text", (
-        f"Pre-condition failed: expected LOG_FORMAT='text', got {rag.LOG_FORMAT!r}"
+    from agenticlog.config import LOG_FORMAT
+    assert LOG_FORMAT == "text", (
+        f"Pre-condition failed: expected LOG_FORMAT='text', got {LOG_FORMAT!r}"
     )
 
-    with patch.object(rag, "cria_vectordb", return_value=None):
-        rag._executar_main(["--rebuild"])
+    from agenticlog.ingestion.cli import _executar_main as _executar_main_fn
 
+    with patch("agenticlog.ingestion.cli.cria_vectordb", return_value=None):
+        _executar_main_fn(["--rebuild"])
+
+    from agenticlog.observability.logging import _JsonFormatter
     pkg_logger = logging.getLogger("agenticlog")
     json_handlers = [
         h for h in pkg_logger.handlers
-        if isinstance(getattr(h, "formatter", None), rag._JsonFormatter)
+        if isinstance(getattr(h, "formatter", None), _JsonFormatter)
     ]
     assert json_handlers == [], (
         f"Expected no _JsonFormatter on 'agenticlog' logger in text mode, found: {json_handlers}"
